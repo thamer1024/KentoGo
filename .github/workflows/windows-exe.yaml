@@ -1,0 +1,39 @@
+# Make KentoGo.exe on Windows (one file, and a folder as a zip file), and keep them on the page of the
+# run ("Artifacts").
+# It runs when it is started by hand (Actions > windows-exe > Run workflow), and for tags like v0.1.0.
+name: windows-exe
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      # GitHub's Windows computers have no GPU, only OpenGL 1.1, and Kivy needs 2.0: making the
+      # program imports Kivy's window, which stops there. ANGLE (which comes with Kivy on Windows)
+      # draws with DirectX instead, which works without a GPU. The program is not changed by this.
+      KIVY_GL_BACKEND: angle_sdl2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Make KentoGo.exe
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+      - name: Check that both KentoGo.exe start (they print the help and end)
+        shell: pwsh
+        run: |
+          foreach ($program in "dist\KentoGo.exe", "dist\KentoGo\KentoGo.exe") {
+            $process = Start-Process -FilePath $program -ArgumentList "--help" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "$program --help ended with $($process.ExitCode)" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KentoGo-windows
+          path: |
+            dist/KentoGo.exe
+            dist/KentoGo-windows.zip

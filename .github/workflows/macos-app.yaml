@@ -1,0 +1,25 @@
+# Make KentoGo.app on macOS (Apple silicon), and keep it as a zip file on the page of the run ("Artifacts").
+# It runs when it is started by hand (Actions > macos-app > Run workflow), and for tags like v0.1.0.
+name: macos-app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Make KentoGo.app
+        run: bash packaging/macos/build.sh
+      - name: Check that KentoGo.app starts (it prints the help and ends)
+        run: dist/KentoGo.app/Contents/MacOS/KentoGo --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KentoGo-macos
+          path: dist/KentoGo-macos.zip

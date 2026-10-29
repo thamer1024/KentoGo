@@ -1,0 +1,59 @@
+[project]
+name = "kentogo"
+version = "0.1.0"
+description = "A Go practice app for KaTrain users. It finds big mistakes in your analyzed games and asks you to find a better move."
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "src/kentogo/fonts/OFL.txt", "src/kentogo/fonts/DejaVu-LICENSE.txt"]
+dependencies = [
+    "pysgf>=1.0.0,<2",
+    # "base" adds what Kivy needs to show windows on Windows and Linux (SDL2 and others).
+    "kivy[base]>=2.3.1",
+    # The computer's seichi packs the territory into rectangles with an integer program (scipy.optimize.milp).
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# The AI commentary through an API (the paste mode works without them): uv sync --extra ai
+ai = [
+    "anthropic>=0.40",
+    "openai>=1.40",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.12",
+    # Checks that the font of each language has all characters of its texts (tests/gui/test_fonts.py).
+    "fonttools>=4.50",
+]
+# Makes KentoGo.exe for Windows (packaging/windows/build.ps1).
+build = [
+    "pyinstaller>=6.10",
+]
+
+[project.scripts]
+kentogo = "kentogo.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kentogo"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# Third-party code kept unchanged (see THIRD_PARTY_NOTICES.md), and the Japanese copies made for reading.
+extend-exclude = ["src/kentogo/vendor/goscorer.py", "japanese"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

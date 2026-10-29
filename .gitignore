@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tools
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors and systems. The VS Code settings of the project (how to run the tests) are shared;
+# other files of editors are personal.
+.vscode/*
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Games are personal: SGF files and their backups are never added, wherever they are.
+*.sgf
+*.SGF
+*.sgf.*
+*.SGF.*
+*.sgf~
+*.sgf_*
+*.sgf-*
+
+# The default games folder: only its README is kept.
+games/*
+!games/README.md
+
+# Databases (the history of answers is personal). KentoGo keeps them in ~/.kentogo, not here.
+*.sqlite3
+
+# The TODO list has notes about the author's own computer, so it stays out of git.
+TODO.md
+
+# The version of a release, written by the release workflow when it makes the programs.
+packaging/version.txt
+# A version of your own, to see it on the top screen when KentoGo is run from the source.
+src/kentogo/version.txt
+
+# Japanese copies of the source and documents, made only for reading (they are not kept up to date).
+# The Japanese README is kept: README.md links to it.
+japanese/*
+!japanese/README.md
+
+# Shell scripts of your own. The script that makes the macOS app is kept.
+*.sh
+!packaging/macos/build.sh

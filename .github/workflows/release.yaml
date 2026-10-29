@@ -1,0 +1,112 @@
+# Make a release of KentoGo on GitHub: KentoGo.exe (Windows, one file and a folder) and KentoGo.app
+# (macOS) are made, and put on the page of the release (Releases), with a tag such as v1.2.0.
+#
+# It runs when it is started by hand (Actions > release > Run workflow), for the last commit of the
+# chosen branch. The version is the time of that commit: the hour is the major version, the minute
+# the minor version and the second the patch (a commit made at 01:02:00 is 1.2.0, see
+# packaging/release_version.py). The programs show it at the bottom of the top screen.
+name: release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # All the commits and the tags, to see if the tag is used.
+      - name: Make the version from the time of the commit
+        id: version
+        run: |
+          version=$(python3 packaging/release_version.py)
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "::error::The tag v$version is used already (give the commit another time)."
+            exit 1
+          fi
+          echo "Version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      # GitHub's Windows computers have no GPU, only OpenGL 1.1, and Kivy needs 2.0: making the
+      # program imports Kivy's window, which stops there. ANGLE (which comes with Kivy on Windows)
+      # draws with DirectX instead, which works without a GPU. The program is not changed by this.
+      KIVY_GL_BACKEND: angle_sdl2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Write the version (it is put into the program)
+        shell: pwsh
+        run: Set-Content -Path packaging/version.txt -Value $env:VERSION -NoNewline -Encoding utf8
+      - name: Make KentoGo.exe
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+      - name: Check that both KentoGo.exe start (they print the help and end)
+        shell: pwsh
+        run: |
+          foreach ($program in "dist\KentoGo.exe", "dist\KentoGo\KentoGo.exe") {
+            $process = Start-Process -FilePath $program -ArgumentList "--help" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "$program --help ended with $($process.ExitCode)" }
+          }
+      - name: Name the files with the version
+        shell: pwsh
+        run: |
+          Rename-Item dist/KentoGo.exe "KentoGo-$env:VERSION-windows.exe"
+          Rename-Item dist/KentoGo-windows.zip "KentoGo-$env:VERSION-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KentoGo-windows
+          path: |
+            dist/KentoGo-*-windows.exe
+            dist/KentoGo-*-windows.zip
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Write the version (it is put into the app)
+        run: printf '%s' "$VERSION" > packaging/version.txt
+      - name: Make KentoGo.app
+        run: bash packaging/macos/build.sh
+      - name: Check that KentoGo.app starts (it prints the help and ends)
+        run: dist/KentoGo.app/Contents/MacOS/KentoGo --help
+      - name: Name the zip file with the version
+        run: mv dist/KentoGo-macos.zip "dist/KentoGo-$VERSION-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KentoGo-macos
+          path: dist/KentoGo-*-macos.zip
+
+  release:
+    needs: [version, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # To make the tag and the release.
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Make the release with the programs
+        run: >
+          gh release create "v$VERSION" dist/KentoGo-*.exe dist/KentoGo-*.zip
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+          --title "KentoGo $VERSION" --generate-notes

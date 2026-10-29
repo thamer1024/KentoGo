@@ -1,0 +1,14 @@
+# Keep text files with LF line endings on every system (Windows, macOS, Linux, WSL).
+* text=auto eol=lf
+
+# Windows command files need CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files: never change them.
+*.png binary
+*.ico binary
+*.icns binary
+*.otf binary
+*.ttf binary
+*.sqlite3 binary
