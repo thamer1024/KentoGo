@@ -8,7 +8,7 @@ import pytest
 from pysgf import GoGame
 
 from kentogo.common.types import Move
-from kentogo.mistakes.extract import REASON_UNKNOWN_COLOR, ExtractSettings, extract_problems
+from kentogo.mistakes.extract import REASON_UNKNOWN_COLOR, ExtractSettings, extract_problems, punishment_chances
 from kentogo.record.ai_comment import AI_HEADER
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR
 
@@ -311,3 +311,23 @@ def test_kentogo_mode_losses_come_from_the_best_move_in_the_position_before():
     assert dict(katrain.candidate_losses)["Q4"] == pytest.approx(0.3)  # From the root's score.
     assert dict(kentogo.candidate_losses)["Q4"] == pytest.approx(0.5)  # From the best move.
     assert dict(kentogo.candidate_losses)["D16"] == 0.0
+
+
+def chances(text: str, opponent_loss: float, my_loss: float, **settings) -> list:
+    return punishment_chances(GoGame.parse_sgf(text), "game.sgf", ExtractSettings(**settings), opponent_loss, my_loss)
+
+
+def test_punishment_chances():
+    """White's move 2 lost 4 points and black's move 3 then lost 8: black did not punish it."""
+    [chance] = chances(game(), 3.0, 5.0)
+    assert (chance.move_number, chance.opponent_move.gtp(), chance.opponent_loss) == (3, "D4", 4.0)
+    assert (chance.my_move.gtp(), chance.my_loss, chance.best_move) == ("A19", 8.0, "Q4")
+    assert chances(game(), 5.0, 5.0) == []  # The opponent's mistake was smaller.
+    assert chances(game(), 3.0, 9.0) == []  # The user's move lost less.
+    assert chances(game(), 0.0, 0.0)[-1].move_number == 3  # After the opponent's best moves (no loss known): none.
+
+
+def test_punishment_chances_for_white_and_without_a_color():
+    """The user's color decides whose mistakes are the opponent's; without it there are none."""
+    assert chances(game(black=AI, white=HUMAN), 0.0, 0.0) == []  # Black's moves follow white's best moves.
+    assert chances(game(black="x", white="y"), 0.0, 0.0) == []

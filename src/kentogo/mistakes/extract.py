@@ -215,14 +215,7 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
     Returns:
         The user's color and the problems.
     """
-    my_color = detect_my_color(
-        root.get_property("PB", ""),
-        root.get_property("PW", ""),
-        settings.my_names,
-        ranks=(root.get_property("BR", ""), root.get_property("WR", "")),
-        file_name=sgf_path,
-        recorded_color=recorded_color,
-    )
+    my_color = _my_color(root, sgf_path, settings, recorded_color)
     if my_color is None:
         return ExtractResult(None, (), REASON_UNKNOWN_COLOR)
     start = Position(sgf.board_size(root), sgf.komi(root), sgf.rules(root), sgf.setup_stones(root), (), "B")
@@ -245,6 +238,18 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
     return ExtractResult(my_color, _choose(list(problems.values()), settings), move_losses=losses)
 
 
+def _my_color(root: GoNode, sgf_path: str, settings: ExtractSettings, recorded_color: str) -> str | None:
+    """Return the user's color in a game, or None when it cannot be found (see record.players)."""
+    return detect_my_color(
+        root.get_property("PB", ""),
+        root.get_property("PW", ""),
+        settings.my_names,
+        ranks=(root.get_property("BR", ""), root.get_property("WR", "")),
+        file_name=sgf_path,
+        recorded_color=recorded_color,
+    )
+
+
 def _move_losses(main_line: list[GoNode], game: _Game) -> tuple[float, ...]:
     """Return the points lost by each of the user's moves of the main line whose loss is known (0.1 points)."""
     losses = []
@@ -252,11 +257,88 @@ def _move_losses(main_line: list[GoNode], game: _Game) -> tuple[float, ...]:
         move = sgf.node_move(node)
         if move is None or move.color != game.my_color:
             continue
-        _, info = read_comment(split_ai_comment(str(node.get_property("C", ""))).rest)
-        info = _with_analysis_data(info, node, move, game)
-        if info is not None and info.points_lost is not None and (info.color, info.move) == (move.color, move.gtp()):
+        info = _evaluated(node, move, game)
+        if info is not None and info.points_lost is not None:
             losses.append(round(info.points_lost, 1))
     return tuple(losses)
+
+
+def _evaluated(node: GoNode, move: Move, game: _Game) -> KatrainMoveInfo | None:
+    """Return the evaluation of a node's move (analysis data first, then KaTrain's comment), or None."""
+    _, info = read_comment(split_ai_comment(str(node.get_property("C", ""))).rest)
+    info = _with_analysis_data(info, node, move, game)
+    return info if info is not None and (info.color, info.move) == (move.color, move.gtp()) else None
+
+
+@dataclass(frozen=True)
+class PunishmentChance:
+    """A moment when the opponent made a big mistake and the user did not punish it.
+
+    Attributes:
+        move_number: The number of the user's move.
+        opponent_move: The opponent's mistake just before it.
+        opponent_loss: The points that the opponent's move lost.
+        my_move: The user's move.
+        my_loss: The points that the user's move lost (the chance it gave back).
+        best_move: The best move in the position (the move that punishes), GTP, or None if unknown.
+    """
+
+    move_number: int
+    opponent_move: Move
+    opponent_loss: float
+    my_move: Move
+    my_loss: float
+    best_move: str | None
+
+
+def punishment_chances(
+    root: GoNode,
+    sgf_path: str,
+    settings: ExtractSettings,
+    opponent_loss: float,
+    my_loss: float,
+    recorded_color: str = "",
+) -> list[PunishmentChance]:
+    """Find the opponent's big mistakes that the user did not punish, in the main line of a game.
+
+    A chance is the user's move right after an opponent's move that lost at least opponent_loss points,
+    when the user's move lost at least my_loss points. All such moves count, also the ones that are
+    not problems (decided positions, or the same best move as another mistake).
+
+    Args:
+        root: The root node of the game.
+        sgf_path: Path of the SGF file (used to find the user's color).
+        settings: The quiz's conditions (the user's names).
+        opponent_loss: The smallest loss of the opponent's move.
+        my_loss: The smallest loss of the user's move.
+        recorded_color: The user's color that the user gave for this game ("B" or "W"), or "".
+
+    Returns:
+        The chances in the order of the game (none when the user's color is not known).
+    """
+    my_color = _my_color(root, sgf_path, settings, recorded_color)
+    if my_color is None:
+        return []
+    start = Position(sgf.board_size(root), sgf.komi(root), sgf.rules(root), sgf.setup_stones(root), (), "B")
+    game = _game(root, sgf_path, start, my_color)
+    main_line = sgf.main_line(root)
+    chances = []
+    for previous, node in zip(main_line[1:], main_line[2:], strict=False):
+        chance = _chance(game, previous, node)
+        if chance is not None and chance.opponent_loss >= opponent_loss and chance.my_loss >= my_loss:
+            chances.append(chance)
+    return chances
+
+
+def _chance(game: _Game, previous: GoNode, node: GoNode) -> PunishmentChance | None:
+    """Return the opponent's move and the user's move after it with their losses, or None when not known."""
+    theirs, mine = sgf.node_move(previous), sgf.node_move(node)
+    if theirs is None or mine is None or mine.color != game.my_color or theirs.color == game.my_color:
+        return None
+    their_info, my_info = _evaluated(previous, theirs, game), _evaluated(node, mine, game)
+    if their_info is None or my_info is None or their_info.points_lost is None or my_info.points_lost is None:
+        return None
+    return PunishmentChance(node.depth, theirs, their_info.points_lost, mine, my_info.points_lost, my_info.best_move)
 
 
 def _choose(problems: list[tuple[Problem, bool]], settings: ExtractSettings) -> tuple[Problem, ...]:
