@@ -3,8 +3,10 @@
 from kentogo.common.types import Move, Position
 from kentogo.gui.texts import (
     TEXTS,
+    band_names,
     color_name,
     fill_step_text,
+    game_averages_text,
     history_text,
     notes_text,
     problem_info,
@@ -20,6 +22,7 @@ from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import compare_with_actual
 from kentogo.quiz.session import AnswerResult
+from kentogo.report import GameAverages
 from kentogo.seichi.arrangement import FillStep
 
 PROBLEM = Problem(
@@ -85,10 +88,10 @@ def test_all_texts_can_be_filled():
         "average_trend": "",
         "earlier_rate": "70%",
         "earlier_average": "65%",
-        "big": "0.4",
-        "large": "1.2",
-        "earlier_big": "0.8",
-        "earlier_large": "2.0",
+        "latest": "20+ 0.4",
+        "earlier": "20+ 0.8",
+        "low": "3",
+        "high": "5",
         "value": "100",
         "threshold": "20",
         "count": 3,
@@ -357,3 +360,11 @@ def test_problem_info_is_two_lines():
     """The game is on the first line; the move, the player and the count on the second."""
     info = problem_info(PROBLEM, 3, 29)
     assert info.count("\n") == 1 and info.splitlines()[1] == "169手目　黒番　問題 3 / 29"
+
+
+def test_band_names_and_the_averages_of_each_band():
+    """The bands are named from their lower ends; the averages have one decimal, a dash when not known."""
+    assert band_names((20.0, 10.0, 2.5)) == ["20目以上", "10〜20目", "2.5〜10目"]
+    line = game_averages_text(GameAverages((0.4, 1.0), None), (10.0, 3.0))
+    assert line == "直近 5 局の平均：10目以上 0.4　3〜10目 1.0\n（その前の 5 局：—）"
+    assert game_averages_text(GameAverages(), (10.0, 3.0)) == "まだ対局がありません"

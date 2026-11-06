@@ -44,7 +44,12 @@ def test_moves():
 
 def test_result_comes_back_the_same_through_json():
     """A result with problems, and one without, are the same after JSON and back."""
-    for result in (ExtractResult("W", (PROBLEM,)), ExtractResult(None, (), "unknown_color")):
+    results = (
+        ExtractResult("W", (PROBLEM,)),
+        ExtractResult(None, (), "unknown_color"),
+        ExtractResult("B", (PROBLEM,), move_losses=(12.5, 3.0, 0.4)),
+    )
+    for result in results:
         text = json.dumps(result_to_dict(result), ensure_ascii=False)
         assert result_from_dict(json.loads(text)) == result
 

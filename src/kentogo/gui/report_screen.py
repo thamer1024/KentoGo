@@ -3,7 +3,7 @@
 The numbers come from kentogo.report (made in a background thread by the app). The charts are
 plain bars drawn on the canvas, the oldest on the left: one for each practice day (the part of
 correct answers and the average part got back, with the pass ratio as a dotted line), and one for
-each game (its big mistakes, stacked). Each bar has its value written above it (also 0, so that a
+each game (its mistakes, stacked by the points lost). Each bar has its value written above it (also 0, so that a
 day or a game with nothing to draw is not mistaken for a gap), and each group has its day (and
 the number of problems, or the time of the game) written below it. A legend with the colors is
 above each chart. Only the latest SHOWN days and games are drawn.
@@ -32,8 +32,15 @@ BOTTOM_SPACE = 34  # dp below the bars, for two lines about each group.
 TEXT_SIZE = 11  # sp
 CORRECT_COLOR = (0.35, 0.6, 0.95, 1)  # The part of correct answers.
 AVERAGE_COLOR = (0.4, 0.8, 0.5, 1)  # The average part got back.
-BIG_COLOR = (0.9, 0.35, 0.35, 1)  # Mistakes of 20 points or more.
-LARGE_COLOR = (0.95, 0.65, 0.3, 1)  # Mistakes of 10 to 20 points.
+# The colors of the bands of mistakes, the biggest first (red, orange, yellow, light yellow, then grays).
+BAND_COLORS = (
+    (0.9, 0.3, 0.3, 1),
+    (0.95, 0.6, 0.25, 1),
+    (0.95, 0.85, 0.3, 1),
+    (0.95, 0.95, 0.7, 1),
+    (0.7, 0.7, 0.7, 1),
+    (0.5, 0.5, 0.5, 1),
+)
 LINE_COLOR = (0.95, 0.95, 0.95, 0.8)  # The pass ratio, and the bottom line.
 GRID_COLOR = (1, 1, 1, 0.12)
 
@@ -187,23 +194,29 @@ def _days_part(report: Report) -> list[Widget]:
 def _games_part(report: Report) -> list[Widget]:
     """Make the title, the legend, the chart and the notes of the games."""
     games = report.games[-SHOWN:]
-    top = max([game.big + game.large for game in games] + [4])
+    colors = [band_color(index) for index in range(len(report.bands))]
+    top = max([game.total for game in games] + [4])
     chart = BarChart(
-        [(game.big, game.large) for game in games],
-        [BIG_COLOR, LARGE_COLOR],
+        [game.counts for game in games],
+        colors,
         top,
-        [(str(game.big + game.large),) for game in games],
+        [(str(game.total),) for game in games],
         [(f"{game.played.month}/{game.played.day}", game.played.strftime("%H:%M")) for game in games],
         stacked=True,
     )
-    legend = _legend([(BIG_COLOR, "legend_big", {}), (LARGE_COLOR, "legend_large", {})])
+    legend = _legend([(color, *texts.band_key(report.bands, index)) for index, color in enumerate(colors)])
     return [
-        _label(texts.lazy("report_games_title")),
+        _label(texts.lazy("report_games_title", low=texts.points(report.bands[-1]) if report.bands else "")),
         legend,
         chart,
         _label(texts.lazy("report_games_note", count=SHOWN)),
-        _label(lambda: texts.game_averages_text(report.game_averages)),
+        _label(lambda: texts.game_averages_text(report.game_averages, report.bands)),
     ]
+
+
+def band_color(index: int) -> tuple:
+    """Return the color of a band of mistakes (0: the biggest); bands after the last color use the last one."""
+    return BAND_COLORS[min(index, len(BAND_COLORS) - 1)]
 
 
 def _percent(value: float | None) -> str:

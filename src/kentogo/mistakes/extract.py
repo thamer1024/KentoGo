@@ -155,11 +155,15 @@ class ExtractResult:
         my_color: The user's color, or None if it was not found.
         problems: The problems, from the largest loss to the smallest.
         reason: Why no problem was made (such as REASON_UNKNOWN_COLOR), or "" otherwise.
+        move_losses: The points lost by each of the user's moves of the main line whose loss is
+            known, in the order played (also the moves that are not problems: they are counted
+            in the report, see kentogo.report).
     """
 
     my_color: str | None
     problems: tuple[Problem, ...] = ()
     reason: str = ""
+    move_losses: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -213,7 +217,22 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
             made = _make_problem_from_node(game, node, before, settings)
             if made is not None and made[0].problem_id not in problems:
                 problems[made[0].problem_id] = made
-    return ExtractResult(my_color, _choose(list(problems.values()), settings))
+    losses = _move_losses(main_line, game)
+    return ExtractResult(my_color, _choose(list(problems.values()), settings), move_losses=losses)
+
+
+def _move_losses(main_line: list[GoNode], game: _Game) -> tuple[float, ...]:
+    """Return the points lost by each of the user's moves of the main line whose loss is known (0.1 points)."""
+    losses = []
+    for node in main_line[1:]:
+        move = sgf.node_move(node)
+        if move is None or move.color != game.my_color:
+            continue
+        _, info = read_comment(split_ai_comment(str(node.get_property("C", ""))).rest)
+        info = _with_analysis_data(info, node, move, game.kt_version)
+        if info is not None and info.points_lost is not None and (info.color, info.move) == (move.color, move.gtp()):
+            losses.append(round(info.points_lost, 1))
+    return tuple(losses)
 
 
 def _choose(problems: list[tuple[Problem, bool]], settings: ExtractSettings) -> tuple[Problem, ...]:

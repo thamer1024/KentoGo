@@ -72,6 +72,12 @@ def test_problems_are_the_users_big_mistakes():
     assert [(p.move_number, p.points_lost) for p in result.problems] == [(7, 12.0), (3, 8.0)]
 
 
+def test_move_losses_are_all_the_users_main_line_moves():
+    """The loss of each of the user's moves is kept for the report, also the moves that are not problems."""
+    assert extract(game(branches=UNDONE_BRANCHES)).move_losses == (8.0, 2.0, 12.0)  # Branches do not count.
+    assert extract(game(), problems_per_game=1).move_losses == (8.0, 2.0, 12.0)
+
+
 def test_problem_contents():
     """A problem has the position before the mistake, the mistake, the best move and KaTrain's sequence."""
     problem = extract(game()).problems[1]

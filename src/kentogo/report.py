@@ -24,7 +24,7 @@ from typing import Protocol
 
 from kentogo.app_settings import AppSettings
 from kentogo.mistakes.problem import Problem
-from kentogo.quiz.collect import collect_problems
+from kentogo.quiz.collect import collect_games
 from kentogo.quiz.order import keep_newest
 from kentogo.quiz.problem_cache import ProblemCache
 from kentogo.quiz.score import score_answer
@@ -35,8 +35,7 @@ from kentogo.review.history import AnswerHistory
 from kentogo.today import find_games_folder, open_cache, open_history, read_recorded_colors
 
 RECENT = 5  # How many practice days (or games) are "recent".
-BIG_LOSS = 20.0  # A mistake of at least this many points is big.
-LARGE_LOSS = 10.0  # A mistake of at least this many points (and less than BIG_LOSS) is large.
+DEFAULT_BANDS = (20.0, 10.0, 5.0, 3.0)  # The bands of the mistakes per game when the stages are not used.
 CORRECT_STEP = 100  # A milestone at each this many correct answers in all.
 RECOVERED_STEP = 1000  # A milestone at each this many points got back in all.
 
@@ -76,19 +75,25 @@ class DayResult:
 
 @dataclass(frozen=True)
 class GameMistakes:
-    """The big mistakes of one game.
+    """The mistakes of one game, counted in bands of the points lost.
+
+    All the user's moves of the game count, also those that are not problems (in decided
+    positions, or with the same best move as a bigger mistake).
 
     Attributes:
         name: The file name of the game.
         played: When it was played (from the file name, or the time the file was changed).
-        big: How many mistakes lost at least BIG_LOSS points.
-        large: How many lost at least LARGE_LOSS points, and less than BIG_LOSS.
+        counts: For each band (see Report.bands), how many moves lost that many points.
     """
 
     name: str
     played: datetime
-    big: int
-    large: int
+    counts: tuple[int, ...]
+
+    @property
+    def total(self) -> int:
+        """Return how many mistakes there are in all the bands."""
+        return sum(self.counts)
 
 
 @dataclass(frozen=True)
@@ -110,19 +115,15 @@ class Recent:
 
 @dataclass(frozen=True)
 class GameAverages:
-    """The average number of big mistakes per game: the latest RECENT games, and the RECENT before them.
+    """The average number of mistakes per game in each band: the latest RECENT games, and the RECENT before them.
 
     Attributes:
-        big: Mistakes of at least BIG_LOSS points per game in the latest games (None without games).
-        large: Mistakes of LARGE_LOSS to BIG_LOSS points per game in the latest games.
-        earlier_big: The same for the games before them.
-        earlier_large: The same for the games before them.
+        latest: For each band, the mistakes per game in the latest games (None without games).
+        earlier: The same for the games before them (None without such games).
     """
 
-    big: float | None = None
-    large: float | None = None
-    earlier_big: float | None = None
-    earlier_large: float | None = None
+    latest: tuple[float, ...] | None = None
+    earlier: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +156,9 @@ class Report:
         games: The big mistakes of each game, the oldest first.
         game_averages: The latest games compared with the ones before.
         pass_ratio: The pass ratio used now (a line on the chart of the days).
+        bands: The lower ends of the bands of the mistakes per game, the biggest first
+            (the stages of the settings, or DEFAULT_BANDS): (20, 10, 5, 3) means 20 or more,
+            10 to 20, 5 to 10 and 3 to 5 points.
     """
 
     totals: Totals = Totals()
@@ -163,6 +167,7 @@ class Report:
     games: list[GameMistakes] = field(default_factory=list)
     game_averages: GameAverages = GameAverages()
     pass_ratio: float = 0.0
+    bands: tuple[float, ...] = DEFAULT_BANDS
 
 
 @dataclass(frozen=True)
@@ -292,36 +297,37 @@ def game_time(path: Path, modified_time: Callable[[Path], float] = os.path.getmt
     return datetime.fromtimestamp(modified_time(path))
 
 
-def game_mistakes(problems: Iterable[Problem], games: Mapping[Path, datetime]) -> list[GameMistakes]:
-    """Return the big mistakes of each game, the oldest first (games without big mistakes count too).
+def band_counts(losses: Iterable[float], bands: Sequence[float]) -> tuple[int, ...]:
+    """Count the losses in each band (bands: the lower ends, the biggest first; smaller losses are not counted)."""
+    counts = [0] * len(bands)
+    for loss in losses:
+        index = next((i for i, lower in enumerate(bands) if loss >= lower), None)
+        if index is not None:
+            counts[index] += 1
+    return tuple(counts)
+
+
+def game_mistakes(games: Mapping[Path, tuple[datetime, Sequence[float]]], bands: Sequence[float]) -> list[GameMistakes]:
+    """Return the mistakes of each game in the bands, the oldest first (games without mistakes count too).
 
     Args:
-        problems: The problems made from the games.
-        games: The games that problems are made from, with the time each was played.
+        games: The games, with the time each was played and the points lost by each of the user's moves.
+        bands: The lower ends of the bands, the biggest first.
     """
-    big: dict[str, int] = defaultdict(int)
-    large: dict[str, int] = defaultdict(int)
-    for problem in problems:
-        name = Path(problem.sgf_path).name
-        if problem.points_lost >= BIG_LOSS:
-            big[name] += 1
-        elif problem.points_lost >= LARGE_LOSS:
-            large[name] += 1
-    rows = [GameMistakes(path.name, played, big[path.name], large[path.name]) for path, played in games.items()]
+    rows = [GameMistakes(path.name, played, band_counts(losses, bands)) for path, (played, losses) in games.items()]
     return sorted(rows, key=lambda row: (row.played, row.name))
 
 
 def game_averages(games: Sequence[GameMistakes]) -> GameAverages:
-    """Return the average big mistakes per game of the latest RECENT games and of the RECENT before them."""
-    latest, earlier = games[-RECENT:], games[-2 * RECENT : -RECENT]
-    return GameAverages(
-        _per_game(latest, "big"), _per_game(latest, "large"), _per_game(earlier, "big"), _per_game(earlier, "large")
-    )
+    """Return the mistakes per game in each band, of the latest RECENT games and of the RECENT before them."""
+    return GameAverages(_per_game(games[-RECENT:]), _per_game(games[-2 * RECENT : -RECENT]))
 
 
-def _per_game(games: Sequence[GameMistakes], kind: str) -> float | None:
-    """Return the average of one kind of mistakes ("big" or "large") per game, or None without games."""
-    return sum(getattr(game, kind) for game in games) / len(games) if games else None
+def _per_game(games: Sequence[GameMistakes]) -> tuple[float, ...] | None:
+    """Return the average count of each band per game, or None without games."""
+    if not games:
+        return None
+    return tuple(sum(counts) / len(games) for counts in zip(*(game.counts for game in games), strict=True))
 
 
 def today_summary(
@@ -379,7 +385,7 @@ class _Material:
     """What the report is made from: the problems, the games, the answers and the state of each problem."""
 
     problems: list[Problem]
-    games: dict[Path, datetime]
+    games: dict[Path, tuple[datetime, tuple[float, ...]]]
     answers: list[Answer]
     states: dict[str, ReviewState]
 
@@ -387,7 +393,8 @@ class _Material:
 def build_report(material: _Material, settings: AppSettings) -> Report:
     """Make the report from what was read."""
     threshold = settings.quiz.scoring.small_problem_threshold
-    games = game_mistakes(material.problems, material.games)
+    bands = tuple(settings.quiz.extract.loss_stages) or DEFAULT_BANDS
+    games = game_mistakes(material.games, bands)
     return Report(
         totals(material.answers, material.states),
         recent_results(material.answers, threshold),
@@ -395,6 +402,7 @@ def build_report(material: _Material, settings: AppSettings) -> Report:
         games,
         game_averages(games),
         settings.quiz.scoring.pass_ratio,
+        bands,
     )
 
 
@@ -428,15 +436,15 @@ def _read(settings_path: Path, folder_argument: Path | None, settings: AppSettin
 
 def _games(
     settings_path: Path, folder_argument: Path | None, settings: AppSettings, cache: ProblemCache | None
-) -> tuple[list[Problem], dict[Path, datetime]]:
-    """Return the problems and the games (with the time each was played) of the games folder."""
+) -> tuple[list[Problem], dict[Path, tuple[datetime, tuple[float, ...]]]]:
+    """Return the problems, and the games (with the time each was played and its losses) of the games folder."""
     folder, _problem = find_games_folder(folder_argument, settings.quiz.games_folder)
     if folder is None:
         return [], {}
     colors = read_recorded_colors(settings_path)
-    problems, skipped = collect_problems(folder, settings.quiz.extract, cache, None, colors)
-    left_out = {game.name for game in skipped}
-    games = {path: game_time(path) for path in sorted(folder.glob("*.sgf")) if path.name not in left_out}
+    results, _skipped = collect_games(folder, settings.quiz.extract, cache, None, colors)
+    problems = [problem for _path, result in results for problem in result.problems]
+    games = {path: (game_time(path), result.move_losses) for path, result in results}
     return keep_newest(problems), games
 
 

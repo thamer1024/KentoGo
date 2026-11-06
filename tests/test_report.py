@@ -18,6 +18,7 @@ from kentogo.report import (
     GameMistakes,
     Recent,
     Totals,
+    band_counts,
     day_results,
     game_averages,
     game_mistakes,
@@ -108,19 +109,33 @@ PROBLEM = Problem(
 )
 
 
-def test_game_mistakes_count_big_and_large_mistakes_of_every_game():
-    problems = [replace(PROBLEM, sgf_path="/g/a.sgf", points_lost=loss) for loss in (25.0, 12.0, 10.0, 4.0)]
-    games = {Path("/g/b.sgf"): datetime(2026, 11, 2), Path("/g/a.sgf"): datetime(2026, 11, 1)}
-    assert game_mistakes(problems, games) == [
-        GameMistakes("a.sgf", datetime(2026, 11, 1), 1, 2),
-        GameMistakes("b.sgf", datetime(2026, 11, 2), 0, 0),  # A game without big mistakes counts too.
+BANDS = (20.0, 10.0, 5.0, 3.0)
+
+
+def test_band_counts_put_each_loss_in_its_band():
+    """A loss on the lower end is in that band; losses below the smallest band are not counted."""
+    assert band_counts([25.0, 20.0, 19.9, 10.0, 7.0, 5.0, 3.0, 2.9, 0.0], BANDS) == (2, 2, 2, 1)
+    assert band_counts([], BANDS) == (0, 0, 0, 0)
+    assert band_counts([12.0, 4.0], (10.0,)) == (1,)
+
+
+def test_game_mistakes_count_the_losses_of_every_game_in_bands():
+    games = {
+        Path("/g/b.sgf"): (datetime(2026, 11, 2), (1.0, 2.0)),
+        Path("/g/a.sgf"): (datetime(2026, 11, 1), (25.0, 12.0, 10.0, 4.0, 1.5)),
+    }
+    assert game_mistakes(games, BANDS) == [
+        GameMistakes("a.sgf", datetime(2026, 11, 1), (1, 2, 0, 1)),
+        GameMistakes("b.sgf", datetime(2026, 11, 2), (0, 0, 0, 0)),  # A game without mistakes counts too.
     ]
+    assert game_mistakes(games, BANDS)[0].total == 4
 
 
 def test_game_averages_of_the_latest_5_games_and_the_5_before():
-    games = [GameMistakes(f"{n}.sgf", datetime(2026, 10, 1 + n), 2, 1) for n in range(5)]
-    games += [GameMistakes(f"x{n}.sgf", datetime(2026, 10, 10 + n), n % 2, 0) for n in range(5)]
-    assert game_averages(games) == GameAverages(0.4, 0.0, 2.0, 1.0)
+    games = [GameMistakes(f"{n}.sgf", datetime(2026, 10, 1 + n), (2, 1)) for n in range(5)]
+    games += [GameMistakes(f"x{n}.sgf", datetime(2026, 10, 10 + n), (n % 2, 0)) for n in range(5)]
+    assert game_averages(games) == GameAverages((0.4, 0.0), (2.0, 1.0))
+    assert game_averages(games[:3]) == GameAverages((2.0, 1.0), None)
     assert game_averages([]) == GameAverages()
 
 
@@ -168,6 +183,7 @@ def test_load_report_from_the_games_and_the_history(tmp_path):
     (games / "g 2026-10-02 10 00 00.sgf").write_text(sgf_game(12.0, "B[dd];W[pp]"), encoding="utf-8")
     open_history(tmp_path / "settings.json").store.close()  # An empty history.
     report = load_report(tmp_path / "settings.json", games, AppSettings())
-    assert [(game.big, game.large) for game in report.games] == [(1, 0), (0, 1)]
+    assert [game.counts for game in report.games] == [(1, 0, 0, 0), (0, 1, 0, 0)]
+    assert report.bands == (20.0, 10.0, 5.0, 3.0)
     assert report.totals == Totals()
     assert report.pass_ratio == AppSettings().quiz.scoring.pass_ratio

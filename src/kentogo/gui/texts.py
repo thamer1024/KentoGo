@@ -13,7 +13,7 @@ background of the panel (contrast ratio of about 4.5 or more).
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from kentogo.common.types import Move
@@ -229,16 +229,17 @@ TEXTS = {
     "report_days_title": "練習した日ごとの成績",
     "report_chart_note": "棒の上は正答率と取り戻し率、棒の下は練習した日と解いた問題数。左が古く、右が新しい（最大 {count} 回）",
     "report_day_count": "{count} 問",
-    "report_games_title": "対局ごとの大きな悪手の数",
+    "report_games_title": "対局ごとの悪手の数（{low} 目以上）",
     "report_games_note": (
-        "棒の上は大きな悪手の数（0 は大きな悪手のなかった対局）、棒の下は対局した日時。左が古く、右が新しい（最大 {count} 局）"
+        "自分の手を全部数えます（問題にならなかった手も含む）。棒の上は悪手の数（0 は悪手のなかった対局）、"
+        "棒の下は対局した日時。左が古く、右が新しい（最大 {count} 局）"
     ),
     "legend_correct": "正答率",
     "legend_average": "平均の取り戻し率",
     "legend_pass": "点線：合格ライン {ratio}%",
-    "legend_big": "20目以上",
-    "legend_large": "10〜20目",
-    "report_games_recent": "直近 {count} 局の平均：20目以上 {big}　10〜20目 {large}（その前：{earlier_big}　{earlier_large}）",
+    "band_top": "{low}目以上",
+    "band_range": "{low}〜{high}目",
+    "report_games_recent": "直近 {count} 局の平均：{latest}\n（その前の {count} 局：{earlier}）",
     "report_games_none": "まだ対局がありません",
     "trend_up": " ↑",
     "trend_down": " ↓",
@@ -966,18 +967,35 @@ def recent_text(recent: Recent) -> str:
     )
 
 
-def game_averages_text(averages: GameAverages) -> str:
-    """Return the line of the report about the big mistakes of the latest games."""
-    if averages.big is None:
+def points(value: float) -> str:
+    """Return a number of points without a needless decimal, such as "3" or "2.5"."""
+    return f"{value:g}"
+
+
+def band_key(bands: Sequence[float], index: int) -> tuple[str, dict]:
+    """Return the text key and its values naming one band of mistakes (bands: the lower ends, the biggest first)."""
+    if index == 0:
+        return "band_top", {"low": points(bands[0])}
+    return "band_range", {"low": points(bands[index]), "high": points(bands[index - 1])}
+
+
+def band_names(bands: Sequence[float]) -> list[str]:
+    """Return the names of the bands of mistakes, such as "20目以上" and "10〜20目"."""
+    return [text(key, **values) for key, values in (band_key(bands, index) for index in range(len(bands)))]
+
+
+def game_averages_text(averages: GameAverages, bands: Sequence[float]) -> str:
+    """Return the lines of the report about the mistakes per game in each band, the latest games and the ones before."""
+    if averages.latest is None:
         return text("report_games_none")
-    return text(
-        "report_games_recent",
-        count=RECENT,
-        big=_per_game(averages.big),
-        large=_per_game(averages.large),
-        earlier_big=_per_game(averages.earlier_big),
-        earlier_large=_per_game(averages.earlier_large),
-    )
+    names = band_names(bands)
+
+    def joined(values: Sequence[float] | None) -> str:
+        if values is None:
+            return text("no_value")
+        return "　".join(f"{name} {_per_game(value)}" for name, value in zip(names, values, strict=True))
+
+    return text("report_games_recent", count=RECENT, latest=joined(averages.latest), earlier=joined(averages.earlier))
 
 
 def today_summary_text(summary: TodaySummary) -> str:

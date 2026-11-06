@@ -49,6 +49,23 @@ def collect_problems(
     progress: Callable[[int, int], None] | None = None,
     recorded_colors: Mapping[str, str] | None = None,
 ) -> tuple[list[Problem], list[SkippedGame]]:
+    """Make problems from all SGF files in a folder (see collect_games).
+
+    Returns:
+        A tuple (problems, skipped). The problems are in the order of the file names,
+        and from the largest loss to the smallest in each file.
+    """
+    games, skipped = collect_games(folder, settings, cache, progress, recorded_colors)
+    return [problem for _path, result in games for problem in result.problems], skipped
+
+
+def collect_games(
+    folder: Path,
+    settings: ExtractSettings,
+    cache: ProblemCache | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    recorded_colors: Mapping[str, str] | None = None,
+) -> tuple[list[tuple[Path, ExtractResult]], list[SkippedGame]]:
     """Make problems from all SGF files in a folder (not in its subfolders).
 
     Args:
@@ -60,11 +77,11 @@ def collect_problems(
             (see commentary.history). It is used before any other way to find the color.
 
     Returns:
-        A tuple (problems, skipped). The problems are in the order of the file names,
-        and from the largest loss to the smallest in each file. skipped tells which
-        files could not be read, had no user color, or had no analysis.
+        A tuple (games, skipped). games has each file that gave a result (its problems and the
+        losses of the user's moves), in the order of the file names. skipped tells which files
+        could not be read, had no user color, or had no analysis.
     """
-    problems: list[Problem] = []
+    games: list[tuple[Path, ExtractResult]] = []
     skipped: list[SkippedGame] = []
     paths = sorted(folder.glob("*.sgf"))
     key = settings_key(settings)
@@ -78,10 +95,11 @@ def collect_problems(
             continue
         if game.result.reason:
             skipped.append(SkippedGame(path.name, game.result.reason))
-        problems.extend(game.result.problems)
+            continue
+        games.append((path, game.result))
     if cache is not None:
         _finish_cache(cache, folder, paths)
-    return problems, skipped
+    return games, skipped
 
 
 def _read_game(
