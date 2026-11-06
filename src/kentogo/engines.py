@@ -306,6 +306,23 @@ def engines_for(running: Engines | None, engine_settings: EngineSettings, turned
     return open_engines(engine_settings, turned_off)
 
 
+def analysis_engine(engine_settings: EngineSettings, running: Engines | None) -> tuple[KataGoProcess | None, bool, str]:
+    """Return the KataGo for analyzing games (see analysis_run): the app's main one, or one of its own.
+
+    The app's main KataGo is used as it is when it runs with the settings: the analysis sends its
+    queries at KaTrain's low priorities, so the quiz's queries are answered first. Otherwise a new
+    KataGo is started (the caller waits until it is ready and stops it after the analysis).
+
+    Returns:
+        (engine, own, problem): own is True for a KataGo started here; engine is None when it could
+        not be started, and problem then tells why.
+    """
+    if _runs_with(running, engine_settings) and running.processes[0] is not None:
+        return running.processes[0], False, ""
+    engine, _, problem = start_engine(engine_settings)
+    return engine, True, problem
+
+
 def measure_katago_speed(engine_settings: EngineSettings, running: Engines | None = None) -> MeasuredSpeed:
     """Measure the speed of the main model, and of the comparison model when it is turned on.
 

@@ -16,6 +16,7 @@ import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from kentogo.analysis_run import AnalysisPlan, AnalysisSummary
 from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
 from kentogo.mistakes.extract import PUNISH, SHARED
@@ -449,8 +450,8 @@ TEXTS = {
     "ai_review": "【AI総評】",
     "field_decided_winrate": "勝負が決まったとみなす勝率（%）",
     "field_decided_lead": "勝負が決まったとみなす目差（これを超える）",
-    "page_commentary": "AI解説設定",
-    "page_analysis": "棋譜解析設定",
+    "page_commentary": "AI解説（Claude・ChatGPTなどの文章）",
+    "page_analysis": "KataGo棋譜解析（SGFに書き込む）",
     "analysis_settings": "解析",
     "reanalysis_settings": "解析し直す",
     "analysis_comment_settings": "棋譜に書くコメント",
@@ -471,6 +472,34 @@ TEXTS = {
     "field_analysis_language": "コメントの言語",
     "field_eval_show_ai": "AIの手にもコメントを付ける",
     "field_save_marks": "最善手に印（×・□）を付ける",
+    "analyze_games_button": "KataGoで棋譜を解析",
+    "analysis_title": "棋譜の解析",
+    "analysis_starting": "KataGoを準備しています…",
+    "analysis_game": "{number} / {total}　{name}",
+    "analysis_step_first": "解析　{done} / {total} 局面",
+    "analysis_step_again": "解析し直し　{done} / {total} 局面",
+    "analysis_step_played": "打った手の読み直し　{done} / {total} 局面",
+    "analysis_outcome_written": "書き込みました：{name}",
+    "analysis_outcome_skipped": "解析済みのため飛ばしました：{name}",
+    "analysis_outcome_failed": "失敗しました：{name}（{detail}）",
+    "analysis_outcome_incomplete": "書き込みました（解析できなかった局面があります）：{name}",
+    "analysis_stop": "中止",
+    "analysis_stopping": "この棋譜が終わったら止めます…",
+    "analysis_summary": "終わりました：書き込み {written} 局、解析済み {skipped} 局、失敗 {failed} 局",
+    "analysis_summary_stopped": "中止しました：書き込み {written} 局、解析済み {skipped} 局、失敗 {failed} 局",
+    "analysis_problem": "解析できません：{reason}",
+    "analysis_page_intro": "[b]このページは、KataGo（囲碁AIエンジン）で棋譜を読み、損失目数などの解析データとコメントをSGFファイルに書き込む設定です。[/b]Claude・ChatGPTなどの言語AIが文章で解説する設定は「AI解説」のページです。",
+    "commentary_page_intro": "[b]このページは、Claude・ChatGPTなどの言語AIが問題の局面を文章で解説する設定です。[/b]KataGoで棋譜を解析してSGFファイルに書き込む設定は「KataGo棋譜解析」のページです。",
+    "analysis_counting": "棋譜を数えています…",
+    "analysis_confirm": "{folder} の {count} 局をKataGoで解析し、解析データとコメントを棋譜に書き込みます（上書きします）。\n元の棋譜は先に {backup} にコピーします。",
+    "analysis_confirm_skip": "全部で {games} 局のうち、解析済みの {analyzed} 局は飛ばします。",
+    "analysis_confirm_again": "「解析し直す」がオンなので、解析済みの {analyzed} 局も解析し直します。",
+    "analysis_confirm_question": "始めますか？",
+    "analysis_start": "はい（解析を始める）",
+    "analysis_no_folder_set": "解析する棋譜のフォルダが設定されていません。",
+    "analysis_no_folder": "解析する棋譜のフォルダがありません：{folder}",
+    "analysis_no_games": "{folder} にSGFファイルがありません。",
+    "analysis_all_analyzed": "{folder} の {games} 局はすべて解析済みです。解析し直すときは「解析し直す」をオンにしてください。",
     "field_problem_kind": "出題する問題",
     "problem_kind_all": "すべての問題",
     "problem_kind_punish": "咎め問題だけ",
@@ -839,6 +868,51 @@ def history_text(previous: list[AnswerRecord]) -> str:
     else:
         result = text("history_correct") if last else text("history_wrong")
     return text("history_again", count=len(previous) + 1, last=result)
+
+
+def analysis_step_text(step: str, done: int, total: int) -> str:
+    """Return the progress of a step of the analysis of a game (see analysis.game_analysis)."""
+    return text(f"analysis_step_{step}", done=done, total=total)
+
+
+def analysis_outcome_text(name: str, outcome: str, detail: str) -> str:
+    """Return how the analysis of a game ended (see analysis_run), with the reason of a failure."""
+    if outcome == "written" and "could not be analyzed" in detail:
+        return text("analysis_outcome_incomplete", name=name)
+    return text(f"analysis_outcome_{outcome}", name=name, detail=detail)
+
+
+def analysis_summary_text(summary: AnalysisSummary) -> str:
+    """Return how a run of the analysis ended: the games written, skipped and failed, or why it could not run."""
+    if summary.problem:
+        return text("analysis_problem", reason=summary.problem)
+    counts = summary.outcomes
+    key = "analysis_summary_stopped" if summary.stopped else "analysis_summary"
+    return text(key, written=counts["written"], skipped=counts["skipped"], failed=counts["failed"])
+
+
+def analysis_plan_problem(plan: AnalysisPlan) -> str:
+    """Return why a run of the analysis has nothing to do (no folder, no games, all analyzed), or ""."""
+    if plan.folder is None:
+        return text("analysis_no_folder_set")
+    if not plan.folder.is_dir():
+        return text("analysis_no_folder", folder=plan.folder)
+    if not plan.games:
+        return text("analysis_no_games", folder=plan.folder)
+    if not plan.to_analyze:
+        return text("analysis_all_analyzed", folder=plan.folder, games=plan.games)
+    return ""
+
+
+def analysis_plan_text(plan: AnalysisPlan) -> str:
+    """Return what a run of the analysis will do, asked before it starts: the folder and the number of
+    games that are overwritten, the backup folder, and the analyzed games that are skipped or analyzed again."""
+    lines = [text("analysis_confirm", folder=plan.folder, count=plan.to_analyze, backup=plan.backup)]
+    if plan.analyzed:
+        key = "analysis_confirm_again" if plan.reanalyze else "analysis_confirm_skip"
+        lines.append(text(key, games=plan.games, analyzed=plan.analyzed))
+    lines.append(text("analysis_confirm_question"))
+    return "\n".join(lines)
 
 
 def problem_info(problem: Problem, index: int, total: int) -> str:

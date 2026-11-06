@@ -13,11 +13,17 @@ menu (see settings_form.PAGES):
   asks to use the preset that fits it.
 - 出題・判定設定: like KaTrain's "Teaching/Analysis settings": how problems are
   chosen and asked, and how answers are judged.
-- AI解説設定: which AI and model the AI commentary uses (the values are used as they are
+- AI解説: which language AI and model the AI commentary uses (the values are used as they are
   written, so any model that the AI publishes can be used), the environment variable of the
   API key, and a button that opens the user's prompt file.
-- 棋譜解析設定: the analysis of games with KataGo (see analysis.analysis_settings): the mode
+- KataGo棋譜解析: the analysis of games with KataGo (see analysis.analysis_settings): the mode
   (KaTrain compatible or KentoGo's), the folders, the first analysis, analyzing again, and the comments.
+  The "KataGoで棋譜を解析" button is at the bottom, in its own color: it saves the inputs as
+  "設定を更新" does, tells which folder and how many games will be overwritten, and starts the
+  analysis when the user says yes (see gui.analysis_popup).
+
+The two pages of the AI commentary and of the analysis with KataGo start with a text that says
+what the page is for and where the other one is, so that they are not mistaken for each other.
 - 復習設定: reviews, the order of new problems and reviews, the limit, and two
   buttons that set aside all current problems or bring all problems back
   (they ask first, write to the history at once, and are used when the quiz is started next).
@@ -36,6 +42,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 from kivy.metrics import dp, sp
@@ -48,8 +55,10 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
+from kentogo.analysis_run import AnalysisPlan
 from kentogo.app_settings import AppSettings
 from kentogo.gui import texts, theme
+from kentogo.gui.analysis_popup import AnalysisPopup, FolderAnalysis
 from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
 from kentogo.gui.settings_form import (
@@ -115,6 +124,8 @@ PRESET_ROW_HEIGHT = 48  # dp. The lowest row of the recommended settings (a kind
 INPUT_COLOR = (0.12, 0.16, 0.21, 1)
 WRONG_INPUT_COLOR = (0.45, 0.16, 0.16, 1)  # An input whose value cannot be used.
 MISSING_PATH_COLOR = (1.0, 0.54, 0.5, 1)  # The text "ファイルがありません", and a missing folder.
+CONFIRM_ANALYSIS_HEIGHT = 340  # dp. The question before the analysis has a folder and several lines.
+RUN_BUTTON_COLOR = (0.2, 0.45, 0.32, 1)  # A button that runs something (the analysis), not one that saves.
 
 
 class SettingsPopup(Popup):
@@ -134,6 +145,7 @@ class SettingsPopup(Popup):
         page: str = PAGE_GENERAL,
         edit_prompt: Callable[[], Path] | None = None,
         measure: Callable[[], MeasuredSpeed] | None = None,
+        analyze: FolderAnalysis | None = None,
         **kwargs,
     ):
         """Make the screen with the current settings. Call open() to show it.
@@ -151,6 +163,8 @@ class SettingsPopup(Popup):
                 and returns its path. It may raise OSError. If None, there is no button for it.
             measure: Measures KataGo's speed on this computer, for each model; it runs in a
                 background thread and may raise any error. If None, there is no button for it.
+            analyze: Counts and analyzes the games of the analysis's folder (see gui.analysis_popup).
+                If None, there is no button for it.
             **kwargs: Other arguments of Kivy's Popup.
         """
         super().__init__(
@@ -168,6 +182,7 @@ class SettingsPopup(Popup):
         self._include_all = include_all
         self._edit_prompt = edit_prompt
         self._measure = measure
+        self._analyze = analyze
         self.inputs: dict[str, object] = {}
         self._measuring = False  # True while KataGo's speed is measured.
         self._missing_labels: dict[str, Label] = {}
@@ -205,6 +220,10 @@ class SettingsPopup(Popup):
         self.message_label = wrapping_label(text="", valign="middle")
         bottom = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(SPACING), padding=(dp(SPACING), dp(4)))
         bottom.add_widget(self.message_label)
+        if page == PAGE_ANALYSIS and self._analyze is not None:
+            run = flat_button(texts.text("analyze_games_button"), self.analyze_games, size_hint_x=0.3)
+            run.background_color = RUN_BUTTON_COLOR
+            bottom.add_widget(run)
         if page != PAGE_PRESETS:  # A preset is saved by its own button.
             bottom.add_widget(flat_button(texts.text("update_settings"), self.update_settings, size_hint_x=0.25))
         bottom.add_widget(flat_button(texts.text("close"), self.dismiss, size_hint_x=0.15))
@@ -223,7 +242,9 @@ class SettingsPopup(Popup):
         body.add_widget(_two_columns(self._settings_box(GROUP_GENERAL), self._settings_box(GROUP_ENGINE)))
 
     def _add_analysis_page(self, body: GridLayout) -> None:
-        """Add the widgets of the analysis page: the mode and the first analysis, the re-analysis, and the comments."""
+        """Add the widgets of the analysis page: what the page is for, the mode and the first analysis,
+        the re-analysis, and the comments."""
+        body.add_widget(_intro(texts.text("analysis_page_intro")))
         headers = _two_columns(_header(texts.text("analysis_settings")), _header(texts.text("reanalysis_settings")))
         body.add_widget(headers)
         body.add_widget(_two_columns(self._settings_box(GROUP_ANALYSIS), self._settings_box(GROUP_REANALYSIS)))
@@ -233,8 +254,50 @@ class SettingsPopup(Popup):
         hint.text = texts.text("analysis_settings_hint")
         body.add_widget(hint)
 
+    def analyze_games(self) -> None:
+        """Save the inputs as "設定を更新" does (wrong inputs stop here), then count the games and ask."""
+        settings = self._form_settings()
+        if settings is not None:
+            self._save_then(settings, lambda: self._plan_analysis(settings))
+
+    def _plan_analysis(self, settings: AppSettings) -> None:
+        """Count the games in a background thread (reading many games can take long), then ask."""
+        self.message_label.text = texts.text("analysis_counting")
+        analysis = self._analyze
+
+        def work() -> None:
+            try:
+                plan = analysis.plan(settings)
+            except Exception as error:  # The settings screen must stay usable.
+                in_main_thread(self._show_error)(texts.text("action_failed", reason=error))
+                return
+            in_main_thread(self._ask_analysis)(settings, plan)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _ask_analysis(self, settings: AppSettings, plan: AnalysisPlan) -> None:
+        """Tell which folder and how many games will be overwritten, and start when the user says yes.
+
+        When there is nothing to analyze, only tell why.
+        """
+        self.message_label.text = ""
+        problem = texts.analysis_plan_problem(plan)
+        if problem:
+            show_message(texts.text("analysis_title"), problem)
+            return
+        run = partial(self._analyze.run, settings)
+        confirm(
+            texts.analysis_plan_text(plan),
+            lambda: AnalysisPopup(run).start(),
+            lambda: None,
+            texts.text("analysis_start"),
+            height=CONFIRM_ANALYSIS_HEIGHT,
+        )
+
     def _add_commentary_page(self, body: GridLayout) -> None:
-        """Add the widgets of the AI commentary page: the settings, examples of values, and the prompt file."""
+        """Add the widgets of the AI commentary page: what the page is for, the settings, examples of values,
+        and the prompt file."""
+        body.add_widget(_intro(texts.text("commentary_page_intro")))
         body.add_widget(_header(texts.text("commentary_settings"), halign="left"))
         body.add_widget(self._settings_box(GROUP_COMMENTARY))
         hint = fitting_label(dp(120))
@@ -427,29 +490,47 @@ class SettingsPopup(Popup):
         If the change makes the next start read all SGF files again, the user is
         asked first, and the settings are saved only when the user says yes.
         """
+        settings = self._form_settings()
+        if settings is not None:
+            self._save_then(settings, lambda: None)
+
+    def _form_settings(self) -> AppSettings | None:
+        """Return the settings of the inputs, or None (the wrong inputs are shown) when some are wrong."""
         try:
             settings = settings_from_form(self.values(), self.settings)
         except FormError as error:
             self._mark_wrong(set(error.errors))
             labels = texts.list_text([_label_text(key) for key in error.errors if key]) or str(error)
             self.message_label.text = texts.text("settings_invalid", labels=labels)
-            return
+            return None
         self._mark_wrong(set())
+        return settings
+
+    def _save_then(self, settings: AppSettings, then: Callable[[], None]) -> None:
+        """Save the settings (asking first if the next start reads all SGF files again), then call then.
+
+        then is not called when the user says no or the settings cannot be saved.
+        """
         if needs_rereading(self.settings.quiz, settings.quiz):
             question = texts.text("reread_question", count=count_games(settings.quiz.games_folder))
-            confirm(question, on_yes=lambda: self._write(settings), on_no=self._cancelled)
-        else:
-            self._write(settings)
+            confirm(question, on_yes=lambda: self._write(settings) and then(), on_no=self._cancelled)
+        elif self._write(settings):
+            then()
 
-    def _write(self, settings: AppSettings) -> None:
-        """Save the settings (they are used at once, so nothing is said), or show why they could not be saved."""
+    def _write(self, settings: AppSettings) -> bool:
+        """Save the settings (they are used at once, so nothing is said), or show why they could not be saved.
+
+        Returns:
+            True if they were saved.
+        """
         try:
             self._save(settings)
         except (OSError, ValueError) as error:
             self._show_error(texts.text("settings_save_failed", reason=error))
-            return
+            return False
         self.settings = settings  # Saving again without changes does not ask again.
         self.message_label.text = ""
+        return True
 
     def _review_actions(self) -> BoxLayout:
         """Make the two buttons that set aside all problems, or bring all problems back."""
@@ -600,6 +681,13 @@ def _field_label(spec: FieldSpec, halign: str) -> Label:
     """Make the label with the name of a setting. Long names wrap."""
     label = Label(text=_label_text(spec.id), halign=halign, valign="middle", color=theme.TEXT_COLOR)
     label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
+    return label
+
+
+def _intro(text: str) -> Label:
+    """Make the text at the top of a page that says what the page is for."""
+    label = fitting_label(dp(50))
+    label.text = text
     return label
 
 

@@ -48,6 +48,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
+from kentogo.analysis_run import plan_analysis, run_folder_analysis
 from kentogo.app_settings import AppSettings
 from kentogo.commentary.prompt_text import create_user_prompt_file
 from kentogo.commentary.workspace import CommentaryWorkspace
@@ -370,6 +371,7 @@ def _settings_opener(
 
     def open_settings(page: str) -> None:
         """Open a settings screen with the settings in the file."""
+        from kentogo.gui.analysis_popup import FolderAnalysis
         from kentogo.gui.settings_popup import SettingsPopup
 
         SettingsPopup(
@@ -381,6 +383,10 @@ def _settings_opener(
             edit_prompt=lambda: _open_prompt_file(arguments.settings),
             measure=lambda: measure_katago_speed(
                 _current_settings(arguments.settings, settings).engine, _running_engines()
+            ),
+            analyze=FolderAnalysis(
+                plan_analysis,
+                lambda saved, listener, stop: run_folder_analysis(saved, _running_engines(), listener, stop),
             ),
         ).open()
 

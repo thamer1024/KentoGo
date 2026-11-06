@@ -153,7 +153,9 @@ PAGE_REVIEW = "review"  # Reviews, and the order of new problems and reviews.
 PAGE_SEICHI = "seichi"  # The territory counting practice: the order of the games, counting again, the limit.
 PAGE_COMMENTARY = "commentary"  # The AI commentary: which AI and model, and the API key's variable.
 PAGE_ANALYSIS = "analysis"  # The analysis of games with KataGo (see analysis.analysis_settings).
-PAGES = (PAGE_GENERAL, PAGE_PRESETS, PAGE_QUIZ, PAGE_REVIEW, PAGE_SEICHI, PAGE_COMMENTARY, PAGE_ANALYSIS)
+# The analysis of games with KataGo comes after the engine's pages, and the AI commentary (a language AI's
+# texts) is the last, away from it, so that the two are not mistaken for each other.
+PAGES = (PAGE_GENERAL, PAGE_PRESETS, PAGE_ANALYSIS, PAGE_QUIZ, PAGE_REVIEW, PAGE_SEICHI, PAGE_COMMENTARY)
 PAGE_GROUPS = {
     PAGE_GENERAL: (GROUP_KATAGO, GROUP_GENERAL, GROUP_ENGINE),
     PAGE_PRESETS: (),  # Only buttons (see gui.settings_popup).

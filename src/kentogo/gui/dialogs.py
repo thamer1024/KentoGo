@@ -137,6 +137,7 @@ def confirm(
     on_no: Callable[[], None],
     yes_label: str | None = None,
     no_label: str | None = None,
+    height: float = 260,
 ) -> None:
     """Ask a yes/no question in a small dialog, and call on_yes or on_no with the answer.
 
@@ -146,8 +147,9 @@ def confirm(
         on_no: Called when the user says no.
         yes_label: The text of the yes button (by default, "はい（保存する）").
         no_label: The text of the no button (by default, "いいえ").
+        height: The height of the dialog in dp (a long question needs more).
     """
-    popup = _popup(texts.text("reread_title"), 260)
+    popup = _popup(texts.text("reread_title"), height)
 
     def answer(action: Callable[[], None]) -> None:
         """Close the dialog, then do what the answer asks."""

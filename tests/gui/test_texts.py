@@ -2,9 +2,15 @@
 
 from dataclasses import replace
 
+from kentogo.analysis_run import AnalysisPlan, AnalysisSummary
 from kentogo.common.types import Move, Position
 from kentogo.gui.texts import (
     TEXTS,
+    analysis_outcome_text,
+    analysis_plan_problem,
+    analysis_plan_text,
+    analysis_step_text,
+    analysis_summary_text,
     band_names,
     color_name,
     fill_step_text,
@@ -91,6 +97,11 @@ def test_all_texts_can_be_filled():
         "earlier_rate": "70%",
         "earlier_average": "65%",
         "latest": "20+ 0.4",
+        "written": 3,
+        "skipped": 2,
+        "failed": 1,
+        "games": 3,
+        "analyzed": 1,
         "earlier": "20+ 0.8",
         "low": "3",
         "high": "5",
@@ -380,3 +391,30 @@ def test_problem_info_of_punishment_problems():
         == "169手目　黒番　問題 3 / 29　咎め問題：直前の相手の手は 18.2目の損"
     )
     assert problem_info(replace(PROBLEM, punishment="shared"), 3, 29).endswith("相手も見落とした大きな場所があります")
+
+
+def test_analysis_texts():
+    """The steps, the outcome of each game and the summary of a run of the analysis."""
+    assert analysis_step_text("played", 3, 40) == "打った手の読み直し　3 / 40 局面"
+    assert analysis_outcome_text("a.sgf", "skipped", "x") == "解析済みのため飛ばしました：a.sgf"
+    assert analysis_outcome_text("a.sgf", "failed", "cannot be read: x") == "失敗しました：a.sgf（cannot be read: x）"
+    incomplete = "written in 3 s; 2 nodes could not be analyzed (after move: 4, 5)"
+    assert analysis_outcome_text("a.sgf", "written", incomplete).startswith("書き込みました（解析できなかった")
+    summary = AnalysisSummary({"written": 3, "skipped": 2, "failed": 0}, stopped=True)
+    assert analysis_summary_text(summary) == "中止しました：書き込み 3 局、解析済み 2 局、失敗 0 局"
+    assert analysis_summary_text(AnalysisSummary(problem="no games")) == "解析できません：no games"
+
+
+def test_analysis_plan_texts(tmp_path):
+    """Before a run, the folder and the number of games that are overwritten are told, or why nothing is done."""
+    assert analysis_plan_problem(AnalysisPlan(None)) == "解析する棋譜のフォルダが設定されていません。"
+    assert analysis_plan_problem(AnalysisPlan(tmp_path / "x")).startswith("解析する棋譜のフォルダがありません")
+    assert analysis_plan_problem(AnalysisPlan(tmp_path)).endswith("SGFファイルがありません。")
+    assert "すべて解析済み" in analysis_plan_problem(AnalysisPlan(tmp_path, tmp_path / "b", 2, 2))
+    plan = AnalysisPlan(tmp_path, tmp_path / "b", 3, 1)
+    assert analysis_plan_problem(plan) == ""
+    lines = analysis_plan_text(plan).splitlines()
+    assert lines[0].startswith(f"{tmp_path} の 2 局をKataGoで解析")
+    assert lines[2] == "全部で 3 局のうち、解析済みの 1 局は飛ばします。" and lines[-1] == "始めますか？"
+    again = analysis_plan_text(AnalysisPlan(tmp_path, tmp_path / "b", 3, 1, reanalyze=True))
+    assert f"{tmp_path} の 3 局" in again and "1 局も解析し直します" in again
