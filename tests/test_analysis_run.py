@@ -1,9 +1,11 @@
 """Tests for kentogo.analysis_run (analyzing the games of a folder, for the command line and the settings screen)."""
 
 import threading
+from pathlib import Path
 
 from kentogo import analysis_run, engines
 from kentogo.analysis.analysis_settings import AnalysisSettings
+from kentogo.analysis.analyze import DeepTargets
 from kentogo.analysis_run import (
     FAILED,
     SKIPPED,
@@ -145,3 +147,23 @@ def test_games_analyzed_by_katrain_are_analyzed_again_for_kentogo_when_asked(tmp
     redone = analyze_games(FakeEngine(), [game], settings, Recorder().listener(), redo_kentogo=True)
     assert redone.outcomes[WRITTEN] == 1 and "KGM[KentoGo]" in game.read_text(encoding="utf-8")
     assert plan_analysis(settings).kentogo_redo == 0  # Analyzed by KentoGo now.
+
+
+def test_deep_targets_come_from_the_quiz_settings():
+    """The user's moves from the smallest loss of a problem, the opponent's from the loss of a punishment chance."""
+    from pysgf import GoGame
+
+    from kentogo.mistakes.extract import ExtractSettings
+    from kentogo.quiz.quiz_settings import QuizSettings
+
+    extract = ExtractSettings(
+        my_names=("hama",), min_points_lost=3.0, loss_stages=(20.0, 5.0), punish_opponent_loss=15.0
+    )
+    settings = AppSettings(quiz=QuizSettings(extract=extract), engine=EngineSettings(max_visits=500))
+    root = GoGame.parse_sgf("(;SZ[9]PB[hama]PW[AI];B[ee])")
+    targets = analysis_run.deep_targets(settings, root, Path("game.sgf"))
+    assert (targets.losses, targets.visits) == ({"B": 5.0, "W": 15.0}, 2000)  # The last stage; 4 times 500.
+    unknown = GoGame.parse_sgf("(;SZ[9]PB[someone]PW[other];B[ee])")
+    deep = AppSettings(quiz=QuizSettings(extract=extract), analysis=AnalysisSettings(deep_visits=3000))
+    assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets({"B": 5.0, "W": 5.0}, 3000)
+    assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)

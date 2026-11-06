@@ -5,13 +5,14 @@ from datetime import datetime
 from pysgf import GoGame
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.analyze import analyze_game
+from kentogo.analysis.analyze import DeepTargets, analyze_game
 from kentogo.analysis.game_analysis import EngineValues
 from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.mistakes.extract import ExtractSettings, extract_problems
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR, read_comment
 from kentogo.record.katrain_kt import decode_kt
+from kentogo.record.kentogo_data import read_kgd, write_kgd
 
 HUMAN = f"Human (Normal Game){INTERNAL_MARKER}"
 AI = f"AI (Human-like){INTERNAL_MARKER}"
@@ -110,3 +111,19 @@ def test_backup_then_write(tmp_path):
 def test_the_root_is_marked_as_analyzed_by_kentogo():
     """KGM[KentoGo] tells that the losses are read in the position before each move."""
     assert analyzed().get_property("KGM") == "KentoGo"
+
+
+def test_kentogo_data_only_for_the_moves_read_deeply():
+    """Black's A5 lost 8 points and is read deeply: it gets KGD; an old KGD of another node is removed."""
+    root = GoGame.parse_sgf(GAME)
+    write_kgd(root.nodes_in_tree[1], {"old": True})
+    settings = AnalysisSettings()
+    targets = DeepTargets({"B": 5.0, "W": 5.0}, 400)
+    game = analyze_game(FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, targets)
+    write_analysis(game, WriteSettings(settings, "1.2.3"))
+    nodes = GoGame.parse_sgf(root.sgf()).nodes_in_tree
+    assert [read_kgd(node) is not None for node in nodes] == [False, False, False, True]
+    data = read_kgd(nodes[3])
+    assert (data["kind"], data["visits"], data["base"]) == ("move", 400, {"scoreLead": 3.0, "visits": 9})
+    assert (data["played"]["move"], data["played"]["scoreLead"]) == ("A5", -5.0)
+    assert (data["best"]["move"], data["best"]["scoreLead"]) == ("E5", 3.0)

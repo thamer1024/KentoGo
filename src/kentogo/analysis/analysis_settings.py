@@ -14,7 +14,8 @@ and their default values are copied from KaTrain's config.json when the settings
   eval_show_ai is on, with the marks of the best moves when save_marks is on, in KaTrain's language.
 
 The analysis data (the KT property) is always written: KentoGo needs it, so it is not a setting.
-A position that KataGo could not analyze is asked again (retries).
+A position that KataGo could not analyze is asked again (retries). The moves that can become problems
+are read more deeply, with deep_visits (see analysis.analyze; which moves comes from the quiz settings).
 The visits of the engine (max_visits) are the engine settings (see katago.engine_settings).
 Old settings files may still have "katrain_compatible" and "max_time" (KaTrain's way, no longer
 used): unknown keys are ignored, and they are gone when the settings are saved again.
@@ -27,6 +28,7 @@ from dataclasses import dataclass, fields
 # KaTrain's default thresholds of the classes of mistakes (points lost), and which classes get comments.
 KATRAIN_THRESHOLDS = (12.0, 6.0, 3.0, 1.5, 0.5, 0.0)
 KATRAIN_FEEDBACK = (True, True, True, True, False, False)
+DEEP_FACTOR = 4  # The deep reading uses this many times the engine's max_visits when deep_visits is 0.
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class AnalysisSettings:
         language: The language of the comments (KaTrain's language code, such as "en" or "jp").
         reanalyze_threshold: The loss (points) from which a move is analyzed again with mistakes_only.
         retries: How many times a node that KataGo could not analyze is asked again.
+        deep_visits: The visits of the deep reading of the moves that can become problems
+            (0 means DEEP_FACTOR times the engine's max_visits).
     """
 
     games_folder: str = ""
@@ -69,6 +73,7 @@ class AnalysisSettings:
     language: str = "en"
     reanalyze_threshold: float = 3.0
     retries: int = 2
+    deep_visits: int = 0
 
     @classmethod
     def from_dict(cls, values: dict) -> AnalysisSettings:
@@ -124,6 +129,7 @@ class AnalysisSettings:
             "retries": self.retries,
             "fast_visits": self.fast_visits,
             "reanalyze_visits": self.reanalyze_visits,
+            "deep_visits": self.deep_visits,
             "move_from": self.move_from,
             "move_to": self.move_to,
         }

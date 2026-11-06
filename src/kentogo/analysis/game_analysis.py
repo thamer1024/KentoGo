@@ -56,6 +56,9 @@ class GameAnalysis:
         visits: The visits asked for each node (KaTrain's analysis_visits_requested).
         failed_nodes: The nodes that KataGo could not analyze (after the retries).
         loaded: The nodes whose analysis comes from saved analysis data (by id(node)).
+        deep_nodes: The nodes whose moves were read deeply and can become problems (see analysis.analyze);
+            KentoGo's own data (KGD) is written for them.
+        deep_visits: The visits of the deep reading.
     """
 
     root: GoNode
@@ -63,6 +66,8 @@ class GameAnalysis:
     visits: dict[int, int] = field(default_factory=dict)
     failed_nodes: list[GoNode] = field(default_factory=list)
     loaded: set[int] = field(default_factory=set)
+    deep_nodes: list[GoNode] = field(default_factory=list)
+    deep_visits: int = 0
 
     @property
     def failed(self) -> int:

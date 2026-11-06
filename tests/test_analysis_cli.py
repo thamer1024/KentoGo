@@ -77,7 +77,9 @@ def test_an_analyzed_game_is_skipped_and_the_dry_run_changes_nothing(folder, cap
     analysis_cli.main(["--settings", str(settings)])
     written = (games / "game.sgf").read_text(encoding="utf-8")
     assert analysis_cli.main(["--settings", str(settings), "--dry-run"]) == 0
-    assert "3 nodes, 3 with analysis data -> skip (analyzed)" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "3 nodes, 3 with analysis data -> skip (analyzed)" in output
+    assert "loss B 3+, W 3+): 0 moves: none; KentoGo data about 0 KB" in output  # Nobody lost 3 points.
     assert analysis_cli.main(["--settings", str(settings)]) == 0
     assert "skipped" in capsys.readouterr().out
     assert (games / "game.sgf").read_text(encoding="utf-8") == written

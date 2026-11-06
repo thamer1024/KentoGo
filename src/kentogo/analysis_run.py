@@ -21,15 +21,18 @@ from pathlib import Path
 
 from pysgf import GoNode
 
-from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.analyze import analyze_game
+from kentogo.analysis.analysis_settings import DEEP_FACTOR, AnalysisSettings
+from kentogo.analysis.analyze import DeepTargets, analyze_game
 from kentogo.analysis.game_analysis import Engine, EngineValues, GameAnalysis
 from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.app_settings import AppSettings
 from kentogo.common.sgf import load_game
+from kentogo.common.types import opponent
 from kentogo.engines import Engines, analysis_engine
+from kentogo.mistakes.selection import Selection
 from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY
+from kentogo.record.players import detect_my_color
 from kentogo.version import app_version
 
 READY_TIMEOUT = 600  # Seconds to wait for KataGo to load its model.
@@ -161,6 +164,28 @@ def engine_values(settings: AppSettings) -> EngineValues:
     return EngineValues(settings.engine.max_visits, settings.engine.wide_root_noise)
 
 
+def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets:
+    """Return which moves of a game are read deeply: those that can become problems with the quiz settings.
+
+    The user's moves that lost at least the smallest loss of a problem, and the opponent's moves that
+    lost at least the loss of a punishment chance, but not in a position where the game was already
+    decided (the quiz's decided winrate and lead). When the user's color is not found from the names,
+    the moves of both colors are taken as the user's.
+    """
+    extract = settings.quiz.extract
+    mine = extract.smallest_loss()
+    color = detect_my_color(
+        str(root.get_property("PB", "")),
+        str(root.get_property("PW", "")),
+        extract.my_names,
+        ranks=(str(root.get_property("BR", "")), str(root.get_property("WR", ""))),
+        file_name=str(path),
+    )
+    losses = {"B": mine, "W": mine} if color is None else {color: mine, opponent(color): extract.punish_opponent_loss}
+    visits = settings.analysis.deep_visits or DEEP_FACTOR * settings.engine.max_visits
+    return DeepTargets(losses, visits, Selection.from_quiz(extract).is_decided)
+
+
 def write_settings(analysis: AnalysisSettings) -> WriteSettings:
     """Return what the writing of the analysis needs: the settings and KentoGo's version."""
     return WriteSettings(analysis, app_version() or "dev")
@@ -220,7 +245,8 @@ def analyze_one(
     if is_analyzed(root) and not analysis.reanalyze and not (redo_kentogo and needs_kentogo_analysis(root, analysis)):
         return SKIPPED, "every node already has analysis data", 0
     started = time.monotonic()
-    game = analyze_game(engine, root, analysis, engine_values(settings), listener.progress)
+    targets = deep_targets(settings, root, path)
+    game = analyze_game(engine, root, analysis, engine_values(settings), listener.progress, targets)
     write_analysis(game, write)
     try:
         copy = back_up(path, backup_folder(path.parent, analysis.backup_folder), datetime.now())

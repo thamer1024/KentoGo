@@ -5,7 +5,7 @@ from dataclasses import replace
 from pysgf import GoGame
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.analyze import analyze_game
+from kentogo.analysis.analyze import DeepTargets, analyze_game
 from kentogo.analysis.game_analysis import EngineValues
 from kentogo.analysis.node_analysis import ADDITIONAL_MOVE_ORDER, apply_answer, empty_analysis, update_move_analysis
 from kentogo.analysis.played_moves import played_move_loss
@@ -229,3 +229,55 @@ def test_saved_data_of_katrain_is_read_again():
         game_text = text.replace("RU[Chinese]", "RU[Chinese]" + mark)
         analyze_game(engine, GoGame.parse_sgf(game_text), AnalysisSettings(), VALUES, lambda *_: None)
         assert len(played(engine)) == expected
+
+
+def test_moves_that_can_become_problems_are_read_deeply():
+    """Black's A5 lost 6.5 points: the positions before and after it, and A5 itself, are read with the deep visits."""
+    engine = FakeEngine()
+    targets = DeepTargets({"B": 5.0, "W": 1.0}, 2000)
+    steps = []
+    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), targets)
+    deep = [query for query in engine.queries if query["maxVisits"] == 2000]
+    assert sorted(len(query["moves"]) for query in deep if "allowMoves" not in query) == [2, 3]
+    assert [query["allowMoves"][0]["moves"] for query in deep if "allowMoves" in query] == [["A5"]]
+    assert [node.depth for node in game.deep_nodes] == [3] and game.deep_visits == 2000  # White gained.
+    assert ("deep", 2, 2) in steps
+    assert played_move_loss(game, game.nodes[3]) == 6.5
+
+
+def test_a_move_that_loses_less_when_read_deeply_is_not_kept():
+    class DeeperIsBetter(FakeEngine):
+        def query(self, request, callback):
+            moves = tuple(point for _, point in request["moves"])
+            if request["maxVisits"] == 2000 and "allowMoves" in request and moves == ("C3", "B4"):
+                self.queries.append(request)
+                a5 = {"move": "A5", "order": 0, "visits": 2000, "scoreLead": 0.0, "pv": ["A5"]}
+                callback({"id": "x", "rootInfo": {"scoreLead": 0.0, "visits": 2000}, "moveInfos": [a5]})
+                return "x"
+            return super().query(request, callback)
+
+    game = analyze_game(
+        DeeperIsBetter(), root(), AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"B": 5}, 2000)
+    )
+    assert game.deep_nodes == []
+
+
+def test_no_deep_reading_without_targets_or_for_a_color_not_given():
+    engine = FakeEngine()
+    assert analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None).deep_nodes == []
+    game = analyze_game(FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"W": 0}, 900))
+    assert [node.move.player for node in game.deep_nodes] == []  # White's B4 gained 1.5 points (a loss below 0).
+
+
+def test_a_move_in_a_decided_position_is_not_read_deeply():
+    """The quiz does not ask moves of a decided game first, so they are not read deeply either."""
+    decided = DeepTargets({"B": 5.0}, 2000, lambda winrate, lead: lead is not None and lead > 0.4)
+    game = analyze_game(FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, decided)
+    assert game.deep_nodes == []  # Before A5, black led by 0.5 points: decided by this rule.
+    open_game = DeepTargets({"B": 5.0}, 2000, lambda winrate, lead: lead is not None and lead > 0.6)
+    assert [
+        node.depth
+        for node in analyze_game(
+            FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, open_game
+        ).deep_nodes
+    ] == [3]

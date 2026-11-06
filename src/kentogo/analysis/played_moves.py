@@ -62,10 +62,20 @@ def needs_reading(game: GameAnalysis, node: GoNode) -> bool:
 
 
 def read_played_moves(
-    engine: Engine, game: GameAnalysis, values: EngineValues, progress: Progress, retries: int
+    engine: Engine,
+    game: GameAnalysis,
+    values: EngineValues,
+    progress: Progress,
+    retries: int,
+    nodes: list[GoNode] | None = None,
 ) -> None:
-    """Read the played moves that need it, each with the visits of the position before it."""
-    nodes = [node for node in game.nodes if needs_reading(game, node)]
+    """Read played moves, each with the visits of the position before it.
+
+    Args:
+        nodes: The nodes whose moves are read, or None for those that need it (see needs_reading).
+    """
+    if nodes is None:
+        nodes = [node for node in game.nodes if needs_reading(game, node)]
 
     def query(node: GoNode) -> dict | None:
         visits = max(game.visits.get(id(node.parent), 0), game.analysis(node.parent)["root"].get("visits", 0))

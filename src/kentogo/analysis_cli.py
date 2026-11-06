@@ -23,7 +23,11 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from pysgf import GoNode
+
 from kentogo.analysis.analysis_settings import AnalysisSettings
+from kentogo.analysis.analyze import deep_candidates
+from kentogo.analysis.game_analysis import GameAnalysis, load_saved_analyses
 from kentogo.analysis_run import (
     FAILED,
     READY_TIMEOUT,
@@ -31,6 +35,7 @@ from kentogo.analysis_run import (
     WRITTEN,
     AnalysisListener,
     analyze_games,
+    deep_targets,
     find_games,
     games_folder,
     is_analyzed,
@@ -41,7 +46,10 @@ from kentogo.common.sgf import load_game
 from kentogo.engines import start_engine
 from kentogo.settings_file import SETTINGS_PATH, load_settings
 
-STEP_NAMES = {"first": "analysis", "again": "re-analysis", "played": "played moves"}
+STEP_NAMES = {"first": "analysis", "again": "re-analysis", "played": "played moves", "deep": "deep reading"}
+# A rough size of KentoGo's own data (KGD) of one move read deeply, when all its parts are written
+# (the areas and the sequences of the played move and the best move, and more); to be measured.
+ROUGH_KGD_BYTES = 6000
 KENTOGO_QUESTION = (
     "KataGoで解析済みです（{count} 局。KentoGoの方法の解析ではありません）。KentoGo用にもう一度解析しますか？ y/n: "
 )
@@ -81,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         print("No games: give SGF files or folders, or set the games folder.", file=sys.stderr)
         return 2
     if arguments.dry_run:
-        return show_plan(games, analysis)
+        return show_plan(games, settings)
     waiting = sum(_needs_kentogo_analysis(path, analysis) for path in games)
     return analyze_all(games, settings, bool(waiting) and ask_kentogo_redo(waiting))
 
@@ -132,8 +140,10 @@ def settings_with_options(settings: AnalysisSettings, arguments: argparse.Namesp
     return changed
 
 
-def show_plan(games: list[Path], analysis: AnalysisSettings) -> int:
-    """Tell, for each game, how many nodes it has and how many already have analysis data."""
+def show_plan(games: list[Path], settings: AppSettings) -> int:
+    """Tell, for each game, how many nodes it has, how many already have analysis data, and which moves
+    would be read deeply (known from the saved analysis data; a game without it is analyzed first)."""
+    analysis = settings.analysis
     for number, path in enumerate(games, 1):
         try:
             root = load_game(path)
@@ -147,7 +157,24 @@ def show_plan(games: list[Path], analysis: AnalysisSettings) -> int:
         else:
             action = "skip (analyzed)" if is_analyzed(root) and not analysis.reanalyze else "analyze"
         print(f"[{number}/{len(games)}] {path.name}: {len(nodes)} nodes, {saved} with analysis data -> {action}")
+        if saved:
+            print("  " + deep_plan_text(root, path, settings))
     return 0
+
+
+def deep_plan_text(root: GoNode, path: Path, settings: AppSettings) -> str:
+    """Return which moves the saved analysis data would have read deeply, and a rough size of their data."""
+    targets = deep_targets(settings, root, path)
+    game = GameAnalysis(root)
+    load_saved_analyses(game)
+    nodes = deep_candidates(game, targets)
+    limits = ", ".join(f"{color} {loss:g}+" for color, loss in sorted(targets.losses.items()))
+    moves = ", ".join(f"{node.depth}{node.move.player}" for node in nodes) or "none"
+    size = len(nodes) * ROUGH_KGD_BYTES // 1000
+    return (
+        f"deep reading ({targets.visits} visits; loss {limits}): {len(nodes)} moves: {moves}; "
+        f"KentoGo data about {size} KB (file now {path.stat().st_size // 1000} KB)"
+    )
 
 
 def analyze_all(games: list[Path], settings: AppSettings, redo_kentogo: bool = False) -> int:

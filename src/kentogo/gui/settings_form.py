@@ -129,6 +129,7 @@ FIELDS = (
     FieldSpec("backup_folder", "analysis", KIND_FOLDER, GROUP_ANALYSIS, name="analysis_backup_folder"),
     FieldSpec("fast", "analysis", KIND_BOOL, GROUP_ANALYSIS, name="analysis_fast"),
     FieldSpec("fast_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
+    FieldSpec("deep_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
     FieldSpec("reanalyze", "analysis", KIND_BOOL, GROUP_REANALYSIS),
     FieldSpec("reanalyze_visits", "analysis", KIND_INT, GROUP_REANALYSIS),
     FieldSpec("mistakes_only", "analysis", KIND_BOOL, GROUP_REANALYSIS),
