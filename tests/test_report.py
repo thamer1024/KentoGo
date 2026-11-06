@@ -20,6 +20,7 @@ from kentogo.report import (
     Totals,
     band_counts,
     day_results,
+    first_bands,
     game_averages,
     game_mistakes,
     game_time,
@@ -137,6 +138,13 @@ def test_game_averages_of_the_latest_5_games_and_the_5_before():
     assert game_averages(games) == GameAverages((0.4, 0.0), (2.0, 1.0))
     assert game_averages(games[:3]) == GameAverages((2.0, 1.0), None)
     assert game_averages([]) == GameAverages()
+
+
+def test_first_bands_keep_only_the_biggest_bands():
+    averages = GameAverages((0.4, 1.0, 2.0, 5.0), (0.8, 1.2, 2.2, 6.0))
+    assert first_bands(averages, 3) == GameAverages((0.4, 1.0, 2.0), (0.8, 1.2, 2.2))
+    assert first_bands(GameAverages((0.4, 1.0), None), 3) == GameAverages((0.4, 1.0), None)
+    assert first_bands(GameAverages(), 3) == GameAverages()
 
 
 def test_today_summary_with_milestones_and_a_cleared_stage():

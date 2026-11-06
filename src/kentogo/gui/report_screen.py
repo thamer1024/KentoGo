@@ -23,9 +23,10 @@ from kivy.uix.widget import Widget
 
 from kentogo.gui import texts, theme
 from kentogo.gui.widgets import flat_button, growing_label, set_background, set_text, wrapping_label
-from kentogo.report import RECENT, Report
+from kentogo.report import RECENT, Report, first_bands
 
 SHOWN = 20  # The most days (or games) drawn in a chart.
+CHART_BANDS = 3  # Only the biggest bands of mistakes are drawn, so that the many small ones do not hide them.
 CHART_HEIGHT = 220  # dp, with the texts above and below the bars.
 TOP_SPACE = 18  # dp above the bars, for the values.
 BOTTOM_SPACE = 34  # dp below the bars, for two lines about each group.
@@ -194,23 +195,26 @@ def _days_part(report: Report) -> list[Widget]:
 def _games_part(report: Report) -> list[Widget]:
     """Make the title, the legend, the chart and the notes of the games."""
     games = report.games[-SHOWN:]
-    colors = [band_color(index) for index in range(len(report.bands))]
-    top = max([game.total for game in games] + [4])
+    bands = report.bands[:CHART_BANDS]
+    counts = [game.counts[: len(bands)] for game in games]
+    colors = [band_color(index) for index in range(len(bands))]
+    top = max([sum(row) for row in counts] + [4])
     chart = BarChart(
-        [game.counts for game in games],
+        counts,
         colors,
         top,
-        [(str(game.total),) for game in games],
+        [(str(sum(row)),) for row in counts],
         [(f"{game.played.month}/{game.played.day}", game.played.strftime("%H:%M")) for game in games],
         stacked=True,
     )
-    legend = _legend([(color, *texts.band_key(report.bands, index)) for index, color in enumerate(colors)])
+    legend = _legend([(color, *texts.band_key(bands, index)) for index, color in enumerate(colors)])
+    averages = first_bands(report.game_averages, len(bands))
     return [
-        _label(texts.lazy("report_games_title", low=texts.points(report.bands[-1]) if report.bands else "")),
+        _label(texts.lazy("report_games_title", low=texts.points(bands[-1]) if bands else "")),
         legend,
         chart,
         _label(texts.lazy("report_games_note", count=SHOWN)),
-        _label(lambda: texts.game_averages_text(report.game_averages, report.bands)),
+        _label(lambda: texts.game_averages_text(averages, bands)),
     ]
 
 

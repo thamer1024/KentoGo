@@ -323,6 +323,15 @@ def game_averages(games: Sequence[GameMistakes]) -> GameAverages:
     return GameAverages(_per_game(games[-RECENT:]), _per_game(games[-2 * RECENT : -RECENT]))
 
 
+def first_bands(averages: GameAverages, count: int) -> GameAverages:
+    """Return the averages of only the first count bands (the biggest mistakes)."""
+
+    def cut(values: tuple[float, ...] | None) -> tuple[float, ...] | None:
+        return None if values is None else values[:count]
+
+    return GameAverages(cut(averages.latest), cut(averages.earlier))
+
+
 def _per_game(games: Sequence[GameMistakes]) -> tuple[float, ...] | None:
     """Return the average count of each band per game, or None without games."""
     if not games:
