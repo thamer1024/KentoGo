@@ -6,6 +6,7 @@ from pysgf import GoGame
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.game_analysis import EngineValues, analyze_game
+from kentogo.analysis.rules import KATRAIN_RULES, KENTOGO_RULES, AnalysisRules
 from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.mistakes.extract import ExtractSettings, extract_problems
@@ -31,10 +32,10 @@ class FakeEngine:
         return "q"
 
 
-def analyzed(settings: AnalysisSettings = AnalysisSettings()) -> object:
+def analyzed(settings: AnalysisSettings = AnalysisSettings(), rules: AnalysisRules = KATRAIN_RULES) -> object:
     root = GoGame.parse_sgf(GAME)
-    game = analyze_game(FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None)
-    write_analysis(game, WriteSettings(settings, "1.2.3"))
+    game = analyze_game(FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, rules)
+    write_analysis(game, WriteSettings(settings, "1.2.3", rules))
     return GoGame.parse_sgf(root.sgf())  # Written and read back.
 
 
@@ -83,6 +84,8 @@ def test_marks_and_start_message():
     assert mistake.get_property("MA") == "ea"
     start = "Moves marked 'X' indicate the top move according to KataGo"
     assert root.get_property("C").count(start) == 2  # KaTrain writes it twice.
+    kentogo = analyzed(AnalysisSettings(save_marks=True), KENTOGO_RULES)
+    assert kentogo.get_property("C").count(start) == 1
 
 
 def test_kentogo_makes_a_problem_from_the_written_game():

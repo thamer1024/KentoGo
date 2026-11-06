@@ -14,8 +14,9 @@ values are copied from KaTrain's config.json when the settings file is made (see
   eval_show_ai is on, with the marks of the best moves when save_marks is on, in KaTrain's language.
 
 The analysis data (the KT property) is always written: KentoGo needs it, so it is not a setting.
-katrain_compatible chooses KaTrain's behavior as it is (the default); the other mode, which fixes
-some of KaTrain's problems, is planned (the check box "KaTrain compatible" on the settings screen).
+katrain_compatible chooses KaTrain's behavior as it is (the default; the check box "KaTrain compatible"
+on the settings screen later). KentoGo's own mode fixes some of KaTrain's problems (see analysis.rules)
+and uses two more settings: reanalyze_threshold and retries.
 The visits of the engine (max_visits) are the engine settings (see katago.engine_settings).
 """
 
@@ -51,6 +52,9 @@ class AnalysisSettings:
         save_marks: Mark the best moves in the position before each commented move (KaTrain's MA and SQ).
         language: The language of the comments (KaTrain's language code, such as "en" or "jp").
         katrain_compatible: Analyze and write exactly as KaTrain does.
+        reanalyze_threshold: KentoGo's mode: the loss (points) from which a move is analyzed again
+            with mistakes_only (KaTrain uses the fourth threshold from the end of eval_thresholds).
+        retries: KentoGo's mode: how many times a node that KataGo could not analyze is asked again.
     """
 
     games_folder: str = ""
@@ -69,6 +73,8 @@ class AnalysisSettings:
     save_marks: bool = False
     language: str = "en"
     katrain_compatible: bool = True
+    reanalyze_threshold: float = 3.0
+    retries: int = 2
 
     @classmethod
     def from_dict(cls, values: dict) -> AnalysisSettings:
@@ -120,6 +126,8 @@ class AnalysisSettings:
         if list(self.eval_thresholds) != sorted(self.eval_thresholds, reverse=True):
             raise ValueError("wrong analysis setting: eval_thresholds must be the biggest first")
         numbers = {
+            "reanalyze_threshold": self.reanalyze_threshold,
+            "retries": self.retries,
             "fast_visits": self.fast_visits,
             "max_time": self.max_time,
             "reanalyze_visits": self.reanalyze_visits,

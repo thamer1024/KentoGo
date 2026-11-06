@@ -1,6 +1,13 @@
 """Tests for kentogo.analysis.comment (KaTrain's comment on an analyzed move)."""
 
-from kentogo.analysis.comment import CommentedMove, format_score, move_comment, policy_ranking, top_candidate
+from kentogo.analysis.comment import (
+    CommentedMove,
+    format_score,
+    format_score_exactly,
+    move_comment,
+    policy_ranking,
+    top_candidate,
+)
 from kentogo.common.types import Move
 from kentogo.record.katrain_texts import KATRAIN_TEXTS
 
@@ -97,3 +104,10 @@ def test_format_score_uses_the_own_score_for_zero_as_katrain():
     assert format_score(0.0, -2.0, EN) == "W+2.0"
     assert format_score(0.0, None, EN) is None
     assert format_score(-0.04, None, EN) == "W+0.0"
+
+
+def test_format_score_exactly_keeps_zero():
+    """KentoGo's mode writes a score of 0 as 0."""
+    assert format_score_exactly(0.0, -2.0, EN) == "B+0.0"
+    assert format_score_exactly(None, -2.0, EN) == "W+2.0"
+    assert format_score_exactly(None, None, EN) is None

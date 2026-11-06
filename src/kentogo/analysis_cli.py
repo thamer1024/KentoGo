@@ -26,6 +26,7 @@ from pysgf import GoNode
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.game_analysis import Engine, EngineValues, GameAnalysis, analyze_game
+from kentogo.analysis.rules import rules_for
 from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.app_settings import AppSettings
@@ -67,9 +68,6 @@ def main(argv: list[str] | None = None) -> int:
         analysis = settings_with_options(settings.analysis, arguments)
     except ValueError as error:
         print(error, file=sys.stderr)
-        return 2
-    if not analysis.katrain_compatible:
-        print("KentoGo's own mode is not made yet: use --compatible.", file=sys.stderr)
         return 2
     folder = games_folder(settings, analysis)
     games = find_games(arguments.paths or ([folder] if folder else []))
@@ -147,7 +145,8 @@ def analyze_all(games: list[Path], settings: AppSettings, analysis: AnalysisSett
         print(f"KataGo could not be started: {problem or (engine.error_output() if engine else '')}", file=sys.stderr)
         return 1
     values = EngineValues(settings.engine.max_visits, settings.engine.wide_root_noise)
-    write = WriteSettings(analysis, app_version() or "dev")
+    write = WriteSettings(analysis, app_version() or "dev", rules_for(analysis))
+    print(f"Mode: {'KaTrain compatible' if analysis.katrain_compatible else 'KentoGo'}", flush=True)
     failed = 0
     try:
         for number, path in enumerate(games, 1):
@@ -173,7 +172,7 @@ def analyze_one(
         print("  skipped: every node already has analysis data")
         return True
     started = time.monotonic()
-    game = analyze_game(engine, root, analysis, values, show_progress)
+    game = analyze_game(engine, root, analysis, values, show_progress, write.rules)
     write_analysis(game, write)
     try:
         copy = back_up(path, backups, datetime.now())
@@ -188,7 +187,8 @@ def analyze_one(
 def report_failures(game: GameAnalysis) -> bool:
     """Tell how many nodes KataGo could not analyze. Returns True when there were none."""
     if game.failed:
-        print(f"  {game.failed} nodes could not be analyzed")
+        moves = ", ".join(str(node.depth) for node in game.failed_nodes)
+        print(f"  {game.failed} nodes could not be analyzed (after move: {moves})")
     return not game.failed
 
 

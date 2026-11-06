@@ -28,7 +28,7 @@ Each part is under its own license, which is given here.
   - `src/kentogo/analysis/comment.py` is written for KentoGo with the same behavior as KaTrain's
     `GameNode.comment` (from `katrain/core/game_node.py`), which cannot be copied unchanged
     because it is part of KaTrain's game tree class.
-  - `src/kentogo/analysis/node_analysis.py`, `query.py` and `game_analysis.py` are written for
+  - `src/kentogo/analysis/node_analysis.py`, `query.py`, `game_analysis.py` and `rules.py` are written for
     KentoGo with the same behavior as KaTrain's `GameNode.update_move_analysis` and
     `GameNode.set_analysis` (from `katrain/core/game_node.py`), `KataGoEngine.request_analysis`
     (from `katrain/core/engine.py`) and `Game.analyze_all_nodes` and `Game.analyze_extra`

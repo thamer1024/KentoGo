@@ -80,7 +80,9 @@ def test_an_analyzed_game_is_skipped_and_the_dry_run_changes_nothing(folder, cap
     assert (games / "game.sgf").read_text(encoding="utf-8") == written
 
 
-def test_the_improved_mode_is_not_made_yet(folder, capsys):
+def test_the_mode_is_chosen_by_an_option(folder, capsys):
     _, settings, _ = folder
-    assert analysis_cli.main(["--settings", str(settings), "--improved"]) == 2
-    assert "--compatible" in capsys.readouterr().err
+    assert analysis_cli.main(["--settings", str(settings), "--improved"]) == 0
+    assert "Mode: KentoGo" in capsys.readouterr().out
+    arguments = analysis_cli.parse_arguments(["--compatible"])
+    assert analysis_cli.settings_with_options(AnalysisSettings(katrain_compatible=False), arguments).katrain_compatible

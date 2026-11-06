@@ -11,6 +11,8 @@ KaTrain 1.20.0 (katrain/core/game.py) does it in two steps, and so does this mod
    mistake threshold), and only the nodes whose depth - 1 is in the range of moves when one is given.
 
 These are methods of KaTrain's Game class, so they are written for KentoGo with the same behavior.
+Which nodes and how many visits "Re-analyze game" uses, and whether a failed node is asked again,
+depend on the mode (KaTrain's own rules, or KentoGo's fixed ones): see analysis.rules.
 Two differences make the result the same every time: KataGo's reports during the search are not
 asked for (KaTrain shows them while it thinks; only the final answer is kept in the end), and the
 answers are put into the analyses in the order of the tree, the node before its children,
@@ -22,7 +24,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pysgf import GoNode
 
@@ -31,13 +33,14 @@ from kentogo.analysis.node_analysis import apply_answer, empty_analysis, points_
 from kentogo.analysis.query import QuerySettings, node_query
 from kentogo.record.katrain_kt import decode_kt, decode_kt_numbers
 
+if TYPE_CHECKING:
+    from kentogo.analysis.rules import AnalysisRules
+
 GAME_PRIORITY = -100  # KaTrain's PRIORITY_GAME_ANALYSIS.
 REANALYSIS_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game".
 
 FIRST_STEP = "first"  # The analysis of the nodes without saved data.
 REANALYSIS_STEP = "again"  # "Re-analyze game".
-END_OF_GAME = 100_000  # The end of the range of moves when move_to is 0.
-
 Progress = Callable[[str, int, int], None]  # (step, answers received, queries sent).
 
 
@@ -70,13 +73,18 @@ class GameAnalysis:
         root: The root node of the game.
         analyses: The analysis of each node, by id(node) (KaTrain's analysis dicts, see node_analysis).
         visits: The visits asked for each node (KaTrain's analysis_visits_requested).
-        failed: The number of queries that KataGo could not answer.
+        failed_nodes: The nodes that KataGo could not analyze (after the retries of the mode).
     """
 
     root: GoNode
     analyses: dict[int, dict] = field(default_factory=dict)
     visits: dict[int, int] = field(default_factory=dict)
-    failed: int = 0
+    failed_nodes: list[GoNode] = field(default_factory=list)
+
+    @property
+    def failed(self) -> int:
+        """Return the number of nodes that KataGo could not analyze."""
+        return len(self.failed_nodes)
 
     @property
     def nodes(self) -> list[GoNode]:
@@ -120,50 +128,48 @@ def first_nodes(game: GameAnalysis) -> list[GoNode]:
     return [node for node in game.nodes if game.analysis(node) is None]
 
 
-def reanalysis_nodes(game: GameAnalysis, mistakes_over: float | None, move_range: tuple[int, int] | None) -> list:
-    """Return the nodes that "Re-analyze game" analyzes (KaTrain's Game.analyze_extra, mode "game").
-
-    Args:
-        game: The game.
-        mistakes_over: Only nodes where the move or a move after it lost more than this, or None for all.
-        move_range: Only nodes whose depth - 1 is in this range of move numbers (both ends included), or None.
-    """
-    chosen = []
-    for node in game.nodes:
-        losses = [game.points_lost(item) or 0 for item in [node, *node.children]]
-        if mistakes_over is not None and max(losses) <= mistakes_over:
-            continue
-        if move_range and node.depth - 1 not in range(min(move_range), max(move_range) + 1):
-            continue
-        chosen.append(node)
-    return chosen
-
-
-def reanalysis_visits(game: GameAnalysis, max_visits: int) -> int:
-    """Return KaTrain's visits of "Re-analyze game": the fewest visits asked for a node, plus max_visits."""
-    return min((game.visits.get(id(node), 0) for node in game.nodes), default=0) + max_visits
-
-
 def analyze_nodes(
     engine: Engine,
     game: GameAnalysis,
     nodes: Sequence[GoNode],
     settings: QuerySettings,
     progress: Callable[[int, int], None],
-) -> None:
+) -> list[GoNode]:
     """Analyze nodes with KataGo and put the answers into their analyses, the node before its children.
 
     The queries are sent together (KataGo answers them in the order of their priority and as it can);
     this function returns when all answers have come.
+
+    Returns:
+        The nodes that KataGo could not analyze.
     """
     queries = [(node, query) for node in nodes if (query := node_query(node, settings)) is not None]
     answers = _ask_all(engine, [query for _, query in queries], progress)
+    failed = []
     for (node, _), answer in zip(queries, answers, strict=True):
         game.visits[id(node)] = max(game.visits.get(id(node), 0), settings.visits)
         if "error" in answer or "rootInfo" not in answer:
-            game.failed += 1
+            failed.append(node)
             continue
         _apply(game, node, answer)
+    return failed
+
+
+def analyze_with_retries(
+    engine: Engine,
+    game: GameAnalysis,
+    nodes: Sequence[GoNode],
+    settings: QuerySettings,
+    progress: Callable[[int, int], None],
+    retries: int,
+) -> None:
+    """Analyze nodes, ask again up to retries times for the nodes that failed, and keep the ones that still fail."""
+    failed = analyze_nodes(engine, game, nodes, settings, progress)
+    for _ in range(retries):
+        if not failed:
+            break
+        failed = analyze_nodes(engine, game, failed, settings, progress)
+    game.failed_nodes.extend(node for node in failed if node not in game.failed_nodes)
 
 
 def _apply(game: GameAnalysis, node: GoNode, answer: dict) -> None:
@@ -205,7 +211,12 @@ def _ask_all(engine: Engine, queries: list[dict], progress: Callable[[int, int],
 
 
 def analyze_game(
-    engine: Engine, root: GoNode, settings: AnalysisSettings, values: EngineValues, progress: Progress
+    engine: Engine,
+    root: GoNode,
+    settings: AnalysisSettings,
+    values: EngineValues,
+    progress: Progress,
+    rules: AnalysisRules,
 ) -> GameAnalysis:
     """Analyze a game as KaTrain: the saved data, the first step, and "Re-analyze game" when it is on.
 
@@ -215,34 +226,25 @@ def analyze_game(
         settings: The settings of the analysis.
         values: The engine settings that the analysis uses.
         progress: Called after each answer, in KataGo's thread.
+        rules: The rules of the mode (see analysis.rules).
 
     Returns:
         The analyses of the nodes.
     """
     game = GameAnalysis(root)
     load_saved_analyses(game)
+    retries = rules.retries(settings)
     visits = settings.fast_visits if settings.fast else values.max_visits
     first = QuerySettings(visits, values.wide_root_noise, settings.max_time, GAME_PRIORITY)
-    analyze_nodes(engine, game, first_nodes(game), first, lambda done, total: progress(FIRST_STEP, done, total))
+    analyze_with_retries(engine, game, first_nodes(game), first, _step(progress, FIRST_STEP), retries)
     if settings.reanalyze:
-        again = QuerySettings(
-            settings.reanalyze_visits or reanalysis_visits(game, values.max_visits),
-            values.wide_root_noise,
-            None,
-            REANALYSIS_PRIORITY,
-        )
-        nodes = reanalysis_nodes(game, _mistakes_over(settings), _move_range(settings))
-        analyze_nodes(engine, game, nodes, again, lambda done, total: progress(REANALYSIS_STEP, done, total))
+        again_visits = settings.reanalyze_visits or rules.reanalysis_visits(game, values.max_visits)
+        again = QuerySettings(again_visits, values.wide_root_noise, None, REANALYSIS_PRIORITY)
+        nodes = rules.reanalysis_nodes(game, settings)
+        analyze_with_retries(engine, game, nodes, again, _step(progress, REANALYSIS_STEP), retries)
     return game
 
 
-def _mistakes_over(settings: AnalysisSettings) -> float | None:
-    """Return the loss above which a move is analyzed again, or None to analyze every move again."""
-    return settings.mistake_threshold() if settings.mistakes_only else None
-
-
-def _move_range(settings: AnalysisSettings) -> tuple[int, int] | None:
-    """Return the range of moves analyzed again, or None for the whole game."""
-    if not settings.move_from and not settings.move_to:
-        return None
-    return settings.move_from, settings.move_to or END_OF_GAME
+def _step(progress: Progress, step: str) -> Callable[[int, int], None]:
+    """Return the progress of one step."""
+    return lambda done, total: progress(step, done, total)

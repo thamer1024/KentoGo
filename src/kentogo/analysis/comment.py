@@ -17,6 +17,7 @@ thoughts (only for moves that KaTrain's AI played in that session) and the "SGF 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from kentogo.common.types import Move, opponent
@@ -25,6 +26,9 @@ from kentogo.vendor.katrain_analysis import var_to_grid
 
 DEFAULT_LANGUAGE = "en"  # KaTrain's texts when a language has none.
 _SIGNS = {"B": 1, "W": -1}  # KaTrain's GameNode.player_sign.
+
+# How a score is written: (score, the score of the node that writes it, KaTrain's texts) -> text.
+ScoreFormat = Callable[[float | None, float | None, dict[str, str]], str | None]
 
 
 @dataclass(frozen=True)
@@ -42,7 +46,14 @@ class CommentedMove:
     auto_undo: bool = False
 
 
-def move_comment(commented: CommentedMove, before: dict, after: dict, size: tuple[int, int], language: str) -> str:
+def move_comment(
+    commented: CommentedMove,
+    before: dict,
+    after: dict,
+    size: tuple[int, int],
+    language: str,
+    score_format: ScoreFormat | None = None,
+) -> str:
     """Return KaTrain's comment on a move (as GameNode.comment(sgf=True, interactive=False)).
 
     Args:
@@ -51,23 +62,27 @@ def move_comment(commented: CommentedMove, before: dict, after: dict, size: tupl
         after: The analysis of the position after the move (KaTrain's node of the move).
         size: The board size (x, y).
         language: KaTrain's language code, such as "jp".
+        score_format: How a score is written (KaTrain's format_score when None; see analysis.rules).
 
     Returns:
         The comment, each line ending with a newline.
     """
     texts = KATRAIN_TEXTS.get(language, KATRAIN_TEXTS[DEFAULT_LANGUAGE])
+    score_format = score_format or format_score
     move = commented.move
     text = texts["move"].format(number=commented.number) + f": {move.color} {move.gtp()}\n"
-    text += texts["Info:score"].format(score=format_score(_score(after), _score(after), texts)) + "\n"
+    text += texts["Info:score"].format(score=score_format(_score(after), _score(after), texts)) + "\n"
     text += texts["Info:winrate"].format(winrate=format_winrate(_winrate(after), texts)) + "\n"
-    text += _top_move_lines(move, before, after, size, texts)
+    text += _top_move_lines(move, before, after, size, texts, score_format)
     text += _policy_lines(move, before, size, texts)
     if commented.auto_undo:
         text += _undo_lines(move, after, size, texts)
     return text
 
 
-def _top_move_lines(move: Move, before: dict, after: dict, size: tuple[int, int], texts: dict[str, str]) -> str:
+def _top_move_lines(
+    move: Move, before: dict, after: dict, size: tuple[int, int], texts: dict[str, str], score_format: ScoreFormat
+) -> str:
     """Return the lines about the points lost, KaTrain's top move and its sequence."""
     top = top_candidate(before, move.color, size)
     if top["move"] != move.gtp():
@@ -75,7 +90,7 @@ def _top_move_lines(move: Move, before: dict, after: dict, size: tuple[int, int]
         points_lost = _SIGNS[move.color] * (_score(before) - _score(after))
         if points_lost > 0.5:
             text += texts["Info:point loss"].format(points_lost=points_lost) + "\n"
-        score = format_score(top["scoreLead"], _score(after), texts)
+        score = score_format(top["scoreLead"], _score(after), texts)
         text += texts["Info:top move"].format(top_move=top["move"], score=score) + "\n"
     else:
         text = texts["Info:best move"] + "\n"
@@ -170,7 +185,16 @@ def format_score(score: float | None, own_score: float | None, texts: dict[str, 
     Returns:
         The text, or None when there is no score.
     """
-    score = score or own_score
+    return _score_text(score or own_score, texts)
+
+
+def format_score_exactly(score: float | None, own_score: float | None, texts: dict[str, str]) -> str | None:
+    """Return a score as format_score, but a score of 0 stays 0 (KentoGo's mode, see analysis.rules)."""
+    return _score_text(own_score if score is None else score, texts)
+
+
+def _score_text(score: float | None, texts: dict[str, str]) -> str | None:
+    """Return a score lead as KaTrain writes it (the leading player and the points), or None without one."""
     if score is None:
         return None
     leading = "B" if score >= 0 else "W"
