@@ -15,8 +15,10 @@ from kentogo.app_settings import AppSettings
 from kentogo.commentary.commentary_settings import PROVIDERS
 from kentogo.katago.engine_settings import JUDGE_MODELS, EngineSettings
 from kentogo.katago.locate import KataGoNotFoundError, read_engine_config, resolve_path
+from kentogo.quiz.problem_kinds import PROBLEM_KINDS
 from kentogo.quiz.quiz_settings import ORDERS, QuizSettings
 from kentogo.quiz.stages import parse_stages
+from kentogo.record.katrain_texts import KATRAIN_TEXTS
 from kentogo.repetition.modes import PRIORITIES, REVIEW_MODES
 from kentogo.seichi.seichi_settings import ORDERS as SEICHI_ORDERS
 
@@ -38,6 +40,12 @@ GROUP_JUDGE = "judge"
 GROUP_REVIEW = "review"
 GROUP_SEICHI = "seichi"
 GROUP_COMMENTARY = "commentary"
+GROUP_ANALYSIS = "analysis"  # The analysis of games: the mode, the folders and the first analysis.
+GROUP_REANALYSIS = "reanalysis"  # Analyzing again (KaTrain's "Re-analyze game").
+GROUP_ANALYSIS_COMMENTS = "analysis_comments"  # The comments written into the games.
+
+# The languages of KaTrain's comments (KaTrain's codes).
+ANALYSIS_LANGUAGES = tuple(sorted(KATRAIN_TEXTS))
 
 
 @dataclass(frozen=True)
@@ -46,7 +54,7 @@ class FieldSpec:
 
     Attributes:
         key: The key of the value in its part of settings.json.
-        section: The part of settings.json: "quiz", "engine", "seichi" or "commentary".
+        section: The part of settings.json: "quiz", "engine", "seichi", "commentary" or "analysis".
         kind: The kind of input, such as KIND_INT.
         group: The box on the screen where the input is shown.
         choices: The values to choose from, for KIND_CHOICE.
@@ -89,6 +97,9 @@ FIELDS = (
     FieldSpec("order", "quiz", KIND_CHOICE, GROUP_QUIZ, ORDERS),
     FieldSpec("rotate", "quiz", KIND_BOOL, GROUP_QUIZ),
     FieldSpec("swap_colors", "quiz", KIND_BOOL, GROUP_QUIZ),
+    FieldSpec("problem_kind", "quiz", KIND_CHOICE, GROUP_QUIZ, PROBLEM_KINDS),
+    FieldSpec("punish_opponent_loss", "quiz", KIND_FLOAT, GROUP_QUIZ),
+    FieldSpec("punish_my_loss", "quiz", KIND_FLOAT, GROUP_QUIZ),
     FieldSpec("use_katago", "engine", KIND_BOOL, GROUP_ENGINE),
     FieldSpec("max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("wide_root_noise", "engine", KIND_FLOAT, GROUP_ENGINE),
@@ -114,6 +125,22 @@ FIELDS = (
     FieldSpec("base_url", "commentary", KIND_TEXT, GROUP_COMMENTARY, name="ai_base_url"),
     FieldSpec("api_key_env", "commentary", KIND_TEXT, GROUP_COMMENTARY, name="ai_api_key_env"),
     FieldSpec("max_tokens", "commentary", KIND_INT, GROUP_COMMENTARY, name="ai_max_tokens"),
+    FieldSpec("katrain_compatible", "analysis", KIND_BOOL, GROUP_ANALYSIS),
+    FieldSpec("games_folder", "analysis", KIND_FOLDER, GROUP_ANALYSIS, name="analysis_games_folder"),
+    FieldSpec("backup_folder", "analysis", KIND_FOLDER, GROUP_ANALYSIS, name="analysis_backup_folder"),
+    FieldSpec("max_time", "analysis", KIND_FLOAT, GROUP_ANALYSIS),
+    FieldSpec("fast", "analysis", KIND_BOOL, GROUP_ANALYSIS, name="analysis_fast"),
+    FieldSpec("fast_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
+    FieldSpec("reanalyze", "analysis", KIND_BOOL, GROUP_REANALYSIS),
+    FieldSpec("reanalyze_visits", "analysis", KIND_INT, GROUP_REANALYSIS),
+    FieldSpec("mistakes_only", "analysis", KIND_BOOL, GROUP_REANALYSIS),
+    FieldSpec("move_from", "analysis", KIND_INT, GROUP_REANALYSIS),
+    FieldSpec("move_to", "analysis", KIND_INT, GROUP_REANALYSIS),
+    FieldSpec("reanalyze_threshold", "analysis", KIND_FLOAT, GROUP_REANALYSIS),
+    FieldSpec("retries", "analysis", KIND_INT, GROUP_REANALYSIS),
+    FieldSpec("language", "analysis", KIND_CHOICE, GROUP_ANALYSIS_COMMENTS, ANALYSIS_LANGUAGES, "analysis_language"),
+    FieldSpec("eval_show_ai", "analysis", KIND_BOOL, GROUP_ANALYSIS_COMMENTS),
+    FieldSpec("save_marks", "analysis", KIND_BOOL, GROUP_ANALYSIS_COMMENTS),
 )
 
 
@@ -125,7 +152,8 @@ PAGE_QUIZ = "quiz"  # Choosing and asking problems, and judging answers.
 PAGE_REVIEW = "review"  # Reviews, and the order of new problems and reviews.
 PAGE_SEICHI = "seichi"  # The territory counting practice: the order of the games, counting again, the limit.
 PAGE_COMMENTARY = "commentary"  # The AI commentary: which AI and model, and the API key's variable.
-PAGES = (PAGE_GENERAL, PAGE_PRESETS, PAGE_QUIZ, PAGE_REVIEW, PAGE_SEICHI, PAGE_COMMENTARY)
+PAGE_ANALYSIS = "analysis"  # The analysis of games with KataGo (see analysis.analysis_settings).
+PAGES = (PAGE_GENERAL, PAGE_PRESETS, PAGE_QUIZ, PAGE_REVIEW, PAGE_SEICHI, PAGE_COMMENTARY, PAGE_ANALYSIS)
 PAGE_GROUPS = {
     PAGE_GENERAL: (GROUP_KATAGO, GROUP_GENERAL, GROUP_ENGINE),
     PAGE_PRESETS: (),  # Only buttons (see gui.settings_popup).
@@ -133,6 +161,7 @@ PAGE_GROUPS = {
     PAGE_REVIEW: (GROUP_REVIEW,),
     PAGE_SEICHI: (GROUP_SEICHI,),
     PAGE_COMMENTARY: (GROUP_COMMENTARY,),
+    PAGE_ANALYSIS: (GROUP_ANALYSIS, GROUP_REANALYSIS, GROUP_ANALYSIS_COMMENTS),
 }
 
 

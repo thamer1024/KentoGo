@@ -16,6 +16,8 @@ menu (see settings_form.PAGES):
 - AI解説設定: which AI and model the AI commentary uses (the values are used as they are
   written, so any model that the AI publishes can be used), the environment variable of the
   API key, and a button that opens the user's prompt file.
+- 棋譜解析設定: the analysis of games with KataGo (see analysis.analysis_settings): the mode
+  (KaTrain compatible or KentoGo's), the folders, the first analysis, analyzing again, and the comments.
 - 復習設定: reviews, the order of new problems and reviews, the limit, and two
   buttons that set aside all current problems or bring all problems back
   (they ask first, write to the history at once, and are used when the quiz is started next).
@@ -52,12 +54,15 @@ from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
 from kentogo.gui.settings_form import (
     FIELDS,
+    GROUP_ANALYSIS,
+    GROUP_ANALYSIS_COMMENTS,
     GROUP_COMMENTARY,
     GROUP_ENGINE,
     GROUP_GENERAL,
     GROUP_JUDGE,
     GROUP_KATAGO,
     GROUP_QUIZ,
+    GROUP_REANALYSIS,
     GROUP_REVIEW,
     GROUP_SEICHI,
     KIND_BOOL,
@@ -66,6 +71,7 @@ from kentogo.gui.settings_form import (
     KIND_FLOAT,
     KIND_FOLDER,
     KIND_INT,
+    PAGE_ANALYSIS,
     PAGE_COMMENTARY,
     PAGE_GENERAL,
     PAGE_PRESETS,
@@ -95,6 +101,7 @@ PAGE_SIZES = {
     PAGE_REVIEW: (0.7, 0.7),
     PAGE_SEICHI: (0.7, 0.7),
     PAGE_COMMENTARY: (0.85, 0.9),
+    PAGE_ANALYSIS: (0.92, 0.95),
 }
 
 # Sizes, close to KaTrain's.
@@ -185,6 +192,8 @@ class SettingsPopup(Popup):
         elif page == PAGE_SEICHI:
             body.add_widget(_header(texts.text("seichi_settings"), halign="left"))
             body.add_widget(self._settings_box(GROUP_SEICHI))
+        elif page == PAGE_ANALYSIS:
+            self._add_analysis_page(body)
         else:
             body.add_widget(_header(texts.text("review_settings"), halign="left"))
             body.add_widget(self._settings_box(GROUP_REVIEW))
@@ -212,6 +221,17 @@ class SettingsPopup(Popup):
             body.add_widget(self._path_box(spec))
         body.add_widget(_two_columns(_header(texts.text("general_settings")), _header(texts.text("engine_settings"))))
         body.add_widget(_two_columns(self._settings_box(GROUP_GENERAL), self._settings_box(GROUP_ENGINE)))
+
+    def _add_analysis_page(self, body: GridLayout) -> None:
+        """Add the widgets of the analysis page: the mode and the first analysis, the re-analysis, and the comments."""
+        headers = _two_columns(_header(texts.text("analysis_settings")), _header(texts.text("reanalysis_settings")))
+        body.add_widget(headers)
+        body.add_widget(_two_columns(self._settings_box(GROUP_ANALYSIS), self._settings_box(GROUP_REANALYSIS)))
+        body.add_widget(_header(texts.text("analysis_comment_settings"), halign="left"))
+        body.add_widget(self._settings_box(GROUP_ANALYSIS_COMMENTS))
+        hint = fitting_label(dp(60))
+        hint.text = texts.text("analysis_settings_hint")
+        body.add_widget(hint)
 
     def _add_commentary_page(self, body: GridLayout) -> None:
         """Add the widgets of the AI commentary page: the settings, examples of values, and the prompt file."""

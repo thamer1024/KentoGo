@@ -208,3 +208,26 @@ def test_loss_stages_on_the_form():
     values["loss_stages"] = "20, x"
     with pytest.raises(FormError):
         settings_from_form(values, SETTINGS)
+
+
+def test_analysis_and_punishment_inputs():
+    """The analysis page and the punishment problems of the quiz page are read into their settings."""
+    values = form_values(SETTINGS)
+    assert values["katrain_compatible"] is True and values["analysis_language"] == "en"
+    values.update(
+        {
+            "katrain_compatible": False,
+            "analysis_games_folder": "/other",
+            "move_to": "150",
+            "max_time": "10",
+            "analysis_language": "jp",
+            "problem_kind": "punish",
+            "punish_opponent_loss": "20",
+        }
+    )
+    settings = settings_from_form(values, SETTINGS)
+    analysis = settings.analysis
+    assert (analysis.katrain_compatible, analysis.games_folder, analysis.move_to) == (False, "/other", 150)
+    assert (analysis.max_time, analysis.language) == (10.0, "jp")
+    assert (settings.quiz.problem_kind, settings.quiz.extract.punish_opponent_loss) == ("punish", 20.0)
+    assert settings.quiz.games_folder == "/games"  # The quiz's own games folder is another input.
