@@ -29,12 +29,15 @@ def test_from_and_to_dict():
         "decided_winrate": 99.0,
         "decided_lead": 40.0,
         "loss_stages": [],
+        "punish_opponent_loss": 15.0,
+        "punish_my_loss": 5.0,
         "small_problem_threshold": 2.0,
         "pass_ratio": 0.9,
         "tolerance": 0.5,
         "max_answer_loss": 0.0,
         "ratio_offer": False,
         "ratio_asked_at": 40,
+        "problem_kind": "punish",
     }
     settings = QuizSettings.from_dict(values)
     assert settings.order == ORDER_NEWEST
@@ -64,3 +67,8 @@ def test_wrong_values(values):
 def test_review_keys_are_ignored():
     """The review settings in the same dict belong to review.review_settings and are ignored here."""
     assert QuizSettings.from_dict({"priority": "mix", "review_streak": "x"}) == QuizSettings()
+
+
+def test_wrong_problem_kind():
+    with pytest.raises(ValueError):
+        QuizSettings.from_dict({"problem_kind": "easy"})

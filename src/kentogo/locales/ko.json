@@ -2,6 +2,8 @@
  "black": "흑",
  "white": "백",
  "problem_info": "[b]{game}[/b]\n{move_number}수째　{color} 차례  문제 {index} / {total}",
+ "punish_hint": "응징 문제: 직전 상대의 수는 {loss}집 손해",
+ "shared_hint": "상대도 놓친 큰 자리가 있습니다",
  "asking": "{color} 차례입니다. 둘 곳을 클릭하세요.",
  "correct": "[color=5be37d][b]정답[/b][/color]",
  "wrong": "[color=ff8a80][b]오답[/b][/color]",

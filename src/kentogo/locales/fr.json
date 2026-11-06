@@ -2,6 +2,8 @@
  "black": "Noir",
  "white": "Blanc",
  "problem_info": "[b]{game}[/b]\nCoup {move_number}　au tour de {color}　Problème {index} / {total}",
+ "punish_hint": "Punir : le dernier coup de l'adversaire a perdu {loss} points",
+ "shared_hint": "Il y a un grand point que l'adversaire a aussi manqué",
  "asking": "C'est au tour de {color}. Cliquez là où vous voulez jouer.",
  "correct": "[color=5be37d][b]Correct[/b][/color]",
  "wrong": "[color=ff8a80][b]Incorrect[/b][/color]",

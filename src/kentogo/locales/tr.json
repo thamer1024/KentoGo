@@ -2,6 +2,8 @@
  "black": "Siyah",
  "white": "Beyaz",
  "problem_info": "[b]{game}[/b]\n{move_number}. hamle  sıra: {color}  Problem {index} / {total}",
+ "punish_hint": "Cezalandır: rakibin son hamlesi {loss} puan kaybetti",
+ "shared_hint": "Rakibin de kaçırdığı büyük bir nokta var",
  "asking": "Sıra: {color}. Oynamak istediğiniz yere tıklayın.",
  "correct": "[color=5be37d][b]Doğru[/b][/color]",
  "wrong": "[color=ff8a80][b]Yanlış[/b][/color]",

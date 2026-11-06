@@ -28,6 +28,7 @@ from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame, collect_problems
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
+from kentogo.quiz.problem_kinds import KIND_ALL, other_kinds
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.stages import NO_STAGES, StageStatus, current_stage, held_back
 from kentogo.repetition.daily import answered_on, left_today
@@ -205,6 +206,7 @@ def plan_today(
     settings: ReviewSettings,
     today: date,
     stages: tuple[float, ...] = (),
+    kind: str = KIND_ALL,
 ) -> tuple[QuizPlan, int | None, StageStatus]:
     """Choose today's problems: new problems and the reviews that are due, in the order of the settings.
 
@@ -219,6 +221,7 @@ def plan_today(
         settings: The review settings (the review settings, the priority and the session limit).
         today: Today's date.
         stages: The thresholds of the staged problems, the biggest first, or () if they are not used.
+        kind: Which problems are asked (see quiz.problem_kinds); the others are left out, reviews too.
 
     Returns:
         A tuple (plan, limit, stage). limit is how many more problems may be asked today, reviews
@@ -240,7 +243,7 @@ def plan_today(
     all_problems = problems + _lost_reviews(problems, states, history, today)
     limit = left_today(settings.daily_limit, done)
     new_ids = {problem_id for problem_id, state in states.items() if state.state == STATE_NEW}
-    excluded = set_aside | held_back(problems, new_ids, stage)
+    excluded = set_aside | held_back(problems, new_ids, stage) | other_kinds(all_problems, kind)
     plan = plan_problems(all_problems, states, today, settings.priority, excluded, limit)
     return plan, limit, stage
 
@@ -296,7 +299,9 @@ def prepare_problems(
         print(f"{len(problems)} problems (no history)", file=sys.stderr)
         return TodayProblems(problems, None, len(problems), 0, skipped=skipped_counts, skipped_games=skipped)
     stages = settings.quiz.extract.loss_stages
-    plan, limit, stage = plan_today(problems, history, settings.review, date.today(), stages)
+    plan, limit, stage = plan_today(
+        problems, history, settings.review, date.today(), stages, settings.quiz.problem_kind
+    )
     print(f"{len(problems)} problems: {plan.new_count} new, {plan.review_count} reviews today", file=sys.stderr)
     notices = [Notice("notice_history_error", {"reason": history.last_error})] if history.last_error else []
     if problems and not plan.problems:

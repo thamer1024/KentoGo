@@ -2,6 +2,8 @@
  "black": "Schwarz",
  "white": "Weiß",
  "problem_info": "[b]{game}[/b]\nZug {move_number}　{color} ist am Zug　Aufgabe {index} / {total}",
+ "punish_hint": "Bestrafen: Der letzte Zug des Gegners verlor {loss} Punkte",
+ "shared_hint": "Es gibt einen großen Punkt, den auch der Gegner übersehen hat",
  "asking": "{color} ist am Zug. Klicke auf den Punkt, an dem du spielen willst.",
  "correct": "[color=5be37d][b]Richtig[/b][/color]",
  "wrong": "[color=ff8a80][b]Falsch[/b][/color]",

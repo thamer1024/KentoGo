@@ -2,6 +2,8 @@
  "black": "黑",
  "white": "白",
  "problem_info": "[b]{game}[/b]\n第 {move_number} 手　{color}方下　題目 {index} / {total}",
+ "punish_hint": "懲罰題：對手上一手損失 {loss} 目",
+ "shared_hint": "有一個對手也錯過的大場",
  "asking": "輪到{color}方。請點擊要下的位置。",
  "correct": "[color=5be37d][b]正確[/b][/color]",
  "wrong": "[color=ff8a80][b]錯誤[/b][/color]",

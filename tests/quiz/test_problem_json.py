@@ -76,3 +76,13 @@ def test_ai_comment_and_older_copies():
     older = problem_to_dict(PROBLEM)
     del older["ai_comment"]
     assert problem_from_dict(older).ai_comment == ""
+
+
+def test_opponent_move_and_older_copies():
+    """The opponent's move and the kind of punishment come back; older copies have none."""
+    problem = replace(PROBLEM, opponent_loss=18.5, opponent_best="D16", punishment="punish")
+    assert problem_from_dict(json.loads(json.dumps(problem_to_dict(problem)))) == problem
+    older = problem_to_dict(PROBLEM)
+    for key in ("opponent_loss", "opponent_best", "punishment"):
+        del older[key]
+    assert (problem_from_dict(older).opponent_loss, problem_from_dict(older).punishment) == (None, "")

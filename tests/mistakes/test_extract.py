@@ -179,9 +179,11 @@ def test_settings_from_and_to_dict():
         "decided_winrate": 97.0,
         "decided_lead": 30.0,
         "loss_stages": [],
+        "punish_opponent_loss": 20.0,
+        "punish_my_loss": 4.0,
     }
     settings = ExtractSettings.from_dict(values)
-    assert settings == ExtractSettings(("Taro",), 3, 2.5, 10, True, 97.0, 30.0)
+    assert settings == ExtractSettings(("Taro",), 3, 2.5, 10, True, 97.0, 30.0, (), 20.0, 4.0)
     assert settings.to_dict() == values
 
 
@@ -361,3 +363,13 @@ def test_kinds_and_only_the_first_moment_of_each_best_move():
         [chance(3, "H3"), chance(5, "H3"), chance(7, "C3"), chance(9, None), chance(11, None)]
     )
     assert [item.move_number for item in kept] == [3, 7, 9, 11]
+
+
+def test_problems_know_the_opponent_move_before_them():
+    """Move 3 follows white's move 2 (4 points lost, best D16): with low thresholds it is a punishment problem."""
+    problem = next(p for p in extract(game()).problems if p.move_number == 3)
+    assert (problem.opponent_loss, problem.opponent_best, problem.punishment) == (4.0, "D16", "")  # Below 15.
+    low = next(p for p in extract(game(), punish_opponent_loss=4.0).problems if p.move_number == 3)
+    assert low.punishment == PUNISH
+    first = next(p for p in extract(game()).problems if p.move_number == 7)  # After white's best move (no loss).
+    assert (first.opponent_loss, first.punishment) == (None, "")

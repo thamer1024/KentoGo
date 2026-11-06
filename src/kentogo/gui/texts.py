@@ -18,6 +18,7 @@ from pathlib import Path
 
 from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
+from kentogo.mistakes.extract import PUNISH, SHARED
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
@@ -40,6 +41,8 @@ TEXTS = {
     "black": "黒",
     "white": "白",
     "problem_info": "[b]{game}[/b]\n{move_number}手目　{color}番　問題 {index} / {total}",
+    "punish_hint": "咎め問題：直前の相手の手は {loss}目の損",
+    "shared_hint": "相手も見落とした大きな場所があります",
     "asking": "{color}番です。打つ点をクリックしてください。",
     "correct": "[color=5be37d][b]正解[/b][/color]",
     "wrong": "[color=ff8a80][b]不正解[/b][/color]",
@@ -808,7 +811,7 @@ def problem_info(problem: Problem, index: int, total: int) -> str:
         index: The number of the problem, starting from 1.
         total: The number of problems.
     """
-    return text(
+    info = text(
         "problem_info",
         game=Path(problem.sgf_path).stem,
         move_number=problem.move_number,
@@ -816,6 +819,17 @@ def problem_info(problem: Problem, index: int, total: int) -> str:
         index=index,
         total=total,
     )
+    hint = punishment_hint(problem)
+    return f"{info}{gap()}{hint}" if hint else info
+
+
+def punishment_hint(problem: Problem) -> str:
+    """Return the hint of a punishment problem (or of a point that both missed), or "" for other problems."""
+    if problem.punishment == PUNISH:
+        return text("punish_hint", loss=f"{problem.opponent_loss or 0:.1f}")
+    if problem.punishment == SHARED:
+        return text("shared_hint")
+    return ""
 
 
 def count_check_text(check: CountCheck, komi: float) -> str:

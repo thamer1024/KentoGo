@@ -356,3 +356,26 @@ def test_raising_the_pass_ratio_does_not_bring_back_finished_problems(tmp_path, 
     assert prepare_problems(games, strict, history, random.Random(0)).problems == []
     monkeypatch.setattr(today_module, "date", Tomorrow)
     assert prepare_problems(games, strict, history, random.Random(0)).problems == []
+
+
+def sgf_after_white_mistake(white_loss: float, first: str = "pd") -> str:
+    """Make a game where white's move 2 loses the given points (best D16), then black's move 3 loses 8 (best Q4)."""
+    white = f"\nMove 2: W D4\nEstimated point loss: {white_loss:.1f}\nPredicted top move was D16 (B+1.0).\n{INTERNAL_MARKER}"
+    black = (
+        f"\nMove 3: B A19\nEstimated point loss: 8.0\nPredicted top move was Q4 (B+1.0).\nPV: BQ4\n{INTERNAL_MARKER}"
+    )
+    return f"(;SZ[19]PB[{HUMAN}]PW[{AI}];B[{first}];W[dp]C[{white}];B[aa]C[{black}])"  # Another first move, another problem.
+
+
+def test_only_punishment_problems(tmp_path):
+    """With problem_kind "punish", only the mistakes after the opponent's big mistakes are asked."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_after_white_mistake(20.0), encoding="utf-8")
+    (games / "b.sgf").write_text(sgf_after_white_mistake(5.0, "dd"), encoding="utf-8")
+    history = open_history(tmp_path / "settings.json")
+    every = prepare_problems(games, AppSettings(), history, random.Random(0))
+    assert sorted(problem.punishment for problem in every.problems) == ["", "punish"]
+    settings = AppSettings(quiz=QuizSettings(problem_kind="punish"))
+    only = prepare_problems(games, settings, history, random.Random(0))
+    assert [problem.sgf_path.endswith("a.sgf") for problem in only.problems] == [True]

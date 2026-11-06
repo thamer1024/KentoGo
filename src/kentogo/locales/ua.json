@@ -2,6 +2,8 @@
  "black": "Чорні",
  "white": "Білі",
  "problem_info": "[b]{game}[/b]\nХід {move_number}  ходять {color}  Задача {index} / {total}",
+ "punish_hint": "Покарати: останній хід суперника втратив {loss} очок",
+ "shared_hint": "Є великий пункт, який суперник теж пропустив",
  "asking": "Ходять {color}. Клацніть туди, куди хочете зіграти.",
  "correct": "[color=5be37d][b]Правильно[/b][/color]",
  "wrong": "[color=ff8a80][b]Неправильно[/b][/color]",

@@ -52,6 +52,9 @@ def problem_to_dict(problem: Problem) -> dict:
         "notes": problem.notes,
         "candidate_losses": [[point, loss] for point, loss in problem.candidate_losses],
         "ai_comment": problem.ai_comment,
+        "opponent_loss": problem.opponent_loss,
+        "opponent_best": problem.opponent_best,
+        "punishment": problem.punishment,
     }
 
 
@@ -86,6 +89,10 @@ def problem_from_dict(values: dict) -> Problem:
         # Copies saved before candidate losses were kept have none.
         candidate_losses=tuple((point, float(loss)) for point, loss in values.get("candidate_losses", [])),
         ai_comment=values.get("ai_comment", ""),  # Copies saved before the AI commentary was read have none.
+        # Copies saved before the punishment problems have none of these.
+        opponent_loss=values.get("opponent_loss"),
+        opponent_best=values.get("opponent_best"),
+        punishment=values.get("punishment", ""),
     )
 
 

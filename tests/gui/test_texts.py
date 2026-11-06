@@ -1,5 +1,7 @@
 """Tests for kentogo.gui.texts, with the Japanese texts (see tests/conftest.py and test_languages.py)."""
 
+from dataclasses import replace
+
 from kentogo.common.types import Move, Position
 from kentogo.gui.texts import (
     TEXTS,
@@ -368,3 +370,13 @@ def test_band_names_and_the_averages_of_each_band():
     line = game_averages_text(GameAverages((0.4, 1.0), None), (10.0, 3.0))
     assert line == "直近 5 局の平均：10目以上 0.4　3〜10目 1.0\n（その前の 5 局：—）"
     assert game_averages_text(GameAverages(), (10.0, 3.0)) == "まだ対局がありません"
+
+
+def test_problem_info_of_punishment_problems():
+    """A punishment problem says so after the count, with the opponent's loss; a shared one says both missed it."""
+    punish = replace(PROBLEM, punishment="punish", opponent_loss=18.25)
+    assert (
+        problem_info(punish, 3, 29).splitlines()[1]
+        == "169手目　黒番　問題 3 / 29　咎め問題：直前の相手の手は 18.2目の損"
+    )
+    assert problem_info(replace(PROBLEM, punishment="shared"), 3, 29).endswith("相手も見落とした大きな場所があります")

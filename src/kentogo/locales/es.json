@@ -2,6 +2,8 @@
  "black": "Negro",
  "white": "Blanco",
  "problem_info": "[b]{game}[/b]\nJugada {move_number}　turno de {color}　Problema {index} / {total}",
+ "punish_hint": "Castigar: la última jugada del rival perdió {loss} puntos",
+ "shared_hint": "Hay un punto grande que el rival también pasó por alto",
  "asking": "Es el turno de {color}. Haz clic donde quieras jugar.",
  "correct": "[color=5be37d][b]Correcto[/b][/color]",
  "wrong": "[color=ff8a80][b]Incorrecto[/b][/color]",

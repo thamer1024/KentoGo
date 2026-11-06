@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from kentogo.mistakes.extract import ExtractSettings
 from kentogo.quiz.judge import ScoringPolicy
+from kentogo.quiz.problem_kinds import KIND_ALL, PROBLEM_KINDS
 
 # Orders of the problems.
 ORDER_FILE_NAME = "file_name"  # By the names of the SGF files.
@@ -31,6 +32,7 @@ class QuizSettings:
         swap_colors: Swap black and white at random.
         extract: Conditions for choosing problems.
         scoring: The rule for judging answers.
+        problem_kind: Which problems are asked, one of quiz.problem_kinds.PROBLEM_KINDS.
         ratio_offer: Offer to raise or lower the pass ratio to suit the latest answers (see quiz.ratio_offer).
         ratio_asked_at: How many judged answers there were when the offer was last answered (0 if
             never), so that it is asked again only after enough new answers. It is changed only by
@@ -45,6 +47,7 @@ class QuizSettings:
     scoring: ScoringPolicy = field(default_factory=ScoringPolicy)
     ratio_offer: bool = True
     ratio_asked_at: int = 0
+    problem_kind: str = KIND_ALL
 
     @classmethod
     def from_dict(cls, values: dict) -> QuizSettings:
@@ -63,6 +66,9 @@ class QuizSettings:
         order = values.get("order", default.order)
         if order not in ORDERS:
             raise ValueError(f"wrong quiz setting: order must be one of {ORDERS}: {order!r}")
+        problem_kind = values.get("problem_kind", default.problem_kind)
+        if problem_kind not in PROBLEM_KINDS:
+            raise ValueError(f"wrong quiz setting: problem_kind must be one of {PROBLEM_KINDS}: {problem_kind!r}")
         games_folder = values.get("games_folder", default.games_folder)
         if not isinstance(games_folder, str):
             raise ValueError(f"wrong quiz setting: games_folder must be a text: {games_folder!r}")
@@ -75,6 +81,7 @@ class QuizSettings:
             scoring=ScoringPolicy.from_dict(values),
             ratio_offer=_boolean(values, "ratio_offer", default.ratio_offer),
             ratio_asked_at=_count(values, "ratio_asked_at", default.ratio_asked_at),
+            problem_kind=problem_kind,
         )
 
     def to_dict(self) -> dict:
@@ -88,6 +95,7 @@ class QuizSettings:
             **self.scoring.to_dict(),
             "ratio_offer": self.ratio_offer,
             "ratio_asked_at": self.ratio_asked_at,
+            "problem_kind": self.problem_kind,
         }
 
 

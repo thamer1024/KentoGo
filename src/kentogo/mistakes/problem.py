@@ -53,6 +53,10 @@ class Problem:
             as (GTP point, points lost) pairs, from KaTrain's analysis data (KT). Empty if the
             game has no analysis data. An answer that is one of these is judged without KataGo.
         ai_comment: The AI commentary on the mistake (see record.ai_comment), or "" if there is none.
+        opponent_loss: The points lost by the opponent's move just before the mistake, or None if unknown.
+        opponent_best: The best move in the position before that move (GTP), or None if unknown.
+        punishment: "punish" when the user missed the chance to punish the opponent's big mistake,
+            "shared" when both missed the same point, or "" (see mistakes.extract.PunishmentChance).
     """
 
     problem_id: str
@@ -66,6 +70,9 @@ class Problem:
     notes: str = ""
     candidate_losses: tuple[tuple[str, float], ...] = ()
     ai_comment: str = ""
+    opponent_loss: float | None = None
+    opponent_best: str | None = None
+    punishment: str = ""
 
 
 def problem_id_of(position: Position) -> str:

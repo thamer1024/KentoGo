@@ -71,6 +71,9 @@ class ExtractSettings:
         loss_stages: The thresholds of the staged problems, the biggest first (see quiz.stages),
             or () if they are not used. With stages, every open mistake that lost at least the
             smallest threshold becomes a problem (problems_per_game and min_points_lost are not used).
+        punish_opponent_loss: A problem is a punishment problem (see PunishmentChance) when the
+            opponent's move just before it lost at least this many points...
+        punish_my_loss: ...and the user's move lost at least this many points.
     """
 
     my_names: tuple[str, ...] = ()
@@ -81,6 +84,8 @@ class ExtractSettings:
     decided_winrate: float = DECIDED_WINRATE
     decided_lead: float = DECIDED_LEAD
     loss_stages: tuple[float, ...] = ()
+    punish_opponent_loss: float = 15.0
+    punish_my_loss: float = 5.0
 
     @classmethod
     def from_dict(cls, values: dict) -> ExtractSettings:
@@ -112,6 +117,8 @@ class ExtractSettings:
                 decided_winrate=_percent(values.get("decided_winrate", default.decided_winrate)),
                 decided_lead=float(values.get("decided_lead", default.decided_lead)),
                 loss_stages=_stages(values.get("loss_stages", default.loss_stages)),
+                punish_opponent_loss=float(values.get("punish_opponent_loss", default.punish_opponent_loss)),
+                punish_my_loss=float(values.get("punish_my_loss", default.punish_my_loss)),
             )
         except (TypeError, ValueError) as error:
             raise ValueError(f"wrong quiz setting: {error}") from error
@@ -127,6 +134,8 @@ class ExtractSettings:
             "decided_winrate": self.decided_winrate,
             "decided_lead": self.decided_lead,
             "loss_stages": list(self.loss_stages),
+            "punish_opponent_loss": self.punish_opponent_loss,
+            "punish_my_loss": self.punish_my_loss,
         }
 
     def smallest_loss(self) -> float:
@@ -301,8 +310,7 @@ class PunishmentChance:
     @property
     def kind(self) -> str:
         """Return SHARED when both missed the same best move, otherwise PUNISH."""
-        same = self.best_move is not None and self.best_move == self.opponent_best
-        return SHARED if same else PUNISH
+        return punishment_kind(self.best_move, self.opponent_best)
 
 
 def punishment_chances(
@@ -461,7 +469,28 @@ def _make_problem_from_node(
     losses = _candidate_losses(node.parent, move.color, game)
     winrate, lead = _position_value(node.parent, game.kt_version)
     decided = Selection.from_quiz(settings).is_decided(winrate, lead)
-    return replace(problem, candidate_losses=losses, ai_comment=ai.move_text), decided
+    problem = replace(problem, candidate_losses=losses, ai_comment=ai.move_text)
+    return _with_opponent_move(problem, node, game, settings), decided
+
+
+def _with_opponent_move(problem: Problem, node: GoNode, game: _Game, settings: ExtractSettings) -> Problem:
+    """Add the opponent's move just before the problem: its loss, its best move, and the kind of punishment."""
+    previous = node.parent
+    theirs = sgf.node_move(previous) if previous is not None else None
+    if theirs is None or theirs.color == game.my_color:
+        return problem
+    info = _evaluated(previous, theirs, game)
+    if info is None or info.points_lost is None:
+        return problem
+    best = problem.best_move.gtp() if problem.best_move is not None else None
+    big = info.points_lost >= settings.punish_opponent_loss and problem.points_lost >= settings.punish_my_loss
+    kind = punishment_kind(best, info.best_move) if big else ""
+    return replace(problem, opponent_loss=info.points_lost, opponent_best=info.best_move, punishment=kind)
+
+
+def punishment_kind(best_move: str | None, opponent_best: str | None) -> str:
+    """Return SHARED when the user's best move is the one the opponent should have played, otherwise PUNISH."""
+    return SHARED if best_move is not None and best_move == opponent_best else PUNISH
 
 
 def _is_problem(move: Move, info: KatrainMoveInfo | None, number: int, settings: ExtractSettings) -> bool:
