@@ -13,6 +13,9 @@ from kentogo.record.katrain_kt import (
     decode_kt_numbers,
     encode_kt,
     evaluate_move,
+    evaluate_played_move,
+    played_move_loss,
+    relative_candidate_losses,
 )
 
 
@@ -126,3 +129,34 @@ def test_decode_kt_numbers_of_broken_data():
         decode_kt_numbers(encode_kt(FULL_ANALYSIS), 9)  # Not the size of the board.
     with pytest.raises(ValueError):
         decode_kt_numbers(["AAAA"], 4)
+
+
+POSITION = {  # The best move (order 0) is better than the root's score, as usual.
+    "root": {"scoreLead": 1.0},
+    "moves": {
+        "Q16": {"scoreLead": 1.4, "order": 0, "pv": ["Q16", "D4"]},
+        "D4": {"scoreLead": 0.4, "order": 1},
+        "A1": {"scoreLead": 1.9, "order": 999},  # Read with only it allowed: better than KataGo's first choice.
+    },
+}
+
+
+def test_relative_candidate_losses_are_from_the_best_move():
+    assert relative_candidate_losses(POSITION, "B") == {"Q16": 0.0, "D4": pytest.approx(1.0), "A1": 0.0}
+    assert relative_candidate_losses(POSITION, "W")["D4"] == 0.0  # White likes black's score going down.
+    assert relative_candidate_losses({"root": {"scoreLead": 1.0}, "moves": {"C3": {"scoreLead": 0.0}}}, "B") == {
+        "C3": 1.0  # Without a ranked candidate, from the root.
+    }
+
+
+def test_played_move_loss_can_be_below_zero():
+    assert played_move_loss(POSITION, "B", "Q16") == 0.0
+    assert played_move_loss(POSITION, "B", "A1") == pytest.approx(-0.5)
+    assert played_move_loss(POSITION, "B", "K10") is None
+
+
+def test_evaluate_played_move_never_below_zero_and_falls_back():
+    after = {"root": {"scoreLead": 5.0}}
+    assert evaluate_played_move(POSITION, after, "B", "A1") == KtEvaluation(0.0, "Q16", ("Q16", "D4"))
+    assert evaluate_played_move(POSITION, after, "B", "D4").points_lost == 1.0
+    assert evaluate_played_move(POSITION, {"root": {"scoreLead": -2.0}}, "B", "K10").points_lost == 3.0  # KaTrain's.

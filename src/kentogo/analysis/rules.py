@@ -23,7 +23,7 @@ KentoGo's mode:
   after the last one), in whichever order the range is given.
 - A node that KataGo could not analyze is asked again (retries times).
 - A score of 0 is shown as 0, and the start message is written once.
-- The loss of a move is read in the position before it (see analysis.played_moves), and the
+- The loss of a move is read in the position before it, from the best move (see analysis.played_moves), and the
   answer for a position is kept in that position only.
 - The first analysis of each position is not stopped by time, so every position is read as deeply.
 - The root gets KGM[KentoGo], so that KentoGo knows which losses to read.

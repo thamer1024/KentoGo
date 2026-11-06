@@ -5,6 +5,8 @@ saved its analysis data (KT) on the move and on the node before it, the loss, th
 and its sequence come from that data, which does not depend on KaTrain's language or wording
 (see record.katrain_kt). Otherwise they are read from KaTrain's comments. The loss of each
 candidate move in the problem position is kept too when the node before has analysis data.
+In games analyzed in KentoGo's own mode (KGM[KentoGo] at the root), the losses are read in the
+position before each move, from the best move (see record.katrain_kt.played_move_loss).
 
 Problems are made from the moves of the real game (the main line). If the
 setting include_undone_moves is on, problems are also made from the moves
@@ -14,7 +16,7 @@ the file as short branches next to the main line.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 
 from pysgf import GoNode
@@ -32,7 +34,18 @@ from kentogo.mistakes.selection import (
 )
 from kentogo.record.ai_comment import split_ai_comment
 from kentogo.record.katrain_comment import KatrainMoveInfo, read_comment
-from kentogo.record.katrain_kt import SUPPORTED_VERSION, candidate_losses, decode_kt, evaluate_move, root_value
+from kentogo.record.katrain_kt import (
+    KENTOGO_MODE,
+    KENTOGO_MODE_PROPERTY,
+    SUPPORTED_VERSION,
+    KtEvaluation,
+    candidate_losses,
+    decode_kt,
+    evaluate_katrain_move,
+    evaluate_played_move,
+    relative_candidate_losses,
+    root_value,
+)
 from kentogo.record.players import detect_my_color
 
 # Reasons why no problem was made from a game.
@@ -174,6 +187,17 @@ class _Game:
     start: Position  # The empty board with setup stones, komi and rules.
     my_color: str
     kt_version: str = SUPPORTED_VERSION  # The version of KaTrain's analysis data (the KTV property).
+    # How a move and the candidates are evaluated from the analysis data: KaTrain's way, or KentoGo's mode.
+    evaluate: Callable[[dict, dict, str, str], KtEvaluation | None] = evaluate_katrain_move
+    candidate_losses: Callable[[dict, str], dict[str, float]] = candidate_losses
+
+
+def _game(root: GoNode, sgf_path: str, start: Position, my_color: str) -> _Game:
+    """Return the information about the game, with the evaluation of the mode that analyzed it."""
+    version = str(root.get_property("KTV", SUPPORTED_VERSION))
+    if root.get_property(KENTOGO_MODE_PROPERTY, "") == KENTOGO_MODE:
+        return _Game(sgf_path, start, my_color, version, evaluate_played_move, relative_candidate_losses)
+    return _Game(sgf_path, start, my_color, version)
 
 
 def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, recorded_color: str = "") -> ExtractResult:
@@ -202,7 +226,7 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
     if my_color is None:
         return ExtractResult(None, (), REASON_UNKNOWN_COLOR)
     start = Position(sgf.board_size(root), sgf.komi(root), sgf.rules(root), sgf.setup_stones(root), (), "B")
-    game = _Game(sgf_path, start, my_color, str(root.get_property("KTV", SUPPORTED_VERSION)))
+    game = _game(root, sgf_path, start, my_color)
     main_line = sgf.main_line(root)
     if not _has_analysis(main_line):
         return ExtractResult(my_color, (), REASON_NO_ANALYSIS)
@@ -229,7 +253,7 @@ def _move_losses(main_line: list[GoNode], game: _Game) -> tuple[float, ...]:
         if move is None or move.color != game.my_color:
             continue
         _, info = read_comment(split_ai_comment(str(node.get_property("C", ""))).rest)
-        info = _with_analysis_data(info, node, move, game.kt_version)
+        info = _with_analysis_data(info, node, move, game)
         if info is not None and info.points_lost is not None and (info.color, info.move) == (move.color, move.gtp()):
             losses.append(round(info.points_lost, 1))
     return tuple(losses)
@@ -307,14 +331,14 @@ def _make_problem_from_node(
         return None
     ai = split_ai_comment(str(node.get_property("C", "")))
     notes, info = read_comment(ai.rest)
-    info = _with_analysis_data(info, node, move, game.kt_version)
+    info = _with_analysis_data(info, node, move, game)
     number = len(before) + 1
     if not _is_problem(move, info, number, settings):
         return None
     start = game.start
     position = Position(start.size, start.komi, start.rules, start.setup, before, move.color)
     problem = _make_problem(position, game.sgf_path, number, move, info, notes)
-    losses = _candidate_losses(node.parent, move.color, game.kt_version)
+    losses = _candidate_losses(node.parent, move.color, game)
     winrate, lead = _position_value(node.parent, game.kt_version)
     decided = Selection.from_quiz(settings).is_decided(winrate, lead)
     return replace(problem, candidate_losses=losses, ai_comment=ai.move_text), decided
@@ -353,13 +377,14 @@ def _analysis(node: GoNode | None, version: str) -> dict | None:
         return None
 
 
-def _with_analysis_data(info: KatrainMoveInfo | None, node: GoNode, move: Move, version: str) -> KatrainMoveInfo | None:
+def _with_analysis_data(info: KatrainMoveInfo | None, node: GoNode, move: Move, game: _Game) -> KatrainMoveInfo | None:
     """Take the loss, the best move and its sequence from the analysis data of the move and of the node before it.
 
     Without analysis data on both nodes, KaTrain's comment (info) is used as it is.
     """
-    before, after = _analysis(node.parent, version), _analysis(node, version)
-    evaluation = evaluate_move(before, after, move.color) if before is not None and after is not None else None
+    before, after = _analysis(node.parent, game.kt_version), _analysis(node, game.kt_version)
+    has_both = before is not None and after is not None
+    evaluation = game.evaluate(before, after, move.color, move.gtp()) if has_both else None
     if evaluation is None:
         return info
     base = info if info is not None and (info.color, info.move) == (move.color, move.gtp()) else _empty_info(move)
@@ -383,10 +408,10 @@ def _position_value(parent: GoNode | None, version: str) -> tuple[float | None, 
     return root_value(analysis) if analysis is not None else (None, None)
 
 
-def _candidate_losses(parent: GoNode | None, color: str, version: str) -> tuple[tuple[str, float], ...]:
+def _candidate_losses(parent: GoNode | None, color: str, game: _Game) -> tuple[tuple[str, float], ...]:
     """Return the losses of the candidate moves from the analysis data of the node before the move."""
-    analysis = _analysis(parent, version)
-    return tuple(sorted(candidate_losses(analysis, color).items())) if analysis is not None else ()
+    analysis = _analysis(parent, game.kt_version)
+    return tuple(sorted(game.candidate_losses(analysis, color).items())) if analysis is not None else ()
 
 
 def _make_problem(

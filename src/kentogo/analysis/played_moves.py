@@ -2,7 +2,7 @@
 
 KaTrain's loss of a move is the score before it minus the score after it: two separate analyses,
 the second one from the opponent's side, so the noise of both goes into the loss. KentoGo's mode
-compares inside the position before the move instead: its own score with the played move's score.
+compares inside the position before the move instead: the best move's score with the played move's score.
 When KataGo's analysis of that position already read the played move well enough (at least
 PLAYED_SHARE of its visits), that value is used; otherwise the position is analyzed again with
 only the played move allowed (KataGo's allowMoves), with the same visits as the position itself.
@@ -28,21 +28,24 @@ from kentogo.analysis.game_analysis import (
 )
 from kentogo.analysis.node_analysis import apply_played_move
 from kentogo.analysis.query import QuerySettings, played_move_query
+from kentogo.record.katrain_kt import KENTOGO_MODE
+from kentogo.record.katrain_kt import played_move_loss as loss_in_position
 
 PLAYED_SHARE = 0.1  # The played move is read well enough with this share of the position's visits.
 PLAYED_STEP = "played"  # The name of this step in the progress.
-MODE_MARK = "KentoGo"  # The root's KGM property of games analyzed in KentoGo's mode.
-_SIGNS = {"B": 1, "W": -1}
+MODE_MARK = KENTOGO_MODE  # The root's KGM property of games analyzed in KentoGo's mode.
 
 
 def played_move_loss(game: GameAnalysis, node: GoNode) -> float | None:
-    """Return the points lost by a node's move, read in the position before it (or as KaTrain when not there)."""
+    """Return the points lost by a node's move from the best move, in the position before it (or as KaTrain).
+
+    See record.katrain_kt.played_move_loss: the best move loses exactly 0, and a move better than
+    KataGo's first choice gets a value below 0.
+    """
     move, parent = node.move, node.parent
     before = game.analysis(parent) if parent is not None else None
-    played = (before or {}).get("moves", {}).get(move.gtp()) if move is not None else None
-    if before is None or played is None or "scoreLead" not in played:
-        return game.points_lost(node)
-    return _SIGNS[move.player] * (before["root"]["scoreLead"] - played["scoreLead"])
+    loss = loss_in_position(before, move.player, move.gtp()) if before is not None and move is not None else None
+    return game.points_lost(node) if loss is None else loss
 
 
 def needs_reading(game: GameAnalysis, node: GoNode) -> bool:

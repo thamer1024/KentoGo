@@ -289,3 +289,25 @@ def test_comment_is_used_when_the_analysis_data_cannot_be_used():
     for text in (broken, newer):
         problem = next(p for p in extract(text).problems if p.move_number == 3)
         assert (problem.points_lost, problem.best_move.gtp()) == (8.0, "Q4")
+
+
+KENTOGO_BEFORE_MOVE_3 = {  # The position before move 3 analyzed in KentoGo's mode: A19 read there too.
+    "root": {"scoreLead": 2.8},
+    "moves": {
+        "D16": {"scoreLead": 3.0, "order": 0, "pv": ["D16", "Q4"]},
+        "Q4": {"scoreLead": 2.5, "order": 1},
+        "A19": {"scoreLead": -10.0, "order": 999},
+    },
+}
+
+
+def test_kentogo_mode_losses_come_from_the_best_move_in_the_position_before():
+    """With KGM[KentoGo], A19 lost 13 points against D16 there (KaTrain's way: 2.8 - (-9.0) = 11.8)."""
+    text = game().replace(";W[dp]C[", f";W[dp]{kt_property(KENTOGO_BEFORE_MOVE_3)}C[", 1)
+    text = text.replace(";B[aa]C[", f";B[aa]{kt_property(AFTER_MOVE_3)}C[", 1)
+    katrain = next(p for p in extract(text).problems if p.move_number == 3)
+    kentogo = next(p for p in extract(text.replace("(;", "(;KGM[KentoGo]", 1)).problems if p.move_number == 3)
+    assert (katrain.points_lost, kentogo.points_lost) == (11.8, 13.0)
+    assert dict(katrain.candidate_losses)["Q4"] == pytest.approx(0.3)  # From the root's score.
+    assert dict(kentogo.candidate_losses)["Q4"] == pytest.approx(0.5)  # From the best move.
+    assert dict(kentogo.candidate_losses)["D16"] == 0.0

@@ -32,6 +32,11 @@ from kentogo.vendor.katrain_analysis import analysis_dumps, unpack_floats
 # The newest version of the format that this module can read (KaTrain's ANALYSIS_FORMAT_VERSION).
 SUPPORTED_VERSION = "1.0"
 
+# Games analyzed in KentoGo's own mode (see analysis.rules) have KGM[KentoGo] at the root. Their
+# losses are read in the position before each move, from the best move (see played_move_loss).
+KENTOGO_MODE_PROPERTY = "KGM"
+KENTOGO_MODE = "KentoGo"
+
 # The color that a loss is counted for: black's score up is good for black.
 _SIGNS = {"B": 1, "W": -1}
 
@@ -120,6 +125,63 @@ def candidate_losses(analysis: dict, color: str) -> dict[str, float]:
         if isinstance(values, dict) and isinstance(values.get("scoreLead"), int | float):
             losses[point.upper()] = max(0.0, sign * (root["scoreLead"] - values["scoreLead"]))
     return losses
+
+
+def relative_candidate_losses(analysis: dict, color: str) -> dict[str, float]:
+    """Return the loss of each candidate move from the best one (KaTrain's relativePointsLost), never below 0.
+
+    KentoGo's mode uses it: the best candidate (KataGo's order 0) loses exactly 0, and the others
+    lose what they give up against it. Without a ranked candidate, the root's score is the reference.
+    """
+    root = analysis.get("root") or {}
+    moves = analysis.get("moves") or {}
+    if not isinstance(root, dict) or "scoreLead" not in root or not isinstance(moves, dict):
+        return {}
+    reference = _best_score(analysis)
+    sign = _SIGNS[color]
+    return {
+        point.upper(): max(0.0, sign * (reference - values["scoreLead"]))
+        for point, values in moves.items()
+        if isinstance(values, dict) and isinstance(values.get("scoreLead"), int | float)
+    }
+
+
+def played_move_loss(before: dict, color: str, move_gtp: str) -> float | None:
+    """Return the points lost by a played move from the best move, read in the position before it (KentoGo's mode).
+
+    The value can be below 0 when the played move, read as deeply as the position, turned out better
+    than KataGo's first choice. None when the position before has no value for the played move.
+    """
+    played = (before.get("moves") or {}).get(move_gtp)
+    if not isinstance(played, dict) or _number(played.get("scoreLead")) is None or root_value(before)[1] is None:
+        return None
+    return _SIGNS[color] * (_best_score(before) - played["scoreLead"])
+
+
+def evaluate_played_move(before: dict, after: dict, color: str, move_gtp: str) -> KtEvaluation | None:
+    """Return the evaluation of a move of a game analyzed in KentoGo's mode (see played_move_loss).
+
+    The loss is never below 0 here: a move better than KataGo's first choice lost nothing. Without
+    the played move's value in the position before it, the move is evaluated as KaTrain does it.
+    """
+    loss = played_move_loss(before, color, move_gtp)
+    evaluation = evaluate_move(before, after, color)
+    if loss is None or evaluation is None:
+        return evaluation
+    return KtEvaluation(round(max(0.0, loss), 2), evaluation.best_move, evaluation.pv)
+
+
+def evaluate_katrain_move(before: dict, after: dict, color: str, move_gtp: str) -> KtEvaluation | None:
+    """Return the evaluation of a move as KaTrain does it (see evaluate_move); move_gtp is not needed."""
+    return evaluate_move(before, after, color)
+
+
+def _best_score(analysis: dict) -> float:
+    """Return the score of the best candidate (KataGo's order 0), or the root's score without one."""
+    best = _best_candidate(analysis)
+    if best is not None and _number(best[1].get("scoreLead")) is not None and best[1].get("order") == 0:
+        return float(best[1]["scoreLead"])
+    return float(analysis["root"]["scoreLead"])
 
 
 @dataclass(frozen=True)
