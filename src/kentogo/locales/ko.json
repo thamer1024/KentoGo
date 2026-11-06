@@ -68,6 +68,7 @@
  "splash_today": "오늘의 문제\n\n[size=22sp]새 문제　[b]{new}[/b]문제\n복습　[b]{review}[/b]문제[/size]",
  "splash_limit": "(오늘 남은 문제 최대 {left}문제)",
  "splash_stage": "단계 {index}/{count}: {threshold}집 이상 손해 본 문제 (남은 문제 {left})",
+ "splash_only_punish": "응징 문제만 출제합니다",
  "splash_skipped": "출제할 수 없는 기보: {details}",
  "splash_show_skipped": "출제할 수 없는 기보 보기",
  "skipped_title": "출제할 수 없는 기보",

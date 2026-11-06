@@ -27,6 +27,7 @@ from kentogo.gui.dialogs import show_message
 from kentogo.gui.menu import flag_row
 from kentogo.gui.widgets import flat_button, in_main_thread, set_background, set_text, wrapping_label
 from kentogo.notice import Notice
+from kentogo.quiz.problem_kinds import KIND_PUNISH
 from kentogo.quiz.stages import StageStatus
 from kentogo.today import Progress, TodayProblems
 
@@ -175,6 +176,8 @@ def _today_text(today: TodayProblems) -> str:
         numbers += "\n" + texts.text("splash_limit", left=today.session_limit)
     if today.stage.threshold is not None:
         numbers += "\n" + _stage_text(today.stage)
+    if today.kind == KIND_PUNISH:
+        numbers += "\n" + texts.text("splash_only_punish")
     skipped = texts.skipped_text(today.skipped)
     if skipped:
         numbers += "\n\n" + skipped

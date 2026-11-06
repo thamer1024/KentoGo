@@ -80,6 +80,7 @@ class TodayProblems:
         skipped_games: The games that gave no problems, to show the user which ones.
         notices: Problems to tell the user in a dialog (for example that the cache cannot be used).
         stage: The current stage of the staged problems (see quiz.stages; NO_STAGES if they are not used).
+        kind: Which problems are asked (see quiz.problem_kinds).
     """
 
     problems: list[Problem]
@@ -91,6 +92,7 @@ class TodayProblems:
     skipped_games: list[SkippedGame] = field(default_factory=list)
     notices: list[Notice] = field(default_factory=list)
     stage: StageStatus = NO_STAGES
+    kind: str = KIND_ALL
 
 
 def default_games_folder() -> Path:
@@ -221,7 +223,8 @@ def plan_today(
         settings: The review settings (the review settings, the priority and the session limit).
         today: Today's date.
         stages: The thresholds of the staged problems, the biggest first, or () if they are not used.
-        kind: Which problems are asked (see quiz.problem_kinds); the others are left out, reviews too.
+        kind: Which problems are asked (see quiz.problem_kinds); the others are left out, reviews too,
+            and the stage counts only the problems of that kind.
 
     Returns:
         A tuple (plan, limit, stage). limit is how many more problems may be asked today, reviews
@@ -239,7 +242,8 @@ def plan_today(
         states[problem_id] = review_state(records, settings.review_streak, once)
         if any(record.correct for record in records):
             answered.add(problem_id)
-    stage = current_stage(problems, answered, stages)
+    other = other_kinds(problems, kind)
+    stage = current_stage([problem for problem in problems if problem.problem_id not in other], answered, stages)
     all_problems = problems + _lost_reviews(problems, states, history, today)
     limit = left_today(settings.daily_limit, done)
     new_ids = {problem_id for problem_id, state in states.items() if state.state == STATE_NEW}
@@ -314,9 +318,19 @@ def prepare_problems(
             skipped_games=skipped,
             notices=notices,
             stage=stage,
+            kind=settings.quiz.problem_kind,
         )
     return TodayProblems(
-        plan.problems, None, plan.new_count, plan.review_count, limit, skipped_counts, skipped, notices, stage
+        plan.problems,
+        None,
+        plan.new_count,
+        plan.review_count,
+        limit,
+        skipped_counts,
+        skipped,
+        notices,
+        stage,
+        settings.quiz.problem_kind,
     )
 
 

@@ -68,6 +68,7 @@
  "splash_today": "Today's problems\n\n[size=22sp]New problems   [b]{new}[/b]\nReviews   [b]{review}[/b][/size]",
  "splash_limit": "(At most {left} more problems today)",
  "splash_stage": "Stage {index}/{count}: problems that lost {threshold} points or more ({left} left)",
+ "splash_only_punish": "Only punishment problems are asked",
  "splash_skipped": "Games that give no problems: {details}",
  "splash_show_skipped": "Show the games that give no problems",
  "skipped_title": "Games that give no problems",

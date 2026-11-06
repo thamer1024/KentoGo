@@ -68,6 +68,7 @@
  "splash_today": "Problemas de hoy\n\n[size=22sp]Nuevos　[b]{new}[/b]\nRepasos　[b]{review}[/b][/size]",
  "splash_limit": "(Hoy quedan como máximo {left} problemas)",
  "splash_stage": "Nivel {index}/{count}: problemas con una pérdida de {threshold} puntos o más (quedan {left})",
+ "splash_only_punish": "Solo se plantean problemas de castigo",
  "splash_skipped": "Partidas no utilizables: {details}",
  "splash_show_skipped": "Ver partidas no utilizables",
  "skipped_title": "Partidas no utilizables",

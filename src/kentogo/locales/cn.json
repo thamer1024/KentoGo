@@ -68,6 +68,7 @@
  "splash_today": "今天的题目\n\n[size=22sp]新题目　[b]{new}[/b] 题\n复习　[b]{review}[/b] 题[/size]",
  "splash_limit": "（今天最多还有 {left} 题）",
  "splash_stage": "阶段 {index}/{count}：损失 {threshold} 目以上的问题（还剩 {left} 题）",
+ "splash_only_punish": "只出惩罚题",
  "splash_skipped": "无法出题的棋谱：{details}",
  "splash_show_skipped": "查看无法出题的棋谱",
  "skipped_title": "无法出题的棋谱",

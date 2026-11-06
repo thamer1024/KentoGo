@@ -379,3 +379,19 @@ def test_only_punishment_problems(tmp_path):
     settings = AppSettings(quiz=QuizSettings(problem_kind="punish"))
     only = prepare_problems(games, settings, history, random.Random(0))
     assert [problem.sgf_path.endswith("a.sgf") for problem in only.problems] == [True]
+    assert only.kind == "punish" and every.kind == "all"
+
+
+def test_the_stage_counts_only_the_problems_of_the_kind(tmp_path):
+    """With staged problems, "left" counts only the punishment problems when only they are asked."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_after_white_mistake(20.0), encoding="utf-8")
+    (games / "b.sgf").write_text(sgf_after_white_mistake(5.0, "dd"), encoding="utf-8")
+    history = open_history(tmp_path / "settings.json")
+    stages = ExtractSettings(loss_stages=(3.0,))
+    every = prepare_problems(games, AppSettings(quiz=QuizSettings(extract=stages)), history, random.Random(0))
+    only = prepare_problems(
+        games, AppSettings(quiz=QuizSettings(extract=stages, problem_kind="punish")), history, random.Random(0)
+    )
+    assert (every.stage.left, only.stage.left) == (2, 1)

@@ -68,6 +68,7 @@
  "splash_today": "Bugünün problemleri\n\n[size=22sp]Yeni  [b]{new}[/b]\nTekrar  [b]{review}[/b][/size]",
  "splash_limit": "(Bugün en fazla {left} problem daha)",
  "splash_stage": "Aşama {index}/{count}: {threshold} puan veya daha fazla kayıp (kalan {left})",
+ "splash_only_punish": "Yalnızca cezalandırma soruları sorulur",
  "splash_skipped": "Kullanılamayan oyunlar: {details}",
  "splash_show_skipped": "Kullanılamayan oyunları göster",
  "skipped_title": "Kullanılamayan oyunlar",

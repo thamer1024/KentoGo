@@ -68,6 +68,7 @@
  "splash_today": "Heutige Aufgaben\n\n[size=22sp]Neu　[b]{new}[/b]\nWiederholung　[b]{review}[/b][/size]",
  "splash_limit": "(Heute noch höchstens {left} Aufgaben)",
  "splash_stage": "Stufe {index}/{count}: Aufgaben mit {threshold} Punkten Verlust oder mehr (noch {left})",
+ "splash_only_punish": "Es werden nur Bestrafungsaufgaben gestellt",
  "splash_skipped": "Nicht verwendbare Partien: {details}",
  "splash_show_skipped": "Nicht verwendbare Partien anzeigen",
  "skipped_title": "Nicht verwendbare Partien",

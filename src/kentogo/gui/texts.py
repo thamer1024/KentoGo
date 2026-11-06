@@ -110,6 +110,7 @@ TEXTS = {
     "splash_today": "今日の問題\n\n[size=22sp]新しい問題　[b]{new}[/b] 問\n復習　[b]{review}[/b] 問[/size]",
     "splash_limit": "（今日はあと最大 {left} 問）",
     "splash_stage": "段階 {index}/{count}：{threshold} 目以上損した問題（あと {left} 問）",
+    "splash_only_punish": "咎め問題だけを出題します",
     "splash_skipped": "出題できない棋譜：{details}",
     "splash_show_skipped": "出題できない棋譜を見る",
     "skipped_title": "出題できない棋譜",

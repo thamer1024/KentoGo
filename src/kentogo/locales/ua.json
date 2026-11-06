@@ -68,6 +68,7 @@
  "splash_today": "Задачі на сьогодні\n\n[size=22sp]Нові  [b]{new}[/b]\nПовторення  [b]{review}[/b][/size]",
  "splash_limit": "(Сьогодні ще не більше {left} задач)",
  "splash_stage": "Рівень {index}/{count}: задачі з втратою від {threshold} очок (залишилось {left})",
+ "splash_only_punish": "Задаються лише задачі на покарання",
  "splash_skipped": "Непридатні партії: {details}",
  "splash_show_skipped": "Показати непридатні партії",
  "skipped_title": "Непридатні партії",
