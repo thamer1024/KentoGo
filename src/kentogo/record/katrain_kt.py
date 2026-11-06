@@ -1,9 +1,11 @@
-"""Read KaTrain's analysis data (the KT property) to know the loss of each candidate move.
+"""Read and write KaTrain's analysis data (the KT property), to know the loss of each candidate move.
 
 When KaTrain's "Save analysis in SGF" is on, each analyzed node has a KT
 property. It has three texts, each gzip-compressed and then base64-encoded:
 the ownership and the policy (packed numbers, not used here), and the main
 analysis as JSON (KaTrain 1.20.0, katrain/core/game_node.py, analysis_dumps).
+encode_kt writes the KT property with KaTrain's own code, copied unchanged into vendor.katrain_analysis,
+so KaTrain can read the games that KentoGo analyzes.
 
 The main analysis of a node is about the position after that node: "root" has
 the score of the position, and "moves" has, for each candidate next move (by
@@ -22,7 +24,10 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+import struct
 from dataclasses import dataclass
+
+from kentogo.vendor.katrain_analysis import analysis_dumps, unpack_floats
 
 # The newest version of the format that this module can read (KaTrain's ANALYSIS_FORMAT_VERSION).
 SUPPORTED_VERSION = "1.0"
@@ -55,6 +60,43 @@ def decode_kt(values: list[str], version: str = SUPPORTED_VERSION) -> dict:
     if not isinstance(analysis, dict):
         raise ValueError("broken KaTrain analysis data: not a JSON object")
     return analysis
+
+
+def encode_kt(analysis: dict) -> list[str]:
+    """Return the texts of the KT property of a node, written by KaTrain's own code (vendor.katrain_analysis).
+
+    Args:
+        analysis: The analysis of the node, as KaTrain keeps it: "moves" (each candidate move by its
+            GTP point), "root", "ownership" and "policy" (lists of numbers, or None) and "completed".
+
+    Returns:
+        Three texts: the ownership, the policy, and the rest of the analysis as JSON.
+    """
+    return analysis_dumps({"ownership": None, "policy": None, **analysis})
+
+
+def decode_kt_numbers(values: list[str], board_points: int) -> tuple[tuple[float, ...] | None, ...]:
+    """Return the ownership and the policy of a node from the texts of its KT property.
+
+    The numbers are unpacked by KaTrain's own code (vendor.katrain_analysis), as KaTrain's load_analysis does.
+
+    Args:
+        values: The texts of the KT property.
+        board_points: The number of points of the board (361 for 19x19); the policy has one more, for passing.
+
+    Returns:
+        The ownership and the policy, each None when it was not saved.
+
+    Raises:
+        ValueError: If the data is broken.
+    """
+    if len(values) < 2:
+        raise ValueError(f"KaTrain's analysis data has {len(values)} parts, not 3")
+    try:
+        ownership, policy = (gzip.decompress(base64.standard_b64decode(value)) for value in values[:2])
+        return unpack_floats(ownership, board_points), unpack_floats(policy, board_points + 1)
+    except (ValueError, OSError, EOFError, struct.error) as error:
+        raise ValueError(f"broken KaTrain analysis data: {error}") from error
 
 
 def candidate_losses(analysis: dict, color: str) -> dict[str, float]:

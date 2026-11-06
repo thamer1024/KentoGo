@@ -1,4 +1,5 @@
-"""All settings of the app together: the quiz, the engine, the reviews, the territory counting practice and the AI commentary.
+"""All settings of the app together: the quiz, the engine, the reviews, the territory counting practice, the AI commentary
+and the analysis of games.
 
 Each feature has its own settings class and does not know the others. This
 class puts them together for the settings file and the settings screens, in
@@ -7,14 +8,15 @@ the same way as app.py puts the features together.
 In settings.json, the "quiz" part holds the quiz settings and the review
 settings in one flat dict (the file has looked like this from the start), and
 the "engine" part holds the engine settings, the "seichi" part holds the
-settings of the territory counting practice, and the "commentary" part holds the
-settings of the AI commentary.
+settings of the territory counting practice, the "commentary" part holds the
+settings of the AI commentary, and the "analysis" part holds the settings of the analysis of games.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.commentary.commentary_settings import CommentarySettings
 from kentogo.katago.engine_settings import EngineSettings
 from kentogo.quiz.quiz_settings import QuizSettings
@@ -32,6 +34,7 @@ class AppSettings:
         review: The settings of reviews and of how many problems are asked.
         seichi: The settings of the territory counting practice.
         commentary: The settings of the AI commentary.
+        analysis: The settings of the analysis of games (KataGo, as KaTrain).
     """
 
     quiz: QuizSettings = field(default_factory=QuizSettings)
@@ -39,6 +42,7 @@ class AppSettings:
     review: ReviewSettings = field(default_factory=ReviewSettings)
     seichi: SeichiSettings = field(default_factory=SeichiSettings)
     commentary: CommentarySettings = field(default_factory=CommentarySettings)
+    analysis: AnalysisSettings = field(default_factory=AnalysisSettings)
 
     def sections(self) -> dict[str, dict]:
         """Return the settings as the parts of settings.json: {"quiz": {...}, "engine": {...}, ...}."""
@@ -47,6 +51,7 @@ class AppSettings:
             "engine": self.engine.to_dict(),
             "seichi": self.seichi.to_dict(),
             "commentary": self.commentary.to_dict(),
+            "analysis": self.analysis.to_dict(),
         }
 
     @classmethod
@@ -63,4 +68,5 @@ class AppSettings:
             ReviewSettings.from_dict(quiz),
             SeichiSettings.from_dict(sections.get("seichi", {})),
             CommentarySettings.from_dict(sections.get("commentary", {})),
+            AnalysisSettings.from_dict(sections.get("analysis", {})),
         )

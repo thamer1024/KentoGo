@@ -6,7 +6,14 @@ import json
 
 import pytest
 
-from kentogo.record.katrain_kt import KtEvaluation, candidate_losses, decode_kt, evaluate_move
+from kentogo.record.katrain_kt import (
+    KtEvaluation,
+    candidate_losses,
+    decode_kt,
+    decode_kt_numbers,
+    encode_kt,
+    evaluate_move,
+)
 
 
 def encode(analysis: dict) -> list[str]:
@@ -77,3 +84,45 @@ def test_evaluate_move_without_scores_or_ranks():
     assert evaluate_move(ANALYSIS, {"root": {}}, "B") is None
     unranked = {"root": {"scoreLead": 2.0}, "moves": {"Q16": {"scoreLead": 2.0}}}
     assert evaluate_move(unranked, AFTER_BAD, "B") == KtEvaluation(7.0, None, ())
+
+
+FULL_ANALYSIS = {
+    "moves": {
+        "Q16": {
+            "move": "Q16",
+            "order": 0,
+            "scoreLead": 2.5,
+            "visits": 300,
+            "pv": ["Q16", "D4"],
+            "ownership": [0.5] * 4,
+        },
+        "D4": {"move": "D4", "order": 1, "scoreLead": -1.0, "visits": 100, "pv": ["D4"]},
+    },
+    "root": {"scoreLead": 2.0, "winrate": 0.6, "visits": 500},
+    "ownership": [1.0, -1.0, 0.5, 0.0],
+    "policy": [0.25, 0.5, 0.125, 0.0, -1.0],
+    "completed": True,
+}
+
+
+def test_encode_kt_reads_back():
+    """The main analysis, the ownership and the policy come back (the numbers are 16-bit floats)."""
+    texts = encode_kt(FULL_ANALYSIS)
+    main = decode_kt(texts)
+    assert main["root"] == FULL_ANALYSIS["root"] and main["completed"] is True
+    assert "ownership" not in main["moves"]["Q16"]
+    assert decode_kt_numbers(texts, 4) == (tuple(FULL_ANALYSIS["ownership"]), tuple(FULL_ANALYSIS["policy"]))
+    assert "ownership" in FULL_ANALYSIS["moves"]["Q16"]  # The analysis given is not changed.
+
+
+def test_encode_kt_without_ownership_or_policy():
+    """Without the ownership or the policy, their parts are empty and read back as None."""
+    texts = encode_kt({**FULL_ANALYSIS, "ownership": None, "policy": None})
+    assert decode_kt_numbers(texts, 4) == (None, None)
+
+
+def test_decode_kt_numbers_of_broken_data():
+    with pytest.raises(ValueError):
+        decode_kt_numbers(encode_kt(FULL_ANALYSIS), 9)  # Not the size of the board.
+    with pytest.raises(ValueError):
+        decode_kt_numbers(["AAAA"], 4)

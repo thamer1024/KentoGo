@@ -1,8 +1,8 @@
 """The settings file of KentoGo (~/.kentogo/settings.json): where it is, its defaults, reading and writing it.
 
 All settings of the app are read and written together (see app_settings.AppSettings). The
-first time, the file is made with the default values, and the engine settings are copied
-from KaTrain's config.json. This module does not use the screens, so the command line
+first time, the file is made with the default values, and the engine settings and the settings
+of the analysis of games are copied from KaTrain's config.json. This module does not use the screens, so the command line
 tools can read the same settings (see commentary_cli).
 """
 
@@ -10,19 +10,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.app_settings import AppSettings
 from kentogo.katago.engine_settings import EngineSettings
-from kentogo.katago.locate import DEFAULT_KATRAIN_CONFIG, KataGoNotFoundError, read_engine_config
+from kentogo.katago.locate import DEFAULT_KATRAIN_CONFIG, KataGoNotFoundError, read_engine_config, read_katrain_config
 from kentogo.settings import SettingsStore
 
 # Where the settings are kept (the same style as KaTrain's ~/.katrain).
 SETTINGS_PATH = Path("~/.kentogo/settings.json")
 
+# The parts of the settings file that hold settings (other parts, such as the history, are kept as they are).
+SECTIONS = ("quiz", "engine", "seichi", "commentary", "analysis")
+
 
 def default_settings(katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> dict[str, dict]:
     """Return the default values of all sections of the settings file.
 
-    The engine settings are copied from KaTrain's config.json if it can be read.
+    The engine settings and the settings of the analysis are copied from KaTrain's config.json
+    if it can be read.
 
     Args:
         katrain_config: Path of KaTrain's config.json.
@@ -31,7 +36,11 @@ def default_settings(katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> dict[str,
         engine = EngineSettings.from_katrain(read_engine_config(katrain_config), str(katrain_config))
     except (KataGoNotFoundError, ValueError):
         engine = EngineSettings()
-    return AppSettings(engine=engine).sections()
+    try:
+        analysis = AnalysisSettings.from_katrain(read_katrain_config(katrain_config))
+    except (KataGoNotFoundError, ValueError):
+        analysis = AnalysisSettings()
+    return AppSettings(engine=engine, analysis=analysis).sections()
 
 
 def load_settings(path: Path, katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> AppSettings:
@@ -52,7 +61,7 @@ def load_settings(path: Path, katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> 
     store.load()
     if not store.path.exists():
         store.save()
-    return AppSettings.from_sections({name: store.section(name) for name in ("quiz", "engine", "seichi", "commentary")})
+    return AppSettings.from_sections({name: store.section(name) for name in SECTIONS})
 
 
 def save_settings(path: Path, settings: AppSettings) -> None:

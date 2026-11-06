@@ -15,11 +15,15 @@ Each part is under its own license, which is given here.
     (from `katrain/gui/widgets/material/checkbox.py`).
   - Colors and board layout values in `src/kentogo/gui/theme.py` and
     `src/kentogo/gui/board_geometry.py` (from `katrain/gui/theme.py` and `katrain/gui/badukpan.py`).
-  - Texts in `src/kentogo/quiz/katrain_texts.py`, made from KaTrain's translation files
+  - Texts in `src/kentogo/record/katrain_texts.py`, made from KaTrain's translation files
     by `tools/gen_katrain_texts.py`, and the labels of the settings screens that KaTrain
     also has (such as "KataGo設定" and "設定を更新"), in `src/kentogo/gui/texts.py` (Japanese)
     and in each language file in `src/kentogo/locales`, taken from KaTrain's translation
     files of that language. The translators are listed in KaTrain's `CONTRIBUTIONS.md`.
+  - Code copied unchanged, letter for letter, into `src/kentogo/vendor/katrain_analysis.py`:
+    the functions `pack_floats` and `unpack_floats` (from `katrain/core/utils.py`) and
+    `analysis_dumps` (from `katrain/core/game_node.py`). KentoGo uses them to write and read
+    KaTrain's analysis data (the KT property of SGF files) in exactly KaTrain's format.
 
 ```
 Copyright 2020 Sander Land and/or other authors of the content in this repository.

@@ -69,6 +69,16 @@ def test_load_settings_makes_the_file(tmp_path):
     assert saved["engine"]["model"] == "/m.bin.gz"
 
 
+def test_load_settings_copies_the_analysis_settings_from_katrain(tmp_path):
+    """The settings of the analysis of games are copied from KaTrain's trainer and general settings."""
+    katrain_config = tmp_path / "config.json"
+    trainer = {"eval_thresholds": [10, 5, 2, 1, 0], "save_feedback": [True, True, True, False, False]}
+    values = {"engine": {"max_time": 20.0}, "trainer": trainer, "general": {"lang": "jp"}}
+    katrain_config.write_text(json.dumps(values), encoding="utf-8")
+    analysis = load_settings(tmp_path / "settings.json", katrain_config).analysis
+    assert (analysis.max_time, analysis.eval_thresholds, analysis.language) == (20.0, (10.0, 5.0, 2.0, 1.0, 0.0), "jp")
+
+
 def test_load_settings_without_katrain(tmp_path):
     """Without KaTrain's config.json, the engine settings get their default values."""
     assert load_settings(tmp_path / "settings.json", tmp_path / "missing.json").engine == EngineSettings()

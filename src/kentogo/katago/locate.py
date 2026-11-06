@@ -77,6 +77,28 @@ def fixed_settings(command: EngineCommand, settings: dict) -> EngineCommand:
     return EngineCommand(tuple(arguments), command.shell, command.max_visits, settings_in_command=True)
 
 
+def read_katrain_config(path: str | Path = DEFAULT_KATRAIN_CONFIG) -> dict:
+    """Read all of KaTrain's config.json.
+
+    Args:
+        path: Path of KaTrain's config.json.
+
+    Returns:
+        The settings, as a dict of parts ("engine", "trainer", "general", ...).
+
+    Raises:
+        KataGoNotFoundError: If the file cannot be read or is not a JSON object.
+    """
+    path = Path(path).expanduser()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise KataGoNotFoundError(f"cannot read KaTrain's settings {path}: {error}") from error
+    if not isinstance(data, dict):
+        raise KataGoNotFoundError(f"KaTrain's settings {path} are not a JSON object")
+    return data
+
+
 def read_engine_config(path: str | Path = DEFAULT_KATRAIN_CONFIG) -> dict:
     """Read the "engine" part of KaTrain's config.json.
 
@@ -90,11 +112,7 @@ def read_engine_config(path: str | Path = DEFAULT_KATRAIN_CONFIG) -> dict:
         KataGoNotFoundError: If the file cannot be read or has no engine settings.
     """
     path = Path(path).expanduser()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise KataGoNotFoundError(f"cannot read KaTrain's settings {path}: {error}") from error
-    engine = data.get("engine") if isinstance(data, dict) else None
+    engine = read_katrain_config(path).get("engine")
     if not isinstance(engine, dict):
         raise KataGoNotFoundError(f"KaTrain's settings {path} have no engine part")
     return engine

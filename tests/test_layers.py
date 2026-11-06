@@ -4,7 +4,7 @@ The parts are kept apart so that each can be changed (and reviewed) on its own:
 
 - The shared layers (common, record, mistakes, katago, repetition) are used by the practices.
   They never use a practice or a screen.
-- The practices (quiz, review, seichi, commentary, viewer) never use each other or a screen.
+- The practices (quiz, review, seichi, commentary, viewer, analysis) never use each other or a screen.
   The modules at the top of the package (app, today, answers, engines, ...) connect them.
 - Only the screens (gui) and the app use Kivy, and no screen uses the app.
 - Only the app's screen (gui.kentogo_app) opens the other screens.
@@ -21,7 +21,7 @@ SOURCE = Path(__file__).parents[1] / "src" / "kentogo"
 ALLOWED = {
     "common": {"vendor"},
     "vendor": set(),
-    "record": {"common"},
+    "record": {"common", "vendor"},
     "mistakes": {"common", "record"},
     "katago": {"common"},
     "repetition": set(),
@@ -30,6 +30,7 @@ ALLOWED = {
     "seichi": {"common", "repetition", "vendor"},
     "commentary": {"common", "record", "mistakes"},
     "viewer": {"common", "record", "mistakes", "katago"},
+    "analysis": {"common", "record", "katago"},
 }
 LOGIC = set(ALLOWED)
 
