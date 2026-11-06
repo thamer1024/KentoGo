@@ -57,6 +57,21 @@ def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
     }
 
 
+def query_after(node: GoNode, settings: QuerySettings, moves: list[tuple[str, str]]) -> dict | None:
+    """Return the query of a node with more moves played after it (such as a pass, or the best move).
+
+    Args:
+        node: The node.
+        settings: How it is analyzed.
+        moves: The moves after the node: (player, GTP point or "pass").
+    """
+    query = node_query(node, settings)
+    if query is None:
+        return None
+    played = [*query["moves"], *[[player, point] for player, point in moves]]
+    return {**query, "moves": played, "analyzeTurns": [len(played)]}
+
+
 def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
     """Return KaTrain's query for a node, or None when KaTrain does not analyze it.
 

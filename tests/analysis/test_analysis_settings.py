@@ -57,3 +57,11 @@ def test_through_the_settings_file_and_back():
 def test_wrong_values(values):
     with pytest.raises(ValueError):
         AnalysisSettings.from_dict(values)
+
+
+def test_deep_visits_are_a_number_of_their_own():
+    """No number of visits is fixed in the code: 0 means the engine's own visits."""
+    assert AnalysisSettings().deep_visits == 0
+    assert AnalysisSettings.from_dict({"deep_visits": 4800}).deep_visits == 4800
+    with pytest.raises(ValueError):
+        AnalysisSettings.from_dict({"deep_visits": -1})

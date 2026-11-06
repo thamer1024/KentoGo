@@ -59,6 +59,8 @@ class GameAnalysis:
         deep_nodes: The nodes whose moves were read deeply and can become problems (see analysis.analyze);
             KentoGo's own data (KGD) is written for them.
         deep_visits: The visits of the deep reading.
+        readings: KentoGo's own readings of the deep nodes, by id(node) and then by name
+            (see analysis.kentogo_reading).
     """
 
     root: GoNode
@@ -68,6 +70,7 @@ class GameAnalysis:
     loaded: set[int] = field(default_factory=set)
     deep_nodes: list[GoNode] = field(default_factory=list)
     deep_visits: int = 0
+    readings: dict[int, dict[str, dict]] = field(default_factory=dict)
 
     @property
     def failed(self) -> int:

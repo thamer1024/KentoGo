@@ -162,8 +162,10 @@ def test_deep_targets_come_from_the_quiz_settings():
     settings = AppSettings(quiz=QuizSettings(extract=extract), engine=EngineSettings(max_visits=500))
     root = GoGame.parse_sgf("(;SZ[9]PB[hama]PW[AI];B[ee])")
     targets = analysis_run.deep_targets(settings, root, Path("game.sgf"))
-    assert (targets.losses, targets.visits) == ({"B": 5.0, "W": 15.0}, 2000)  # The last stage; 4 times 500.
+    assert (targets.losses, targets.visits) == ({"B": 5.0, "W": 15.0}, 500)  # The last stage; the engine's visits.
     unknown = GoGame.parse_sgf("(;SZ[9]PB[someone]PW[other];B[ee])")
     deep = AppSettings(quiz=QuizSettings(extract=extract), analysis=AnalysisSettings(deep_visits=3000))
-    assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets({"B": 5.0, "W": 5.0}, 3000)
+    assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets(
+        {"B": 5.0, "W": 5.0}, 3000
+    )  # 6 times 500.
     assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)

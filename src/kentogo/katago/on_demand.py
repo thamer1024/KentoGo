@@ -23,8 +23,6 @@ from kentogo.katago.process import KataGoProcess
 
 Callback = Callable[[dict], None]
 
-READY_TIMEOUT = 600.0  # Seconds to wait for the main KataGo (its first start may tune itself for long).
-
 
 class GetsReady(Protocol):
     """A KataGo that can be waited for until it is ready (KataGoProcess or OnDemandEngine)."""
@@ -124,7 +122,7 @@ class OnDemandEngine:
         return self._process
 
 
-def start_after_ready(main: GetsReady, compare: OnDemandEngine, timeout: float = READY_TIMEOUT) -> threading.Thread:
+def start_after_ready(main: GetsReady, compare: OnDemandEngine, timeout: float) -> threading.Thread:
     """Start the comparison model's KataGo in the background when the main KataGo is ready.
 
     When the main KataGo does not get ready (it could not start, or it stopped), the comparison
@@ -133,7 +131,7 @@ def start_after_ready(main: GetsReady, compare: OnDemandEngine, timeout: float =
     Args:
         main: The main KataGo, already started.
         compare: The comparison model's KataGo.
-        timeout: The most seconds to wait for the main KataGo.
+        timeout: The most seconds to wait for the main KataGo (the engine setting ready_timeout).
 
     Returns:
         The background thread (tests wait for it).

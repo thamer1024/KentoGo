@@ -245,7 +245,11 @@ def open_engines(engine_settings: EngineSettings, turned_off: bool) -> Engines:
     notices: list[Notice] = []
     commands = engine_commands(engine_settings, turned_off)
     engine, compare, evaluation, problem = start_engines(engine_settings, turned_off, notices)
-    compare_start = start_after_ready(engine, compare) if engine is not None and compare is not None else None
+    compare_start = (
+        start_after_ready(engine, compare, engine_settings.ready_timeout)
+        if engine is not None and compare is not None
+        else None
+    )
     line = QueryLine()
     return Engines(
         OneAtATime(engine, line) if engine is not None else None,

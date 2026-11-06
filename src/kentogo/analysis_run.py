@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pysgf import GoNode
 
-from kentogo.analysis.analysis_settings import DEEP_FACTOR, AnalysisSettings
+from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.analyze import DeepTargets, analyze_game
 from kentogo.analysis.game_analysis import Engine, EngineValues, GameAnalysis
 from kentogo.analysis.saving import back_up, backup_folder, write_game
@@ -34,8 +34,6 @@ from kentogo.mistakes.selection import Selection
 from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY
 from kentogo.record.players import detect_my_color
 from kentogo.version import app_version
-
-READY_TIMEOUT = 600  # Seconds to wait for KataGo to load its model.
 
 # How the analysis of one game ended.
 WRITTEN = "written"  # Analyzed and written (some nodes may have failed: see the detail).
@@ -182,7 +180,7 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
         file_name=str(path),
     )
     losses = {"B": mine, "W": mine} if color is None else {color: mine, opponent(color): extract.punish_opponent_loss}
-    visits = settings.analysis.deep_visits or DEEP_FACTOR * settings.engine.max_visits
+    visits = settings.analysis.deep_visits or settings.engine.max_visits
     return DeepTargets(losses, visits, Selection.from_quiz(extract).is_decided)
 
 
@@ -288,7 +286,7 @@ def run_folder_analysis(
     if not games:
         return AnalysisSummary(problem="no games: set the games folder")
     engine, own, problem = analysis_engine(settings.engine, running)
-    if engine is None or not engine.wait_until_ready(READY_TIMEOUT):
+    if engine is None or not engine.wait_until_ready(settings.engine.ready_timeout):
         if engine is not None and own:
             engine.close()
         return AnalysisSummary(problem=problem or "KataGo did not get ready")

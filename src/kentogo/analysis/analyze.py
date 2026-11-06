@@ -16,6 +16,7 @@ The steps (see analyze_game):
    a position where the game was already decided, by the quiz's rule) are read deeply: the positions before and after them with the deep visits, and the played move again.
    The moves that still lose that much are the game's deep_nodes; KentoGo's own data (KGD) is written
    for them only, so the small changes of the other moves do not make the file bigger.
+5. KentoGo's own readings of the deep nodes, with the same visits (see analysis.kentogo_reading).
 
 A node that KataGo could not analyze is asked again (retries times). The answer for a position is
 kept in that position only. KaTrain's own way (two separate analyses for a loss, the time limit,
@@ -44,6 +45,7 @@ from kentogo.analysis.game_analysis import (
     first_nodes,
     load_saved_analyses,
 )
+from kentogo.analysis.kentogo_reading import read_tenuki
 from kentogo.analysis.played_moves import played_move_loss, read_played_moves
 from kentogo.analysis.query import QuerySettings
 
@@ -128,6 +130,7 @@ def read_deeply(
     read_played_moves(engine, game, values, progress, retries, nodes)
     game.deep_nodes = deep_candidates(game, targets)
     game.deep_visits = targets.visits
+    read_tenuki(engine, game, targets.visits, values.wide_root_noise, REANALYSIS_PRIORITY, progress, retries)
 
 
 def deep_candidates(game: GameAnalysis, targets: DeepTargets) -> list[GoNode]:

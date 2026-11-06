@@ -19,6 +19,7 @@ VALUES = {
     "compare_max_visits": 200,
     "judge_model": "compare",
     "estimate_visits": 50,
+    "ready_timeout": 1200.0,
 }
 
 
@@ -44,6 +45,8 @@ def test_from_and_to_dict():
         {"max_visits": 0},
         {"compare_max_visits": 0},
         {"estimate_visits": 0},
+        {"ready_timeout": 0},
+        {"ready_timeout": "long"},
     ],
 )
 def test_wrong_values(values):

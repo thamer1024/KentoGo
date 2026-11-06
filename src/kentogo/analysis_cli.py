@@ -30,7 +30,6 @@ from kentogo.analysis.analyze import deep_candidates
 from kentogo.analysis.game_analysis import GameAnalysis, load_saved_analyses
 from kentogo.analysis_run import (
     FAILED,
-    READY_TIMEOUT,
     SKIPPED,
     WRITTEN,
     AnalysisListener,
@@ -46,7 +45,13 @@ from kentogo.common.sgf import load_game
 from kentogo.engines import start_engine
 from kentogo.settings_file import SETTINGS_PATH, load_settings
 
-STEP_NAMES = {"first": "analysis", "again": "re-analysis", "played": "played moves", "deep": "deep reading"}
+STEP_NAMES = {
+    "first": "analysis",
+    "again": "re-analysis",
+    "played": "played moves",
+    "deep": "deep reading",
+    "tenuki": "tenuki readings",
+}
 # A rough size of KentoGo's own data (KGD) of one move read deeply, when all its parts are written
 # (the areas and the sequences of the played move and the best move, and more); to be measured.
 ROUGH_KGD_BYTES = 6000
@@ -181,7 +186,7 @@ def analyze_all(games: list[Path], settings: AppSettings, redo_kentogo: bool = F
     """Start KataGo, analyze the games one by one, and stop KataGo (see analysis_run.analyze_games for redo_kentogo)."""
     print("Starting KataGo...", flush=True)
     engine, _, problem = start_engine(settings.engine)
-    if engine is None or not engine.wait_until_ready(READY_TIMEOUT):
+    if engine is None or not engine.wait_until_ready(settings.engine.ready_timeout):
         print(f"KataGo could not be started: {problem or (engine.error_output() if engine else '')}", file=sys.stderr)
         return 1
     listener = AnalysisListener(show_game, show_progress, show_outcome)

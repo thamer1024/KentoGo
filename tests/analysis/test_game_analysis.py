@@ -15,6 +15,14 @@ from kentogo.record.katrain_kt import encode_kt
 # Black's move 3 has two branches: A5 loses 5.5 points, D2 is fine.
 GAME = "(;SZ[5]KM[0.5]RU[Chinese];B[cc];W[bb](;B[aa])(;B[db]))"
 SCORES = {(): 0.0, ("C3",): 1.0, ("C3", "B4"): 0.5, ("C3", "B4", "A5"): -5.0, ("C3", "B4", "D4"): 0.6}
+# KentoGo's readings around A5 (see analysis.kentogo_reading): passing costs black 3.5 points, white can
+# leave A5 (passing after it costs nothing), but not the best move E5 (passing after it costs 3.5 points).
+READINGS = {
+    ("C3", "B4", "pass"): -3.0,
+    ("C3", "B4", "E5"): 0.5,
+    ("C3", "B4", "A5", "pass"): -5.0,
+    ("C3", "B4", "E5", "pass"): 4.0,
+}
 VALUES = EngineValues(max_visits=500, wide_root_noise=0.04)
 
 
@@ -37,7 +45,7 @@ class FakeEngine:
             point = request["allowMoves"][0]["moves"][0]
             score = SCORES[(*moves, point)] - 1.0
         else:
-            point, score = "E5", SCORES[moves]
+            point, score = "E5", {**SCORES, **READINGS}[moves]
         candidate = {"move": point, "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": [point, "A1"]}
         callback({"id": "x", "isDuringSearch": True, "rootInfo": {}, "moveInfos": []})  # Not used.
         callback(
@@ -46,7 +54,7 @@ class FakeEngine:
                 "rootInfo": {"scoreLead": score, "winrate": 0.5, "visits": request["maxVisits"]},
                 "moveInfos": [candidate],
                 "policy": [0.04] * 26,
-                "ownership": [0.0] * 25,
+                **({"ownership": [0.0] * 25} if request.get("includeOwnership", True) else {}),
             }
         )
         return "x"
@@ -58,6 +66,10 @@ def root() -> object:
 
 def by_moves(engine: FakeEngine) -> dict[tuple, dict]:
     return {tuple(point for _, point in query["moves"]): query for query in analyses(engine)}
+
+
+def by_moves_of(query: dict) -> tuple:
+    return tuple(point for _, point in query["moves"])
 
 
 def analyses(engine: FakeEngine) -> list[dict]:
@@ -238,7 +250,8 @@ def test_moves_that_can_become_problems_are_read_deeply():
     steps = []
     game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), targets)
     deep = [query for query in engine.queries if query["maxVisits"] == 2000]
-    assert sorted(len(query["moves"]) for query in deep if "allowMoves" not in query) == [2, 3]
+    positions = [query for query in deep if "allowMoves" not in query and by_moves_of(query) in SCORES]
+    assert sorted(len(query["moves"]) for query in positions) == [2, 3]  # Not KentoGo's readings.
     assert [query["allowMoves"][0]["moves"] for query in deep if "allowMoves" in query] == [["A5"]]
     assert [node.depth for node in game.deep_nodes] == [3] and game.deep_visits == 2000  # White gained.
     assert ("deep", 2, 2) in steps
@@ -281,3 +294,21 @@ def test_a_move_in_a_decided_position_is_not_read_deeply():
             FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, open_game
         ).deep_nodes
     ] == [3]
+
+
+def test_kentogo_readings_of_a_deep_move():
+    """The tenuki readings of A5 are kept with KataGo's values, from black's side, with the deep visits."""
+    engine = FakeEngine()
+    steps = []
+    game = analyze_game(
+        engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), DeepTargets({"B": 5}, 2000)
+    )
+    readings = game.readings[id(game.nodes[3])]
+    assert set(readings) == {"pass_before", "pass_after_played", "best_after", "pass_after_best"}
+    assert readings["pass_before"]["scoreLead"] == -3.0 and readings["pass_before"]["next"] == "E5"
+    assert readings["pass_after_played"]["scoreLead"] == -5.0  # White can leave A5: it threatens nothing.
+    assert readings["pass_after_best"]["scoreLead"] == 4.0  # White cannot leave E5.
+    assert len(readings["best_after"]["ownership"]) == 25 and "ownership" not in readings["pass_before"]
+    tenuki = [query for query in engine.queries if by_moves_of(query) in READINGS]
+    assert len(tenuki) == 4 and {query["maxVisits"] for query in tenuki} == {2000}
+    assert ("tenuki", 1, 4) in steps and steps[-1] == ("tenuki", 4, 4)  # One count for all the readings.

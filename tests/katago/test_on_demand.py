@@ -108,7 +108,7 @@ def test_no_start_after_close():
 def test_the_comparison_model_starts_when_the_main_one_is_ready():
     """The comparison model's KataGo is started in the background when the main KataGo is ready."""
     compare = OnDemandEngine(COMMAND, FakeProcess)
-    start_after_ready(Main(ready=True), compare).join(5)
+    start_after_ready(Main(ready=True), compare, 5).join(5)
     assert compare.is_running
     compare.close()
 
@@ -116,5 +116,5 @@ def test_the_comparison_model_starts_when_the_main_one_is_ready():
 def test_the_comparison_model_waits_for_its_query_when_the_main_one_is_not_ready():
     """When the main KataGo does not get ready, the comparison model is started only by its first query."""
     compare = OnDemandEngine(COMMAND, FakeProcess)
-    start_after_ready(Main(ready=False), compare).join(5)
+    start_after_ready(Main(ready=False), compare, 5).join(5)
     assert not compare.is_running and FakeProcess.made == []

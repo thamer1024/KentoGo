@@ -8,7 +8,7 @@ from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.analyze import DeepTargets, analyze_game
 from kentogo.analysis.game_analysis import EngineValues
 from kentogo.analysis.saving import back_up, backup_folder, write_game
-from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
+from kentogo.analysis.sgf_writer import WriteSettings, kept_analysis, write_analysis
 from kentogo.mistakes.extract import ExtractSettings, extract_problems
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR, read_comment
 from kentogo.record.katrain_kt import decode_kt
@@ -28,7 +28,7 @@ class FakeEngine:
     def query(self, request, callback):
         allowed = request.get("allowMoves")
         point = allowed[0]["moves"][0] if allowed else "E5"
-        score = SCORES[len(request["moves"]) + (1 if allowed else 0)]
+        score = SCORES.get(len(request["moves"]) + (1 if allowed else 0), SCORES[3])  # Longer: KentoGo's readings.
         best = {"move": point, "order": 0, "visits": 9, "scoreLead": score, "winrate": 0.5, "pv": [point]}
         root = {"scoreLead": score, "winrate": 0.4 if score < 0 else 0.6, "visits": 9}
         callback({"id": "q", "rootInfo": root, "moveInfos": [best], "policy": [0.04] * 26, "ownership": [0.1] * 25})
@@ -127,3 +127,62 @@ def test_kentogo_data_only_for_the_moves_read_deeply():
     assert (data["kind"], data["visits"], data["base"]) == ("move", 400, {"scoreLead": 3.0, "visits": 9})
     assert (data["played"]["move"], data["played"]["scoreLead"]) == ("A5", -5.0)
     assert (data["best"]["move"], data["best"]["scoreLead"]) == ("E5", 3.0)
+
+
+def test_kentogo_data_has_the_readings():
+    root = GoGame.parse_sgf(GAME)
+    settings = AnalysisSettings()
+    game = analyze_game(
+        FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, DeepTargets({"B": 5.0}, 400)
+    )
+    write_analysis(game, WriteSettings(settings, "1.2.3"))
+    data = read_kgd(GoGame.parse_sgf(root.sgf()).nodes_in_tree[3])
+    assert data["played_after"]["scoreLead"] == -5.0
+    assert {"pass_before", "pass_after_played", "best_after", "pass_after_best"} <= set(data)
+    assert len(data["best_after"]["ownership"].values) == 25  # Kept as a grid.
+
+
+def test_positions_that_cannot_become_problems_keep_only_what_is_used():
+    """KataGo's other values, the candidates read little, and the late candidates' sequences are left out."""
+    many = {"move": "C3", "order": 0, "visits": 900, "scoreLead": 1.0, "winrate": 0.6, "prior": 0.3, "pv": ["C3", "D4"]}
+    many |= {"utility": 0.1, "scoreSelfplay": 1.2, "humanPrior": 0.2, "lcb": 0.5}
+    analysis = {
+        "root": {"visits": 1000, "scoreLead": 1.0, "humanWinrate": 0.55},
+        "moves": {
+            "C3": many,
+            "D4": {"move": "D4", "order": 7, "visits": 50, "scoreLead": 0.0, "pv": ["D4"]},
+            "E5": {"move": "E5", "order": 8, "visits": 5, "scoreLead": -1.0, "pv": ["E5"]},  # Below 1 %.
+            "A1": {"move": "A1", "order": 999, "visits": 1, "scoreLead": -9.0, "pv": ["A1", "B2"]},  # Played.
+        },
+        "ownership": [0.5] * 25,
+        "policy": [0.04] * 26,
+        "completed": True,
+    }
+    kept = kept_analysis(analysis, {"A1"})
+    assert set(kept["moves"]) == {"C3", "D4", "A1"}
+    assert set(kept["moves"]["C3"]) == {"move", "order", "visits", "scoreLead", "winrate", "prior", "pv"}
+    assert "pv" not in kept["moves"]["D4"] and kept["moves"]["A1"]["pv"] == ["A1", "B2"]
+    assert kept["root"] == analysis["root"] and kept["ownership"] == analysis["ownership"]  # KaTrain shows them.
+    assert "utility" in analysis["moves"]["C3"]  # The analysis itself is not changed.
+
+
+def test_problem_positions_keep_everything():
+    """The move read deeply and the position before it keep all of KataGo's values; the others only the used ones."""
+
+    class WithMore(FakeEngine):
+        def query(self, request, callback):
+            return super().query(request, lambda answer: callback(_with_utility(answer)))
+
+    root = GoGame.parse_sgf(GAME)
+    settings = AnalysisSettings()
+    game = analyze_game(
+        WithMore(), root, settings, EngineValues(100, 0.0), lambda *_: None, DeepTargets({"B": 5.0}, 400)
+    )
+    write_analysis(game, WriteSettings(settings, "1.2.3"))
+    nodes = GoGame.parse_sgf(root.sgf()).nodes_in_tree
+    has_utility = ["utility" in next(iter(decode_kt(node.get_list_property("KT"))["moves"].values())) for node in nodes]
+    assert has_utility == [False, False, True, True]  # Move 3 (A5) and the position before it.
+
+
+def _with_utility(answer):
+    return {**answer, "moveInfos": [{**info, "utility": 0.1} for info in answer.get("moveInfos", [])]}

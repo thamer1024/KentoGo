@@ -106,6 +106,7 @@ FIELDS = (
     FieldSpec("use_compare", "engine", KIND_BOOL, GROUP_ENGINE),
     FieldSpec("compare_max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("estimate_visits", "engine", KIND_INT, GROUP_ENGINE),
+    FieldSpec("ready_timeout", "engine", KIND_FLOAT, GROUP_ENGINE),
     FieldSpec("judge_model", "engine", KIND_CHOICE, GROUP_ENGINE, JUDGE_MODELS),
     FieldSpec("small_problem_threshold", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("pass_ratio", "quiz", KIND_FLOAT, GROUP_JUDGE),
