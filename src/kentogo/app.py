@@ -386,7 +386,9 @@ def _settings_opener(
             ),
             analyze=FolderAnalysis(
                 plan_analysis,
-                lambda saved, listener, stop: run_folder_analysis(saved, _running_engines(), listener, stop),
+                lambda saved, listener, stop, redo: run_folder_analysis(
+                    saved, _running_engines(), listener, stop, redo
+                ),
             ),
         ).open()
 

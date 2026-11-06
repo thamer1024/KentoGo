@@ -10,6 +10,8 @@ It is for checking the analysis before its screens are made. The settings come f
 
 Each game file is copied to the backup folder before it is written. A game whose nodes all
 have analysis data is skipped, unless it is analyzed again (--reanalyze), as in KaTrain.
+In KentoGo's mode, the games analyzed in KaTrain's way are counted first, and the user is asked
+(y/n) whether they are analyzed again for KentoGo (see analysis_run.needs_kentogo_analysis).
 The progress is shown on the console.
 """
 
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -31,6 +34,7 @@ from kentogo.analysis_run import (
     find_games,
     games_folder,
     is_analyzed,
+    needs_kentogo_analysis,
 )
 from kentogo.app_settings import AppSettings
 from kentogo.common.sgf import load_game
@@ -38,6 +42,9 @@ from kentogo.engines import start_engine
 from kentogo.settings_file import SETTINGS_PATH, load_settings
 
 STEP_NAMES = {"first": "analysis", "again": "re-analysis", "played": "played moves"}
+KENTOGO_QUESTION = (
+    "KataGoで解析済みです（{count} 局。KentoGoの方法の解析ではありません）。KentoGo用にもう一度解析しますか？ y/n: "
+)
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -78,7 +85,32 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if arguments.dry_run:
         return show_plan(games, analysis)
-    return analyze_all(games, settings)
+    waiting = sum(_needs_kentogo_analysis(path, analysis) for path in games)
+    return analyze_all(games, settings, bool(waiting) and ask_kentogo_redo(waiting))
+
+
+def _needs_kentogo_analysis(path: Path, analysis: AnalysisSettings) -> bool:
+    try:
+        return needs_kentogo_analysis(load_game(path), analysis)
+    except Exception:  # A broken file is told when it is analyzed.
+        return False
+
+
+def ask_kentogo_redo(count: int, ask: Callable[[str], str] | None = None) -> bool:
+    """Ask whether the games analyzed in KaTrain's way are analyzed again for KentoGo (y or n).
+
+    The question is asked again until the answer is y or n; without an answer (no console), it is n.
+    ask reads the answer (by default, input on the console).
+    """
+    ask = ask or input
+    while True:
+        try:
+            answer = ask(KENTOGO_QUESTION.format(count=count)).strip().lower()
+        except EOFError:
+            print()
+            return False
+        if answer in ("y", "yes", "n", "no"):
+            return answer.startswith("y")
 
 
 def settings_with_options(settings: AnalysisSettings, arguments: argparse.Namespace) -> AnalysisSettings:
@@ -114,13 +146,16 @@ def show_plan(games: list[Path], analysis: AnalysisSettings) -> int:
             continue
         nodes = root.nodes_in_tree
         saved = sum(1 for node in nodes if node.get_list_property("KT", []))
-        action = "skip (analyzed)" if is_analyzed(root) and not analysis.reanalyze else "analyze"
+        if needs_kentogo_analysis(root, analysis):
+            action = "ask (analyzed in KaTrain's way: analyze again for KentoGo?)"
+        else:
+            action = "skip (analyzed)" if is_analyzed(root) and not analysis.reanalyze else "analyze"
         print(f"[{number}/{len(games)}] {path.name}: {len(nodes)} nodes, {saved} with analysis data -> {action}")
     return 0
 
 
-def analyze_all(games: list[Path], settings: AppSettings) -> int:
-    """Start KataGo, analyze the games one by one, and stop KataGo."""
+def analyze_all(games: list[Path], settings: AppSettings, redo_kentogo: bool = False) -> int:
+    """Start KataGo, analyze the games one by one, and stop KataGo (see analysis_run.analyze_games for redo_kentogo)."""
     print("Starting KataGo...", flush=True)
     engine, _, problem = start_engine(settings.engine)
     if engine is None or not engine.wait_until_ready(READY_TIMEOUT):
@@ -129,7 +164,7 @@ def analyze_all(games: list[Path], settings: AppSettings) -> int:
     print(f"Mode: {'KaTrain compatible' if settings.analysis.katrain_compatible else 'KentoGo'}", flush=True)
     listener = AnalysisListener(show_game, show_progress, show_outcome)
     try:
-        summary = analyze_games(engine, games, settings, listener)
+        summary = analyze_games(engine, games, settings, listener, redo_kentogo=redo_kentogo)
     finally:
         engine.close()
     good = summary.outcomes[WRITTEN] + summary.outcomes[SKIPPED] - summary.incomplete

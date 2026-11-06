@@ -89,3 +89,34 @@ def test_the_mode_is_chosen_by_an_option(folder, capsys):
     assert "Mode: KentoGo" in capsys.readouterr().out
     arguments = analysis_cli.parse_arguments(["--compatible"])
     assert analysis_cli.settings_with_options(AnalysisSettings(katrain_compatible=False), arguments).katrain_compatible
+
+
+def test_kentogo_mode_asks_about_games_analyzed_in_katrains_way(folder, capsys, monkeypatch):
+    """A game analyzed in KaTrain's way is analyzed again for KentoGo only when the answer is y."""
+    games, settings, _ = folder
+    analysis_cli.main(["--settings", str(settings)])  # KaTrain compatible: no KGM.
+    written = (games / "game.sgf").read_text(encoding="utf-8")
+    assert analysis_cli.main(["--settings", str(settings), "--improved", "--dry-run"]) == 0
+    assert "ask (analyzed in KaTrain's way" in capsys.readouterr().out
+    questions = []
+    monkeypatch.setattr("builtins.input", lambda question: questions.append(question) or "n")
+    assert analysis_cli.main(["--settings", str(settings), "--improved"]) == 0
+    assert (games / "game.sgf").read_text(encoding="utf-8") == written
+    assert questions == [analysis_cli.KENTOGO_QUESTION.format(count=1)]
+    monkeypatch.setattr("builtins.input", lambda question: "y")
+    assert analysis_cli.main(["--settings", str(settings), "--improved"]) == 0
+    assert "KGM[KentoGo]" in (games / "game.sgf").read_text(encoding="utf-8")
+    questions.clear()
+    monkeypatch.setattr("builtins.input", lambda question: questions.append(question) or "y")
+    analysis_cli.main(["--settings", str(settings), "--improved"])  # Analyzed in KentoGo's mode: not asked.
+    assert questions == []
+
+
+def test_the_question_waits_for_y_or_n():
+    answers = iter(["", "maybe", "Y"])
+    assert analysis_cli.ask_kentogo_redo(2, lambda question: next(answers)) is True
+
+    def no_console(question):
+        raise EOFError
+
+    assert analysis_cli.ask_kentogo_redo(2, no_console) is False

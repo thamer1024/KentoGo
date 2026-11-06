@@ -6,6 +6,7 @@ from kentogo.analysis_run import AnalysisPlan, AnalysisSummary
 from kentogo.common.types import Move, Position
 from kentogo.gui.texts import (
     TEXTS,
+    analysis_kentogo_question,
     analysis_outcome_text,
     analysis_plan_problem,
     analysis_plan_text,
@@ -418,3 +419,15 @@ def test_analysis_plan_texts(tmp_path):
     assert lines[2] == "全部で 3 局のうち、解析済みの 1 局は飛ばします。" and lines[-1] == "始めますか？"
     again = analysis_plan_text(AnalysisPlan(tmp_path, tmp_path / "b", 3, 1, reanalyze=True))
     assert f"{tmp_path} の 3 局" in again and "1 局も解析し直します" in again
+
+
+def test_analysis_plan_texts_for_kentogo(tmp_path):
+    """Games analyzed in KaTrain's way are asked about in KentoGo's mode, and told with the answer."""
+    plan = AnalysisPlan(tmp_path, tmp_path / "b", 3, 3, kentogo_redo=2)
+    assert analysis_kentogo_question(plan).startswith("KataGoで解析済みです（2 局。")
+    assert analysis_plan_problem(plan, redo_kentogo=True) == ""
+    assert "すべて解析済み" in analysis_plan_problem(plan)  # The answer was no.
+    lines = analysis_plan_text(plan, redo_kentogo=True).splitlines()
+    assert lines[0].startswith(f"{tmp_path} の 2 局をKataGoで解析")
+    assert lines[2] == "全部で 3 局のうち、解析済みの 1 局は飛ばします。"
+    assert lines[3] == "KataGoで解析済みの 2 局は、KentoGo用に打った手を読み足して書き込みます。"

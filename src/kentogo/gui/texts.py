@@ -500,6 +500,10 @@ TEXTS = {
     "analysis_no_folder": "解析する棋譜のフォルダがありません：{folder}",
     "analysis_no_games": "{folder} にSGFファイルがありません。",
     "analysis_all_analyzed": "{folder} の {games} 局はすべて解析済みです。解析し直すときは「解析し直す」をオンにしてください。",
+    "analysis_kentogo_question": "KataGoで解析済みです（{count} 局。KentoGoの方法の解析ではありません）。KentoGo用にもう一度解析しますか？\n「はい」にすると、解析済みのデータはそのまま使い、打った手をKentoGoの方法で読み足して書き込みます。",
+    "analysis_kentogo_yes": "はい（KentoGo用に解析する）",
+    "analysis_kentogo_no": "いいえ（飛ばす）",
+    "analysis_confirm_kentogo": "KataGoで解析済みの {count} 局は、KentoGo用に打った手を読み足して書き込みます。",
     "field_problem_kind": "出題する問題",
     "problem_kind_all": "すべての問題",
     "problem_kind_punish": "咎め問題だけ",
@@ -891,26 +895,40 @@ def analysis_summary_text(summary: AnalysisSummary) -> str:
     return text(key, written=counts["written"], skipped=counts["skipped"], failed=counts["failed"])
 
 
-def analysis_plan_problem(plan: AnalysisPlan) -> str:
-    """Return why a run of the analysis has nothing to do (no folder, no games, all analyzed), or ""."""
+def analysis_plan_problem(plan: AnalysisPlan, redo_kentogo: bool = False) -> str:
+    """Return why a run of the analysis has nothing to do (no folder, no games, all analyzed), or "".
+
+    Games that can be analyzed again for KentoGo (plan.kentogo_redo) are something to do until the
+    user says no to them (redo_kentogo is then False and the question has been asked).
+    """
     if plan.folder is None:
         return text("analysis_no_folder_set")
     if not plan.folder.is_dir():
         return text("analysis_no_folder", folder=plan.folder)
     if not plan.games:
         return text("analysis_no_games", folder=plan.folder)
-    if not plan.to_analyze:
+    if not plan.count(redo_kentogo):
         return text("analysis_all_analyzed", folder=plan.folder, games=plan.games)
     return ""
 
 
-def analysis_plan_text(plan: AnalysisPlan) -> str:
+def analysis_kentogo_question(plan: AnalysisPlan) -> str:
+    """Return the question whether the games analyzed in KaTrain's way are analyzed again for KentoGo."""
+    return text("analysis_kentogo_question", count=plan.kentogo_redo)
+
+
+def analysis_plan_text(plan: AnalysisPlan, redo_kentogo: bool = False) -> str:
     """Return what a run of the analysis will do, asked before it starts: the folder and the number of
-    games that are overwritten, the backup folder, and the analyzed games that are skipped or analyzed again."""
-    lines = [text("analysis_confirm", folder=plan.folder, count=plan.to_analyze, backup=plan.backup)]
-    if plan.analyzed:
-        key = "analysis_confirm_again" if plan.reanalyze else "analysis_confirm_skip"
-        lines.append(text(key, games=plan.games, analyzed=plan.analyzed))
+    games that are overwritten, the backup folder, and the analyzed games that are skipped, analyzed
+    again, or analyzed again for KentoGo (redo_kentogo: the user said yes to it)."""
+    redo = plan.kentogo_redo if redo_kentogo else 0
+    lines = [text("analysis_confirm", folder=plan.folder, count=plan.count(redo_kentogo), backup=plan.backup)]
+    if plan.reanalyze and plan.analyzed:
+        lines.append(text("analysis_confirm_again", games=plan.games, analyzed=plan.analyzed))
+    elif plan.analyzed - redo:
+        lines.append(text("analysis_confirm_skip", games=plan.games, analyzed=plan.analyzed - redo))
+    if redo:
+        lines.append(text("analysis_confirm_kentogo", count=redo))
     lines.append(text("analysis_confirm_question"))
     return "\n".join(lines)
 

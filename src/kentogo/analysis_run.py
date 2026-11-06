@@ -3,6 +3,10 @@
 The command line (analysis_cli) and the settings screen's "棋譜を解析" button both use this module.
 Each game file is copied to the backup folder before it is written. A game whose nodes all have
 analysis data is skipped, unless it is analyzed again (the setting reanalyze), as in KaTrain.
+In KentoGo's mode, a game analyzed before in KaTrain's way (by KaTrain, or in KaTrain compatible
+mode: it has no KGM[KentoGo]) is skipped too, unless the user says yes to analyzing it again for
+KentoGo (redo_kentogo): then its saved analysis is kept, and the played moves are read and written
+in KentoGo's way (see analysis.played_moves).
 What happens is told to a listener: the start of each game, the progress of its steps, and how it ended.
 A run can be stopped: it stops after the game that is being analyzed.
 """
@@ -26,6 +30,7 @@ from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.app_settings import AppSettings
 from kentogo.common.sgf import load_game
 from kentogo.engines import Engines, analysis_engine
+from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY
 from kentogo.version import app_version
 
 READY_TIMEOUT = 600  # Seconds to wait for KataGo to load its model.
@@ -80,6 +85,8 @@ class AnalysisPlan:
         games: The number of SGF files in the folder.
         analyzed: How many of them have analysis data on every node (skipped unless reanalyze).
         reanalyze: True if the analyzed games are analyzed again.
+        kentogo_redo: How many of the analyzed games could be analyzed again for KentoGo's mode
+            (see needs_kentogo_analysis); the user is asked about them.
     """
 
     folder: Path | None
@@ -87,11 +94,13 @@ class AnalysisPlan:
     games: int = 0
     analyzed: int = 0
     reanalyze: bool = False
+    kentogo_redo: int = 0
 
-    @property
-    def to_analyze(self) -> int:
-        """The number of games that the run would analyze."""
-        return self.games if self.reanalyze else self.games - self.analyzed
+    def count(self, redo_kentogo: bool = False) -> int:
+        """The number of games that the run would analyze (with the games for KentoGo if redo_kentogo)."""
+        if self.reanalyze:
+            return self.games
+        return self.games - self.analyzed + (self.kentogo_redo if redo_kentogo else 0)
 
 
 def games_folder(settings: AppSettings) -> Path | None:
@@ -116,16 +125,31 @@ def plan_analysis(settings: AppSettings) -> AnalysisPlan:
     if folder is None or not folder.is_dir():
         return AnalysisPlan(folder)
     games = find_games([folder])
-    analyzed = sum(_is_analyzed_file(path) for path in games)
+    states = [_analyzed_state(path, settings.analysis) for path in games]
     backup = backup_folder(folder, settings.analysis.backup_folder)
-    return AnalysisPlan(folder, backup, len(games), analyzed, settings.analysis.reanalyze)
+    analyzed = sum(state[0] for state in states)
+    redo = sum(state[1] for state in states)
+    return AnalysisPlan(folder, backup, len(games), analyzed, settings.analysis.reanalyze, redo)
 
 
-def _is_analyzed_file(path: Path) -> bool:
+def _analyzed_state(path: Path, analysis: AnalysisSettings) -> tuple[bool, bool]:
+    """Return (analyzed, can be analyzed again for KentoGo) of a game file."""
     try:
-        return is_analyzed(load_game(path))
+        root = load_game(path)
     except Exception:  # A broken file is counted with the games to analyze.
+        return False, False
+    return is_analyzed(root), needs_kentogo_analysis(root, analysis)
+
+
+def needs_kentogo_analysis(root: GoNode, analysis: AnalysisSettings) -> bool:
+    """True if the game is analyzed, but not in KentoGo's mode, and the settings use KentoGo's mode.
+
+    Such a game is skipped unless the user says yes to analyzing it again for KentoGo.
+    With reanalyze, every game is analyzed again anyway, so this is False.
+    """
+    if analysis.katrain_compatible or analysis.reanalyze or not is_analyzed(root):
         return False
+    return root.get_property(KENTOGO_MODE_PROPERTY, "") != KENTOGO_MODE
 
 
 def is_analyzed(root: GoNode) -> bool:
@@ -149,6 +173,7 @@ def analyze_games(
     settings: AppSettings,
     listener: AnalysisListener,
     stop: threading.Event | None = None,
+    redo_kentogo: bool = False,
 ) -> AnalysisSummary:
     """Analyze the games one by one with a KataGo that is ready, and write them.
 
@@ -158,6 +183,7 @@ def analyze_games(
         settings: All settings (the analysis and the engine's visits and noise).
         listener: Told what happens.
         stop: When it is set, the run stops after the game that is being analyzed.
+        redo_kentogo: Analyze again for KentoGo the games for which needs_kentogo_analysis is True (the user said yes).
     """
     summary = AnalysisSummary()
     write = write_settings(settings.analysis)
@@ -166,7 +192,7 @@ def analyze_games(
             summary.stopped = True
             break
         listener.game_started(number, len(games), path.name)
-        outcome, detail, failed_nodes = analyze_one(engine, path, settings, listener, write)
+        outcome, detail, failed_nodes = analyze_one(engine, path, settings, listener, write, redo_kentogo)
         summary.outcomes[outcome] += 1
         summary.failed_nodes += failed_nodes
         summary.incomplete += outcome == WRITTEN and failed_nodes > 0
@@ -175,9 +201,14 @@ def analyze_games(
 
 
 def analyze_one(
-    engine: Engine, path: Path, settings: AppSettings, listener: AnalysisListener, write: WriteSettings
+    engine: Engine,
+    path: Path,
+    settings: AppSettings,
+    listener: AnalysisListener,
+    write: WriteSettings,
+    redo_kentogo: bool = False,
 ) -> tuple[str, str, int]:
-    """Analyze one game, back it up and write it.
+    """Analyze one game, back it up and write it (see analyze_games for redo_kentogo).
 
     Returns:
         (outcome, detail, the number of nodes that KataGo could not analyze).
@@ -187,7 +218,7 @@ def analyze_one(
         root = load_game(path)
     except Exception as error:  # A broken file must not stop the others.
         return FAILED, f"cannot be read: {error}", 0
-    if is_analyzed(root) and not analysis.reanalyze:
+    if is_analyzed(root) and not analysis.reanalyze and not (redo_kentogo and needs_kentogo_analysis(root, analysis)):
         return SKIPPED, "every node already has analysis data", 0
     started = time.monotonic()
     game = analyze_game(engine, root, analysis, engine_values(settings), listener.progress, write.rules)
@@ -210,7 +241,11 @@ def _failures(game: GameAnalysis) -> str:
 
 
 def run_folder_analysis(
-    settings: AppSettings, running: Engines | None, listener: AnalysisListener, stop: threading.Event | None = None
+    settings: AppSettings,
+    running: Engines | None,
+    listener: AnalysisListener,
+    stop: threading.Event | None = None,
+    redo_kentogo: bool = False,
 ) -> AnalysisSummary:
     """Analyze the games of the analysis's folder, with the app's KataGo when it runs with the settings.
 
@@ -221,6 +256,7 @@ def run_folder_analysis(
         running: The app's KataGo, or None.
         listener: Told what happens.
         stop: When it is set, the run stops after the game that is being analyzed.
+        redo_kentogo: Analyze again for KentoGo the games analyzed in KaTrain's way (see analyze_games).
     """
     folder = games_folder(settings)
     games = find_games([folder]) if folder is not None else []
@@ -232,7 +268,7 @@ def run_folder_analysis(
             engine.close()
         return AnalysisSummary(problem=problem or "KataGo did not get ready")
     try:
-        return analyze_games(engine, games, settings, listener, stop)
+        return analyze_games(engine, games, settings, listener, stop, redo_kentogo)
     finally:
         if own:
             engine.close()

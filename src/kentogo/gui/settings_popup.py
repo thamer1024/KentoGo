@@ -42,7 +42,6 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 
 from kivy.metrics import dp, sp
@@ -55,7 +54,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from kentogo.analysis_run import AnalysisPlan
+from kentogo.analysis_run import AnalysisListener, AnalysisPlan, AnalysisSummary
 from kentogo.app_settings import AppSettings
 from kentogo.gui import texts, theme
 from kentogo.gui.analysis_popup import AnalysisPopup, FolderAnalysis
@@ -276,18 +275,43 @@ class SettingsPopup(Popup):
         threading.Thread(target=work, daemon=True).start()
 
     def _ask_analysis(self, settings: AppSettings, plan: AnalysisPlan) -> None:
-        """Tell which folder and how many games will be overwritten, and start when the user says yes.
+        """Ask about the games analyzed in KaTrain's way when KentoGo's mode is used, then confirm the run.
 
         When there is nothing to analyze, only tell why.
         """
         self.message_label.text = ""
-        problem = texts.analysis_plan_problem(plan)
+        problem = texts.analysis_plan_problem(plan, redo_kentogo=True)
         if problem:
             show_message(texts.text("analysis_title"), problem)
             return
-        run = partial(self._analyze.run, settings)
+        if not plan.kentogo_redo:
+            self._confirm_analysis(settings, plan, False)
+            return
         confirm(
-            texts.analysis_plan_text(plan),
+            texts.analysis_kentogo_question(plan),
+            lambda: self._confirm_analysis(settings, plan, True),
+            lambda: self._confirm_analysis(settings, plan, False),
+            texts.text("analysis_kentogo_yes"),
+            texts.text("analysis_kentogo_no"),
+            height=CONFIRM_ANALYSIS_HEIGHT,
+        )
+
+    def _confirm_analysis(self, settings: AppSettings, plan: AnalysisPlan, redo_kentogo: bool) -> None:
+        """Tell which folder and how many games will be overwritten, and start when the user says yes.
+
+        redo_kentogo: True if the user said yes to analyzing again for KentoGo the games analyzed in KaTrain's way.
+        """
+        problem = texts.analysis_plan_problem(plan, redo_kentogo)
+        if problem:  # The user said no, and every game is analyzed.
+            show_message(texts.text("analysis_title"), problem)
+            return
+        analysis = self._analyze
+
+        def run(listener: AnalysisListener, stop: threading.Event) -> AnalysisSummary:
+            return analysis.run(settings, listener, stop, redo_kentogo)
+
+        confirm(
+            texts.analysis_plan_text(plan, redo_kentogo),
             lambda: AnalysisPopup(run).start(),
             lambda: None,
             texts.text("analysis_start"),

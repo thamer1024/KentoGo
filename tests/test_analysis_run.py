@@ -118,7 +118,7 @@ def test_plan_analysis_counts_the_games_to_analyze(tmp_path):
     settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
     analyze_games(FakeEngine(), [folder / "a.sgf"], settings, Recorder().listener())  # a.sgf is analyzed now.
     plan = plan_analysis(settings)
-    assert (plan.folder, plan.backup, plan.games, plan.analyzed, plan.to_analyze) == (
+    assert (plan.folder, plan.backup, plan.games, plan.analyzed, plan.count()) == (
         folder,
         folder / "backup",
         2,
@@ -126,5 +126,20 @@ def test_plan_analysis_counts_the_games_to_analyze(tmp_path):
         1,
     )  # The broken b.sgf is counted with the games to analyze.
     again = plan_analysis(AppSettings(analysis=AnalysisSettings(games_folder=str(folder), reanalyze=True)))
-    assert again.to_analyze == 2
+    assert again.count() == 2
     assert plan_analysis(AppSettings(analysis=AnalysisSettings(games_folder=str(tmp_path / "x")))).games == 0
+
+
+def test_games_analyzed_in_katrains_way_are_analyzed_again_for_kentogo_when_asked(tmp_path):
+    folder = games(tmp_path)
+    compatible = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
+    analyze_games(FakeEngine(), [folder / "a.sgf"], compatible, Recorder().listener())  # No KGM.
+    kentogo = AppSettings(analysis=AnalysisSettings(games_folder=str(folder), katrain_compatible=False))
+    plan = plan_analysis(kentogo)
+    assert (plan.analyzed, plan.kentogo_redo, plan.count(), plan.count(True)) == (1, 1, 1, 2)
+    assert plan_analysis(compatible).kentogo_redo == 0
+    skipped = analyze_games(FakeEngine(), [folder / "a.sgf"], kentogo, Recorder().listener())
+    assert skipped.outcomes[SKIPPED] == 1
+    redone = analyze_games(FakeEngine(), [folder / "a.sgf"], kentogo, Recorder().listener(), redo_kentogo=True)
+    assert redone.outcomes[WRITTEN] == 1 and "KGM[KentoGo]" in (folder / "a.sgf").read_text(encoding="utf-8")
+    assert plan_analysis(kentogo).kentogo_redo == 0  # Analyzed in KentoGo's mode now.
