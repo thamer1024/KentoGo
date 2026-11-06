@@ -23,6 +23,7 @@ from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
+from kentogo.report import RECENT, GameAverages, Recent, TodaySummary, Totals
 from kentogo.review.record import AnswerRecord
 from kentogo.seichi.arrangement import FillStep
 from kentogo.seichi.count_check import CountCheck
@@ -213,6 +214,31 @@ TEXTS = {
     "mode_quiz": "悪手問題",
     "mode_seichi": "整地練習",
     "mode_viewer": "棋譜を見る",
+    "mode_report": "成績表",
+    "report_title": "成績表",
+    "report_loading": "成績を集計しています…",
+    "report_totals": (
+        "これまで\n解いた問題 {answered}（正解 {correct}）　完了した問題 {finished}\n"
+        "取り戻した目数 {recovered} 目　練習した日 {days} 日"
+    ),
+    "report_recent": (
+        "最近 {count} 回の練習\n正答率 {rate}{rate_trend}　平均の取り戻し率 {average}{average_trend}\n"
+        "（その前の {count} 回：正答率 {earlier_rate}　取り戻し率 {earlier_average}）"
+    ),
+    "report_recent_none": "最近の練習\nまだ記録がありません",
+    "report_days_title": "練習ごとの推移（青：正答率、緑：平均の取り戻し率、点線：合格ライン {ratio}%）",
+    "report_chart_note": "左が古く、右が新しい（最大 {count} 回）",
+    "report_games_title": "1局あたりの大きな悪手（赤：20目以上、橙：10〜20目）",
+    "report_games_recent": "直近 {count} 局の平均：20目以上 {big}　10〜20目 {large}（その前：{earlier_big}　{earlier_large}）",
+    "report_games_none": "まだ対局がありません",
+    "trend_up": " ↑",
+    "trend_down": " ↓",
+    "no_value": "—",
+    "today_summary_title": "今日のまとめ",
+    "today_summary": "解いた問題 {answered}（正解 {correct}）\n取り戻した目数 {recovered} 目\n練習した日 {day} 日目",
+    "achievement_stage_cleared": "★ {value} 目の段階をクリアしました",
+    "achievement_correct_milestone": "★ 正解が通算 {value} 問になりました",
+    "achievement_recovered_milestone": "★ 取り戻した目数が通算 {value} 目になりました",
     "viewer_only_ai": "AI解説のある棋譜だけ",
     "viewer_no_games": "棋譜がありません",
     "viewer_choose_game": "「棋譜を選ぶ」で棋譜を選んでください",
@@ -881,3 +907,80 @@ def _compare_line(actual_loss: float, compare_best: Move, compare_best_loss: flo
     gain = actual_loss - compare_best_loss
     key = "compare_move_gain" if gain >= 0 else "compare_move_loss"
     return text(key, move=compare_best.gtp(), loss=compare_best_loss, gain=abs(gain))
+
+
+def _percent(value: float | None) -> str:
+    """Return a part (0.0 to 1.0) as a percentage such as "72%", or a dash when it is not known."""
+    return text("no_value") if value is None else f"{round(100 * value)}%"
+
+
+def _per_game(value: float | None) -> str:
+    """Return an average number of mistakes per game with one decimal, or a dash when it is not known."""
+    return text("no_value") if value is None else f"{value:.1f}"
+
+
+def _trend(now: float | None, before: float | None) -> str:
+    """Return an arrow when a part went up or down by at least TREND_STEP, else ""."""
+    if now is None or before is None or abs(now - before) < TREND_STEP:
+        return ""
+    return text("trend_up") if now > before else text("trend_down")
+
+
+TREND_STEP = 0.02  # A change smaller than this (2 points of percentage) shows no arrow.
+
+
+def totals_text(totals: Totals) -> str:
+    """Return the lines of the report about all the practice."""
+    return text(
+        "report_totals",
+        answered=totals.answered,
+        correct=totals.correct,
+        finished=totals.finished,
+        recovered=f"{totals.recovered:,.0f}",
+        days=totals.days,
+    )
+
+
+def recent_text(recent: Recent) -> str:
+    """Return the lines of the report about the latest practice days, compared with the ones before."""
+    if recent.correct_rate is None:
+        return text("report_recent_none")
+    return text(
+        "report_recent",
+        count=RECENT,
+        rate=_percent(recent.correct_rate),
+        rate_trend=_trend(recent.correct_rate, recent.earlier_correct_rate),
+        average=_percent(recent.average),
+        average_trend=_trend(recent.average, recent.earlier_average),
+        earlier_rate=_percent(recent.earlier_correct_rate),
+        earlier_average=_percent(recent.earlier_average),
+    )
+
+
+def game_averages_text(averages: GameAverages) -> str:
+    """Return the line of the report about the big mistakes of the latest games."""
+    if averages.big is None:
+        return text("report_games_none")
+    return text(
+        "report_games_recent",
+        count=RECENT,
+        big=_per_game(averages.big),
+        large=_per_game(averages.large),
+        earlier_big=_per_game(averages.earlier_big),
+        earlier_large=_per_game(averages.earlier_large),
+    )
+
+
+def today_summary_text(summary: TodaySummary) -> str:
+    """Return the summary of the day, with a line for each thing achieved today."""
+    lines = [
+        text(
+            "today_summary",
+            answered=summary.answered,
+            correct=summary.correct,
+            recovered=f"{summary.recovered:,.0f}",
+            day=summary.day_number,
+        )
+    ]
+    lines += [text(f"achievement_{item.key}", value=f"{item.value:,.0f}") for item in summary.achievements]
+    return "\n".join(lines)

@@ -45,6 +45,7 @@ import random
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 
 from kentogo.app_settings import AppSettings
@@ -59,6 +60,7 @@ from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_w
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
 from kentogo.quiz.transform import BoardTransform, random_transform
+from kentogo.report import load_report, load_today_summary
 from kentogo.review.history import AnswerHistory
 from kentogo.review.record import AnswerRecord
 from kentogo.screen_setup import ScreenSetup
@@ -299,6 +301,12 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         start_times=StartTimes(arguments.settings.parent / TIMES_FILE),
         ratio_offer=_ratio_offer_maker(arguments.settings, settings, parts.history),
         answer_ratio_offer=_ratio_offer_saver(arguments.settings, settings, parts.history, on_saved),
+        report=lambda: load_report(
+            arguments.settings, arguments.folder, _current_settings(arguments.settings, settings)
+        ),
+        today_summary=lambda: load_today_summary(
+            arguments.settings, arguments.folder, _current_settings(arguments.settings, settings), date.today()
+        ),
     )
 
 

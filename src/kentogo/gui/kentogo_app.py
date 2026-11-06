@@ -42,6 +42,7 @@ from kentogo.gui.fonts import register_font
 from kentogo.gui.loading_dialog import LoadingDialog
 from kentogo.gui.paste_screen import PasteScreen
 from kentogo.gui.quiz_screen import QuizScreen
+from kentogo.gui.report_screen import ReportScreen
 from kentogo.gui.seichi_screen import SeichiScreen
 from kentogo.gui.splash_screen import SplashScreen
 from kentogo.gui.top_screen import TopScreen
@@ -129,7 +130,11 @@ class KentoGoApp(App):
 
     def _choices(self) -> list:
         """Return the practices of the top screen, as (text key, action)."""
-        choices = [("mode_quiz", self.show_splash), ("mode_viewer", self.show_viewer)]
+        choices = [
+            ("mode_quiz", self.show_splash),
+            ("mode_viewer", self.show_viewer),
+            ("mode_report", self.show_report),
+        ]
         if self.setup.commentary is not None:
             choices.append(("mode_commentary", self.show_commentary_menu))
         if self.setup.use_seichi:
@@ -321,7 +326,55 @@ class KentoGoApp(App):
             self.quiz.close()
             self.quiz = None
         self.show_top()
-        self._ask_ratio_offer()
+        self._show_today_summary()
+
+    def show_report(self) -> None:
+        """Show the report (成績表): count the games and the history in the background, then show it."""
+        self.frame.clear_widgets()
+        counting = wrapping_label(halign="center", valign="middle")
+        set_text(counting, texts.lazy("report_loading"))
+        self.frame.add_widget(counting)
+        report_of = self.setup.report
+
+        def work() -> None:
+            """Make the report in the background thread."""
+            try:
+                report = report_of()
+            except Exception as error:  # For example, the games folder cannot be read.
+                in_main_thread(self._seichi_failed)(str(error))
+                return
+            in_main_thread(self._show_report)(report)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_report(self, report) -> None:
+        """Replace the waiting text with the report."""
+        self.frame.clear_widgets()
+        self.frame.add_widget(ReportScreen(report, on_back=self.show_top))
+
+    def _show_today_summary(self) -> None:
+        """Show the summary of the day (made in the background), then ask about the pass ratio."""
+        summary_of = self.setup.today_summary
+
+        def work() -> None:
+            """Make the summary in the background thread."""
+            try:
+                summary = summary_of()
+            except Exception as error:  # The summary is only extra: the quiz has saved its answers.
+                print(f"cannot make the summary of the day: {error}", file=sys.stderr)
+                summary = None
+            in_main_thread(self._summary_made)(summary)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _summary_made(self, summary) -> None:
+        """Show the summary (if anything was answered today), and then the offer about the pass ratio."""
+        if summary is None:
+            self._ask_ratio_offer()
+            return
+        show_message(
+            texts.text("today_summary_title"), texts.today_summary_text(summary), on_close=self._ask_ratio_offer
+        )
 
     def _ask_ratio_offer(self) -> None:
         """Ask whether to raise or lower the pass ratio, when the latest answers suggest it (see quiz.ratio_offer)."""

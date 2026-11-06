@@ -17,6 +17,7 @@ from kentogo.notice import Notice
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.ratio_offer import RatioOffer
 from kentogo.quiz.transform import BoardTransform
+from kentogo.report import Report, TodaySummary
 from kentogo.review.history import AnswerHistory
 from kentogo.seichi.seichi_history import SeichiHistory
 from kentogo.seichi.seichi_settings import SeichiSettings
@@ -50,6 +51,8 @@ class ScreenSetup:
         start_times: The times that KataGo took to load before (shown while it loads).
         ratio_offer: Returns the offer to raise or lower the pass ratio, or None (see quiz.ratio_offer).
         answer_ratio_offer: Saves the user's answer to the offer (True: change the ratio).
+        report: Makes the report (成績表) from the games and the history (called in a background thread).
+        today_summary: Makes the summary of the day, or None if nothing was answered today (in a background thread).
     """
 
     load: Callable[[Progress], TodayProblems]
@@ -68,3 +71,5 @@ class ScreenSetup:
     start_times: StartTimes = StartTimes(None)
     ratio_offer: Callable[[], RatioOffer | None] = lambda: None
     answer_ratio_offer: Callable[[RatioOffer, bool], None] = lambda _offer, _yes: None
+    report: Callable[[], Report] = Report
+    today_summary: Callable[[], TodaySummary | None] = lambda: None
