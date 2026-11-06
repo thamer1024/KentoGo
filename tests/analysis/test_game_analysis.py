@@ -5,6 +5,7 @@ from pysgf import GoGame
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.game_analysis import EngineValues, analyze_game
 from kentogo.analysis.node_analysis import ADDITIONAL_MOVE_ORDER, apply_answer, empty_analysis, update_move_analysis
+from kentogo.analysis.played_moves import played_move_loss
 from kentogo.analysis.query import QuerySettings, node_query
 from kentogo.analysis.rules import KATRAIN_RULES, KENTOGO_RULES, rules_for
 from kentogo.record.katrain_kt import encode_kt
@@ -30,8 +31,12 @@ class FakeEngine:
             self.times -= 1
             callback({"id": "x", "error": "broken"})
             return "x"
-        score = SCORES[moves]
-        candidate = {"move": "E5", "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": ["E5", "A1"]}
+        if "allowMoves" in request:  # Only the played move: read in the position before it, 1 point worse for black.
+            point = request["allowMoves"][0]["moves"][0]
+            score = SCORES[(*moves, point)] - 1.0
+        else:
+            point, score = "E5", SCORES[moves]
+        candidate = {"move": point, "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": [point, "A1"]}
         callback({"id": "x", "isDuringSearch": True, "rootInfo": {}, "moveInfos": []})  # Not used.
         callback(
             {
@@ -50,7 +55,17 @@ def root() -> object:
 
 
 def by_moves(engine: FakeEngine) -> dict[tuple, dict]:
-    return {tuple(point for _, point in query["moves"]): query for query in engine.queries}
+    return {tuple(point for _, point in query["moves"]): query for query in analyses(engine)}
+
+
+def analyses(engine: FakeEngine) -> list[dict]:
+    """The queries that analyze positions (not the played moves of KentoGo's mode)."""
+    return [query for query in engine.queries if "allowMoves" not in query]
+
+
+def played(engine: FakeEngine) -> list[dict]:
+    """The queries of KentoGo's mode that read only the played move."""
+    return [query for query in engine.queries if "allowMoves" in query]
 
 
 def test_every_node_is_analyzed_with_katrains_query():
@@ -155,10 +170,10 @@ def test_kentogo_mode_asks_again_for_a_failed_node():
     """KaTrain gives up at once; KentoGo asks again (retries times) and keeps the nodes that still fail."""
     once = FakeEngine(failing=("C3", "B4"), times=1)
     assert analyze_game(once, root(), AnalysisSettings(), VALUES, lambda *_: None, KENTOGO_RULES).failed == 0
-    assert len(once.queries) == 6
+    assert len(analyses(once)) == 6
     always = FakeEngine(failing=("C3", "B4"))
     game = analyze_game(always, root(), AnalysisSettings(retries=2), VALUES, lambda *_: None, KENTOGO_RULES)
-    assert [node.depth for node in game.failed_nodes] == [2] and len(always.queries) == 7
+    assert [node.depth for node in game.failed_nodes] == [2] and len(analyses(always)) == 7
     katrain = FakeEngine(failing=("C3", "B4"), times=1)
     assert analyze_game(katrain, root(), AnalysisSettings(), VALUES, lambda *_: None, KATRAIN_RULES).failed == 1
 
@@ -172,7 +187,7 @@ def test_kentogo_mode_reanalyzes_mistakes_from_its_own_threshold():
     analyze_game(katrain, root(), settings, VALUES, lambda *_: None, KATRAIN_RULES)
     analyze_game(kentogo, root(), settings, VALUES, lambda *_: None, KENTOGO_RULES)
     assert len(katrain.queries) == 5
-    assert sorted(len(query["moves"]) for query in kentogo.queries[5:]) == [2, 3]
+    assert sorted(len(query["moves"]) for query in analyses(kentogo)[5:]) == [2, 3]
 
 
 def test_kentogo_mode_range_covers_the_positions_of_its_moves():
@@ -180,11 +195,11 @@ def test_kentogo_mode_range_covers_the_positions_of_its_moves():
     engine = FakeEngine()
     settings = AnalysisSettings(reanalyze=True, reanalyze_visits=50, move_from=2, move_to=2)
     analyze_game(engine, root(), settings, VALUES, lambda *_: None, KENTOGO_RULES)
-    assert sorted(len(query["moves"]) for query in engine.queries[5:]) == [1, 2]
+    assert sorted(len(query["moves"]) for query in analyses(engine)[5:]) == [1, 2]
     reversed_range = FakeEngine()
     settings = AnalysisSettings(reanalyze=True, reanalyze_visits=50, move_from=3, move_to=2)
     analyze_game(reversed_range, root(), settings, VALUES, lambda *_: None, KENTOGO_RULES)
-    assert sorted(len(query["moves"]) for query in reversed_range.queries[5:]) == [1, 2, 3, 3]
+    assert sorted(len(query["moves"]) for query in analyses(reversed_range)[5:]) == [1, 2, 3, 3]
 
 
 def test_kentogo_mode_reanalysis_counts_the_visits_of_saved_data():
@@ -196,5 +211,52 @@ def test_kentogo_mode_reanalysis_counts_the_visits_of_saved_data():
     for name, rules in (("katrain", KATRAIN_RULES), ("kentogo", KENTOGO_RULES)):
         engine = FakeEngine()
         analyze_game(engine, GoGame.parse_sgf(text), settings, VALUES, lambda *_: None, rules)
-        visits[name] = {query["maxVisits"] for query in engine.queries[4:]}
+        visits[name] = {query["maxVisits"] for query in analyses(engine)[4:]}
     assert visits == {"katrain": {500}, "kentogo": {1000}}  # The fewest: 500 asked (KentoGo), 0 saved (KaTrain).
+
+
+def test_kentogo_mode_reads_each_played_move_in_the_position_before_it():
+    """The played move is read with only it allowed, as deeply as the position, without a time limit."""
+    engine = FakeEngine()
+    game = analyze_game(engine, root(), AnalysisSettings(max_time=30.0), VALUES, lambda *_: None, KENTOGO_RULES)
+    assert all("maxTime" not in query["overrideSettings"] for query in engine.queries)
+    queries = played(engine)
+    assert sorted(len(query["moves"]) for query in queries) == [0, 1, 2, 2]  # The position before each move.
+    assert {query["maxVisits"] for query in queries} == {500}
+    assert queries[0]["allowMoves"][0]["untilDepth"] == 1 and not queries[0]["includeOwnership"]
+    mistake = game.nodes[3]
+    assert game.points_lost(mistake) == 5.5  # KaTrain's: the score before minus the score after.
+    assert played_move_loss(game, mistake) == 6.5  # KentoGo's: inside the position before the move.
+    assert game.analysis(mistake.parent)["moves"]["A5"]["order"] == ADDITIONAL_MOVE_ORDER
+
+
+def test_a_played_move_read_well_enough_is_not_read_again():
+    """When KataGo's analysis of the position already read the played move well, its value is used."""
+
+    class KnowsA5(FakeEngine):
+        def query(self, request, callback):
+            moves = tuple(point for _, point in request["moves"])
+            if moves == ("C3", "B4") and "allowMoves" not in request:
+                self.queries.append(request)
+                a5 = {"move": "A5", "order": 1, "visits": 100, "scoreLead": -4.0, "pv": ["A5"]}
+                e5 = {"move": "E5", "order": 0, "visits": 400, "scoreLead": 0.5, "pv": ["E5"]}
+                callback({"id": "x", "rootInfo": {"scoreLead": 0.5, "visits": 500}, "moveInfos": [e5, a5]})
+                return "x"
+            return super().query(request, callback)
+
+    engine = KnowsA5()
+    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, KENTOGO_RULES)
+    assert [query["allowMoves"][0]["moves"] for query in played(engine)] == [["C3"], ["B4"], ["D4"]]  # Not A5.
+    assert played_move_loss(game, game.nodes[3]) == 4.5
+
+
+def test_saved_data_of_katrains_way_is_read_again_in_kentogo_mode():
+    """Without KGM[KentoGo], a saved played move's value is from the position after it, so it is read again."""
+    saved = {"moves": {"B4": {"move": "B4", "order": 999, "visits": 500, "scoreLead": 0.5}}, "completed": True}
+    saved["root"] = {"scoreLead": 1.0, "winrate": 0.5, "visits": 500}
+    text = GAME.replace(";B[cc]", ";B[cc]KT[" + "][".join(encode_kt(saved)) + "]")
+    for mark, expected in (("", 4), ("KGM[KentoGo]", 3)):
+        engine = FakeEngine()
+        game_text = text.replace("RU[Chinese]", "RU[Chinese]" + mark)
+        analyze_game(engine, GoGame.parse_sgf(game_text), AnalysisSettings(), VALUES, lambda *_: None, KENTOGO_RULES)
+        assert len(played(engine)) == expected

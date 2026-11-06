@@ -39,11 +39,13 @@ class CommentedMove:
         number: Its move number (KaTrain's node depth).
         move: The move.
         auto_undo: KaTrain took it back in a teaching game (KaTrain writes two more lines).
+        points_lost: The loss to write, or None for KaTrain's (the score before minus the score after).
     """
 
     number: int
     move: Move
     auto_undo: bool = False
+    points_lost: float | None = None
 
 
 def move_comment(
@@ -73,7 +75,7 @@ def move_comment(
     text = texts["move"].format(number=commented.number) + f": {move.color} {move.gtp()}\n"
     text += texts["Info:score"].format(score=score_format(_score(after), _score(after), texts)) + "\n"
     text += texts["Info:winrate"].format(winrate=format_winrate(_winrate(after), texts)) + "\n"
-    text += _top_move_lines(move, before, after, size, texts, score_format)
+    text += _top_move_lines(commented, before, after, size, texts, score_format)
     text += _policy_lines(move, before, size, texts)
     if commented.auto_undo:
         text += _undo_lines(move, after, size, texts)
@@ -81,13 +83,21 @@ def move_comment(
 
 
 def _top_move_lines(
-    move: Move, before: dict, after: dict, size: tuple[int, int], texts: dict[str, str], score_format: ScoreFormat
+    commented: CommentedMove,
+    before: dict,
+    after: dict,
+    size: tuple[int, int],
+    texts: dict[str, str],
+    score_format: ScoreFormat,
 ) -> str:
     """Return the lines about the points lost, KaTrain's top move and its sequence."""
+    move = commented.move
     top = top_candidate(before, move.color, size)
     if top["move"] != move.gtp():
         text = ""
-        points_lost = _SIGNS[move.color] * (_score(before) - _score(after))
+        points_lost = commented.points_lost
+        if points_lost is None:
+            points_lost = _SIGNS[move.color] * (_score(before) - _score(after))
         if points_lost > 0.5:
             text += texts["Info:point loss"].format(points_lost=points_lost) + "\n"
         score = score_format(top["scoreLead"], _score(after), texts)

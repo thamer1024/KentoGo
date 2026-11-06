@@ -65,6 +65,30 @@ def apply_answer(analysis: dict, answer: dict, parent_analysis: dict | None, mov
     analysis["completed"] = True
 
 
+def apply_own_answer(analysis: dict, answer: dict, parent_analysis: dict | None, move_gtp: str | None) -> None:
+    """Put KataGo's final answer into the node's analysis only (KentoGo's mode).
+
+    The node before it keeps its own candidate moves: the played move's value there comes from
+    an analysis of that position (see analysis.played_moves), not from the position after the move.
+    """
+    apply_answer(analysis, answer, None, None)
+
+
+def apply_played_move(parent_analysis: dict, answer: dict, move_gtp: str) -> None:
+    """Put the played move's analysis in the position before it into that position's candidates (KentoGo's mode).
+
+    The answer comes from an analysis where only the played move was allowed (see analysis.played_moves),
+    so its candidate is the played move, read as deeply as the position itself. The move keeps
+    KataGo's order when it had one in the position's own analysis.
+    """
+    found = next((info for info in answer["moveInfos"] if info["move"] == move_gtp), None)
+    if found is None:
+        return  # KataGo always answers with the allowed move; without it, nothing is known.
+    current = parent_analysis["moves"].get(move_gtp)
+    order = current["order"] if current is not None else ADDITIONAL_MOVE_ORDER
+    parent_analysis["moves"][move_gtp] = {**found, "order": order}
+
+
 def points_lost(before: dict | None, after: dict | None, color: str) -> float | None:
     """Return the points lost by a move (KaTrain's GameNode.points_lost), or None without both analyses."""
     if not before or not after or before.get("root") is None or after.get("root") is None:

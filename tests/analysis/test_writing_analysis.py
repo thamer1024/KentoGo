@@ -25,8 +25,10 @@ class FakeEngine:
     """Answers at once, with a score that depends on the number of moves."""
 
     def query(self, request, callback):
-        score = SCORES[len(request["moves"])]
-        best = {"move": "E5", "order": 0, "visits": 9, "scoreLead": score, "winrate": 0.5, "pv": ["E5"]}
+        allowed = request.get("allowMoves")
+        point = allowed[0]["moves"][0] if allowed else "E5"
+        score = SCORES[len(request["moves"]) + (1 if allowed else 0)]
+        best = {"move": point, "order": 0, "visits": 9, "scoreLead": score, "winrate": 0.5, "pv": [point]}
         root = {"scoreLead": score, "winrate": 0.4 if score < 0 else 0.6, "visits": 9}
         callback({"id": "q", "rootInfo": root, "moveInfos": [best], "policy": [0.04] * 26, "ownership": [0.1] * 25})
         return "q"
@@ -105,3 +107,10 @@ def test_backup_then_write(tmp_path):
     assert game.read_text(encoding="utf-8") == "(;C[新しい])"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["backup", "game.sgf"]  # No file left behind.
     assert backup_folder(tmp_path, "~/other").name == "other"
+
+
+def test_kentogo_mode_marks_the_root_and_writes_its_losses():
+    root = analyzed(rules=KENTOGO_RULES)
+    assert root.get_property("KGM") == "KentoGo"
+    assert read_comment(root.nodes_in_tree[3].get_property("C"))[1].points_lost == 8.0
+    assert analyzed().get_property("KGM") is None

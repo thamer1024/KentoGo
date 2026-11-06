@@ -12,6 +12,9 @@ KaTrain compatible (KaTrain 1.20.0, katrain/core/game.py and game_node.py), as K
 - A node that KataGo could not analyze is not asked again.
 - A score of exactly 0 is shown as the score of the node itself ("score or self.score").
 - With the marks on, the start message is written twice at the root.
+- The loss of a move is the score before it minus the score after it (two separate analyses), and
+  the answer for a position also gives the played move's value to the position before it.
+- The first analysis of each position stops at max_time.
 
 KentoGo's mode:
 - "Re-analyze game" counts the visits of the saved analysis data, so it always reads more deeply.
@@ -20,6 +23,10 @@ KentoGo's mode:
   after the last one), in whichever order the range is given.
 - A node that KataGo could not analyze is asked again (retries times).
 - A score of 0 is shown as 0, and the start message is written once.
+- The loss of a move is read in the position before it (see analysis.played_moves), and the
+  answer for a position is kept in that position only.
+- The first analysis of each position is not stopped by time, so every position is read as deeply.
+- The root gets KGM[KentoGo], so that KentoGo knows which losses to read.
 """
 
 from __future__ import annotations
@@ -31,7 +38,9 @@ from pysgf import GoNode
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.comment import ScoreFormat, format_score, format_score_exactly
-from kentogo.analysis.game_analysis import GameAnalysis
+from kentogo.analysis.game_analysis import AnswerApply, Engine, EngineValues, GameAnalysis, Progress
+from kentogo.analysis.node_analysis import apply_answer, apply_own_answer
+from kentogo.analysis.played_moves import MODE_MARK, played_move_loss, read_played_moves
 
 END_OF_GAME = 100_000  # The end of the range of moves when move_to is 0.
 
@@ -46,6 +55,11 @@ class AnalysisRules:
         retries: How many times a failed node is asked again.
         score_format: How a score is written in the comments.
         start_messages: The comments at the start of the root's comment, from the start message (or None).
+        apply_answer: How an answer is kept (see node_analysis).
+        max_time: The time limit of the first analysis of each position.
+        last_step: What is done after the analyses (engine, game, engine values, progress, retries).
+        points_lost: The loss of a node's move.
+        mark: The root's KGM property, or None for none.
     """
 
     reanalysis_visits: Callable[[GameAnalysis, int], int]
@@ -53,6 +67,11 @@ class AnalysisRules:
     retries: Callable[[AnalysisSettings], int]
     score_format: ScoreFormat
     start_messages: Callable[[str | None], list[str]]
+    apply_answer: AnswerApply
+    max_time: Callable[[AnalysisSettings], float | None]
+    last_step: Callable[[Engine, GameAnalysis, EngineValues, Progress, int], None]
+    points_lost: Callable[[GameAnalysis, GoNode], float | None]
+    mark: str | None
 
 
 def rules_for(settings: AnalysisSettings) -> AnalysisRules:
@@ -84,7 +103,8 @@ def katrain_reanalysis_nodes(game: GameAnalysis, settings: AnalysisSettings) -> 
     return [
         node
         for node in game.nodes
-        if (not settings.mistakes_only or _largest_loss(game, node) > threshold) and low <= node.depth - 1 <= high
+        if (not settings.mistakes_only or _largest_loss(game, node, GameAnalysis.points_lost) > threshold)
+        and low <= node.depth - 1 <= high
     ]
 
 
@@ -94,14 +114,14 @@ def kentogo_reanalysis_nodes(game: GameAnalysis, settings: AnalysisSettings) -> 
     return [
         node
         for node in game.nodes
-        if (not settings.mistakes_only or _largest_loss(game, node) >= settings.reanalyze_threshold)
+        if (not settings.mistakes_only or _largest_loss(game, node, played_move_loss) >= settings.reanalyze_threshold)
         and low - 1 <= node.depth <= high
     ]
 
 
-def _largest_loss(game: GameAnalysis, node: GoNode) -> float:
+def _largest_loss(game: GameAnalysis, node: GoNode, loss: Callable[[GameAnalysis, GoNode], float | None]) -> float:
     """Return the largest loss of the node's move and the moves after it (0 when not known), as KaTrain."""
-    return max(game.points_lost(item) or 0 for item in [node, *node.children])
+    return max(loss(game, item) or 0 for item in [node, *node.children])
 
 
 def _range(settings: AnalysisSettings) -> tuple[int, int]:
@@ -122,13 +142,31 @@ def kentogo_start_messages(start: str | None) -> list[str]:
     return [start] if start else []
 
 
+def _no_last_step(engine: Engine, game: GameAnalysis, values: EngineValues, progress: Progress, retries: int) -> None:
+    """KaTrain: nothing after the analyses."""
+
+
 KATRAIN_RULES = AnalysisRules(
-    katrain_reanalysis_visits, katrain_reanalysis_nodes, lambda _settings: 0, format_score, katrain_start_messages
+    reanalysis_visits=katrain_reanalysis_visits,
+    reanalysis_nodes=katrain_reanalysis_nodes,
+    retries=lambda _settings: 0,
+    score_format=format_score,
+    start_messages=katrain_start_messages,
+    apply_answer=apply_answer,
+    max_time=lambda settings: settings.max_time,
+    last_step=_no_last_step,
+    points_lost=GameAnalysis.points_lost,
+    mark=None,
 )
 KENTOGO_RULES = AnalysisRules(
-    kentogo_reanalysis_visits,
-    kentogo_reanalysis_nodes,
-    lambda settings: settings.retries,
-    format_score_exactly,
-    kentogo_start_messages,
+    reanalysis_visits=kentogo_reanalysis_visits,
+    reanalysis_nodes=kentogo_reanalysis_nodes,
+    retries=lambda settings: settings.retries,
+    score_format=format_score_exactly,
+    start_messages=kentogo_start_messages,
+    apply_answer=apply_own_answer,
+    max_time=lambda _settings: None,
+    last_step=read_played_moves,
+    points_lost=played_move_loss,
+    mark=MODE_MARK,
 )

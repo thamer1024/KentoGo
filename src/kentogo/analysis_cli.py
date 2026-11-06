@@ -36,7 +36,7 @@ from kentogo.settings_file import SETTINGS_PATH, load_settings
 from kentogo.version import app_version
 
 READY_TIMEOUT = 600  # Seconds to wait for KataGo to load its model.
-STEP_NAMES = {"first": "analysis", "again": "re-analysis"}
+STEP_NAMES = {"first": "analysis", "again": "re-analysis", "played": "played moves"}
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:

@@ -23,8 +23,11 @@ class FakeEngine:
         return True
 
     def query(self, request, callback):
-        root = {"scoreLead": float(len(request["moves"])), "winrate": 0.5, "visits": request["maxVisits"]}
-        best = {**root, "move": "E5", "order": 0, "pv": ["E5"]}
+        allowed = request.get("allowMoves")
+        point = allowed[0]["moves"][0] if allowed else "E5"
+        score = float(len(request["moves"]) + (1 if allowed else 0))
+        root = {"scoreLead": score, "winrate": 0.5, "visits": request["maxVisits"]}
+        best = {**root, "move": point, "order": 0, "pv": [point]}
         callback({"id": "q", "rootInfo": root, "moveInfos": [best]})
         return "q"
 

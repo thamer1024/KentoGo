@@ -39,6 +39,26 @@ class QuerySettings:
     ownership: bool = True
 
 
+def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
+    """Return the query that analyzes the position before a node with only the node's move allowed (KentoGo's mode).
+
+    It is the query of the node before (see node_query), with KataGo's allowMoves for the first move,
+    and without the ownership and the policy, which the answer does not need.
+    """
+    query = node_query(node.parent, settings)
+    if query is None:
+        return None
+    move = node.move
+    allowed = [{"player": move.player, "moves": [move.gtp()], "untilDepth": 1}]
+    return {
+        **query,
+        "allowMoves": allowed,
+        "includeOwnership": False,
+        "includeMovesOwnership": False,
+        "includePolicy": False,
+    }
+
+
 def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
     """Return KaTrain's query for a node, or None when KaTrain does not analyze it.
 

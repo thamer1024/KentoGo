@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Protocol
 from pysgf import GoNode
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.node_analysis import apply_answer, empty_analysis, points_lost
+from kentogo.analysis.node_analysis import empty_analysis, points_lost
 from kentogo.analysis.query import QuerySettings, node_query
 from kentogo.record.katrain_kt import decode_kt, decode_kt_numbers
 
@@ -42,6 +42,8 @@ REANALYSIS_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game".
 FIRST_STEP = "first"  # The analysis of the nodes without saved data.
 REANALYSIS_STEP = "again"  # "Re-analyze game".
 Progress = Callable[[str, int, int], None]  # (step, answers received, queries sent).
+# Puts an answer into a node's analysis and the analysis of the node before it (see node_analysis.apply_answer).
+AnswerApply = Callable[[dict, dict, dict | None, str | None], None]
 
 
 class Engine(Protocol):
@@ -74,12 +76,14 @@ class GameAnalysis:
         analyses: The analysis of each node, by id(node) (KaTrain's analysis dicts, see node_analysis).
         visits: The visits asked for each node (KaTrain's analysis_visits_requested).
         failed_nodes: The nodes that KataGo could not analyze (after the retries of the mode).
+        loaded: The nodes whose analysis comes from saved analysis data (by id(node)).
     """
 
     root: GoNode
     analyses: dict[int, dict] = field(default_factory=dict)
     visits: dict[int, int] = field(default_factory=dict)
     failed_nodes: list[GoNode] = field(default_factory=list)
+    loaded: set[int] = field(default_factory=set)
 
     @property
     def failed(self) -> int:
@@ -121,6 +125,7 @@ def load_saved_analyses(game: GameAnalysis) -> None:
         except ValueError:
             continue
         game.analyses[id(node)] = {**main, "policy": policy, "ownership": ownership}
+        game.loaded.add(id(node))
 
 
 def first_nodes(game: GameAnalysis) -> list[GoNode]:
@@ -128,14 +133,40 @@ def first_nodes(game: GameAnalysis) -> list[GoNode]:
     return [node for node in game.nodes if game.analysis(node) is None]
 
 
+@dataclass(frozen=True)
+class NodeStep:
+    """How the nodes of one step are asked and how the answers are kept.
+
+    Attributes:
+        query: The query for a node (None when the node is not analyzed). It is called when the query is sent.
+        apply: Puts KataGo's final answer for a node into the analyses.
+    """
+
+    query: Callable[[GoNode], dict | None]
+    apply: Callable[[GameAnalysis, GoNode, dict], None]
+
+
+def analysis_step(game: GameAnalysis, settings: QuerySettings, apply: AnswerApply) -> NodeStep:
+    """Return the step that analyzes nodes (KaTrain's GameNode.analyze), with the mode's way of keeping answers."""
+
+    def query(node: GoNode) -> dict | None:
+        game.visits[id(node)] = max(game.visits.get(id(node), 0), settings.visits)  # KaTrain counts them when asked.
+        return node_query(node, settings)
+
+    def keep(game: GameAnalysis, node: GoNode, answer: dict) -> None:
+        analysis = game.analyses.setdefault(id(node), empty_analysis())
+        parent = node.parent
+        parent_analysis = game.analyses.setdefault(id(parent), empty_analysis()) if parent is not None else None
+        move = node.move
+        apply(analysis, answer, parent_analysis, move.gtp() if move is not None else None)
+
+    return NodeStep(query, keep)
+
+
 def analyze_nodes(
-    engine: Engine,
-    game: GameAnalysis,
-    nodes: Sequence[GoNode],
-    settings: QuerySettings,
-    progress: Callable[[int, int], None],
+    engine: Engine, game: GameAnalysis, nodes: Sequence[GoNode], step: NodeStep, progress: Callable[[int, int], None]
 ) -> list[GoNode]:
-    """Analyze nodes with KataGo and put the answers into their analyses, the node before its children.
+    """Ask KataGo about nodes and keep the answers, the node before its children.
 
     The queries are sent together (KataGo answers them in the order of their priority and as it can);
     this function returns when all answers have come.
@@ -143,15 +174,14 @@ def analyze_nodes(
     Returns:
         The nodes that KataGo could not analyze.
     """
-    queries = [(node, query) for node in nodes if (query := node_query(node, settings)) is not None]
+    queries = [(node, query) for node in nodes if (query := step.query(node)) is not None]
     answers = _ask_all(engine, [query for _, query in queries], progress)
     failed = []
     for (node, _), answer in zip(queries, answers, strict=True):
-        game.visits[id(node)] = max(game.visits.get(id(node), 0), settings.visits)
         if "error" in answer or "rootInfo" not in answer:
             failed.append(node)
             continue
-        _apply(game, node, answer)
+        step.apply(game, node, answer)
     return failed
 
 
@@ -159,26 +189,17 @@ def analyze_with_retries(
     engine: Engine,
     game: GameAnalysis,
     nodes: Sequence[GoNode],
-    settings: QuerySettings,
+    step: NodeStep,
     progress: Callable[[int, int], None],
     retries: int,
 ) -> None:
     """Analyze nodes, ask again up to retries times for the nodes that failed, and keep the ones that still fail."""
-    failed = analyze_nodes(engine, game, nodes, settings, progress)
+    failed = analyze_nodes(engine, game, nodes, step, progress)
     for _ in range(retries):
         if not failed:
             break
-        failed = analyze_nodes(engine, game, failed, settings, progress)
+        failed = analyze_nodes(engine, game, failed, step, progress)
     game.failed_nodes.extend(node for node in failed if node not in game.failed_nodes)
-
-
-def _apply(game: GameAnalysis, node: GoNode, answer: dict) -> None:
-    """Put one answer into the analysis of its node and of the node before it."""
-    analysis = game.analyses.setdefault(id(node), empty_analysis())
-    parent = node.parent
-    parent_analysis = game.analyses.setdefault(id(parent), empty_analysis()) if parent is not None else None
-    move = node.move
-    apply_answer(analysis, answer, parent_analysis, move.gtp() if move is not None else None)
 
 
 def _ask_all(engine: Engine, queries: list[dict], progress: Callable[[int, int], None]) -> list[dict]:
@@ -235,13 +256,16 @@ def analyze_game(
     load_saved_analyses(game)
     retries = rules.retries(settings)
     visits = settings.fast_visits if settings.fast else values.max_visits
-    first = QuerySettings(visits, values.wide_root_noise, settings.max_time, GAME_PRIORITY)
-    analyze_with_retries(engine, game, first_nodes(game), first, _step(progress, FIRST_STEP), retries)
+    first = QuerySettings(visits, values.wide_root_noise, rules.max_time(settings), GAME_PRIORITY)
+    first_step = analysis_step(game, first, rules.apply_answer)
+    analyze_with_retries(engine, game, first_nodes(game), first_step, _step(progress, FIRST_STEP), retries)
     if settings.reanalyze:
         again_visits = settings.reanalyze_visits or rules.reanalysis_visits(game, values.max_visits)
         again = QuerySettings(again_visits, values.wide_root_noise, None, REANALYSIS_PRIORITY)
         nodes = rules.reanalysis_nodes(game, settings)
-        analyze_with_retries(engine, game, nodes, again, _step(progress, REANALYSIS_STEP), retries)
+        again_step = analysis_step(game, again, rules.apply_answer)
+        analyze_with_retries(engine, game, nodes, again_step, _step(progress, REANALYSIS_STEP), retries)
+    rules.last_step(engine, game, values, progress, retries)
     return game
 
 
