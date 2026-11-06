@@ -24,6 +24,12 @@ Each part is under its own license, which is given here.
     the functions `pack_floats` and `unpack_floats` (from `katrain/core/utils.py`) and
     `analysis_dumps` (from `katrain/core/game_node.py`). KentoGo uses them to write and read
     KaTrain's analysis data (the KT property of SGF files) in exactly KaTrain's format.
+  - Code copied unchanged into `src/kentogo/vendor/katrain_engine.py`: the constant
+    `ENGINE_BACKENDS` and the function `resolve_engine_backend` (from `katrain/core/engine.py`),
+    which tell the kind of engine (local, remote or custom) that KaTrain's settings choose.
+  - The table of rule sets `RULESETS_ABBR` in `src/kentogo/common/rules.py` (from
+    `KataGoEngine.RULESETS_ABBR` in `katrain/core/engine.py`). `normalize_rules` there is
+    written for KentoGo with the same behavior as KaTrain's `KataGoEngine.get_rules`.
 
 ```
 Copyright 2020 Sander Land and/or other authors of the content in this repository.

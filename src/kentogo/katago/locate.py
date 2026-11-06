@@ -24,6 +24,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from kentogo.vendor.katrain_engine import resolve_engine_backend
+
 DEFAULT_KATRAIN_CONFIG = Path("~/.katrain/config.json")
 KATRAIN_DATA_FOLDER = "~/.katrain"
 # What a "katrain" folder of the KaTrain program has inside (one of them is enough).
@@ -162,7 +164,7 @@ def engine_command(
         KataGoNotFoundError: If a file is missing, or KaTrain uses a remote engine.
     """
     max_visits = int(engine.get("max_visits", 500))
-    backend = _backend(engine)
+    backend = resolve_engine_backend(engine)  # KaTrain's own code (vendor.katrain_engine).
     if backend == "remote":
         raise KataGoNotFoundError("KaTrain uses a remote engine, which KentoGo does not support")
     elif backend == "custom":
@@ -177,19 +179,6 @@ def engine_command(
         command += ["-human-model", str(_existing_file(human_model, "human-like model", katrain_package))]
     command += ["-config", str(settings), "-override-config", f"homeDataDir={os.path.expanduser(KATRAIN_DATA_FOLDER)}"]
     return EngineCommand(tuple(command), False, max_visits)
-
-
-def _backend(engine: dict) -> str:
-    """Return KaTrain's engine type: "local", "remote" or "custom" (KaTrain's resolve_engine_backend)."""
-    backend = (engine.get("backend") or "").strip().lower()
-    if backend in ("local", "remote", "custom"):
-        return backend
-    elif (engine.get("remote_url") or "").strip():
-        return "remote"
-    elif (engine.get("altcommand") or "").strip():
-        return "custom"
-    else:
-        return "local"
 
 
 # Places of the KataGo program that comes with KaTrain, inside the KaTrain program folder.

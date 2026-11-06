@@ -23,7 +23,7 @@ ALLOWED = {
     "vendor": set(),
     "record": {"common", "vendor"},
     "mistakes": {"common", "record"},
-    "katago": {"common"},
+    "katago": {"common", "vendor"},
     "repetition": set(),
     "quiz": {"common", "record", "mistakes", "katago"},
     "review": {"repetition"},

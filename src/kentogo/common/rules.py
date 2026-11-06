@@ -17,7 +17,8 @@ import json
 
 DEFAULT_RULES = "japanese"
 
-# (short name, full name) of the rule sets that KaTrain can use (KaTrain 1.20.0).
+# (short name, full name) of the rule sets that KaTrain can use: the same table as KaTrain 1.20.0's
+# KataGoEngine.RULESETS_ABBR (katrain/core/engine.py; see THIRD_PARTY_NOTICES.md).
 RULESETS_ABBR = [
     ("jp", "japanese"),
     ("cn", "chinese"),
@@ -37,6 +38,9 @@ _SUICIDE_RULESETS = {"tromp-taylor", "new zealand"}
 
 def normalize_rules(text: str | None) -> str | dict:
     """Read the RU property in the same way as KaTrain.
+
+    Written for KentoGo with the same behavior as KaTrain 1.20.0's KataGoEngine.get_rules
+    (katrain/core/engine.py), which cannot be copied unchanged because it is part of KaTrain's engine class.
 
     Args:
         text: The RU property, or None if the file does not have it.
