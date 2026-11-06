@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "Küçük problem sınırı (puan)",
  "field_pass_ratio": "Geçme sınırı (geri kazanılan oran 0–1)",
  "field_tolerance": "Tolerans (puan)",
+ "field_max_answer_loss": "Doğru cevabın en fazla kaybı (puan, 0: sınır yok)",
  "order_file_name": "dosya adına göre",
  "order_newest": "en yeni önce",
  "order_random": "rastgele",

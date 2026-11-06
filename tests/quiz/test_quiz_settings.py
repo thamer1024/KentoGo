@@ -32,6 +32,7 @@ def test_from_and_to_dict():
         "small_problem_threshold": 2.0,
         "pass_ratio": 0.9,
         "tolerance": 0.5,
+        "max_answer_loss": 0.0,
     }
     settings = QuizSettings.from_dict(values)
     assert settings.order == ORDER_NEWEST

@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "Seuil des petits problèmes (points)",
  "field_pass_ratio": "Seuil de réussite (part récupérée 0–1)",
  "field_tolerance": "Tolérance (points)",
+ "field_max_answer_loss": "Perte maximale d'une bonne réponse (points, 0 : sans limite)",
  "order_file_name": "par nom de fichier",
  "order_newest": "plus récentes d'abord",
  "order_random": "aléatoire",

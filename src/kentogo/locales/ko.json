@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "작은 문제의 경계 (집)",
  "field_pass_ratio": "합격선 (되찾은 비율 0〜1)",
  "field_tolerance": "허용 폭 (집)",
+ "field_max_answer_loss": "정답으로 인정하는 손해의 상한 (집, 0이면 제한 없음)",
  "order_file_name": "파일 이름순",
  "order_newest": "최신순",
  "order_random": "무작위",

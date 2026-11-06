@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "Поріг малої задачі (очки)",
  "field_pass_ratio": "Поріг заліку (частка поверненого 0–1)",
  "field_tolerance": "Допуск (очки)",
+ "field_max_answer_loss": "Найбільша втрата правильної відповіді (очки, 0 — без обмеження)",
  "order_file_name": "за назвою файлу",
  "order_newest": "спочатку нові",
  "order_random": "випадково",

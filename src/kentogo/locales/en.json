@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "Limit of a small problem (points)",
  "field_pass_ratio": "Passing line (share won back, 0 to 1)",
  "field_tolerance": "Tolerance (points)",
+ "field_max_answer_loss": "Most points a correct answer may lose (0: no limit)",
  "order_file_name": "By file name",
  "order_newest": "Newest first",
  "order_random": "Random",

@@ -354,6 +354,7 @@ TEXTS = {
     "field_small_problem_threshold": "小さい問題の境目（目）",
     "field_pass_ratio": "合格ライン（取り戻した割合 0〜1）",
     "field_tolerance": "許容幅（目）",
+    "field_max_answer_loss": "正解とする答えの損の上限（目、0 で上限なし）",
     "order_file_name": "ファイル名順",
     "order_newest": "新しい順",
     "order_random": "ランダム",

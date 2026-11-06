@@ -279,6 +279,7 @@
  "field_small_problem_threshold": "小題目的界限（目）",
  "field_pass_ratio": "合格線（挽回比例 0〜1）",
  "field_tolerance": "容許範圍（目）",
+ "field_max_answer_loss": "正確答案允許的最大損失（目，0 為不限）",
  "order_file_name": "依檔名",
  "order_newest": "從新到舊",
  "order_random": "隨機",

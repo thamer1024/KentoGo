@@ -35,11 +35,29 @@ def test_normal_problems(actual_loss, answer_loss, correct):
     assert judge_answer(actual_loss, answer_loss, POLICY) is correct
 
 
+LIMITED = ScoringPolicy(small_problem_threshold=3.0, pass_ratio=0.7, tolerance=1.0, max_answer_loss=5.0)
+
+
+@pytest.mark.parametrize(
+    ("actual_loss", "answer_loss", "correct"),
+    [
+        (20.0, 5.0, True),  # Gets back 75%, and loses no more than the limit.
+        (20.0, 5.5, False),  # Gets back 72.5%, but loses more than the limit of 5 points.
+        (10.0, 3.0, True),  # Gets back 70%: the limit does not matter here.
+        (10.0, 3.1, False),  # Gets back 69%.
+        (2.0, 2.0, True),  # A small problem: the limit is not used.
+    ],
+)
+def test_limit_of_the_answer_loss(actual_loss, answer_loss, correct):
+    """With a limit, an answer to a big problem must also lose at most that many points."""
+    assert judge_answer(actual_loss, answer_loss, LIMITED) is correct
+
+
 def test_policy_from_and_to_dict():
     """The rule is read from a dict, and written back to the same dict."""
-    values = {"small_problem_threshold": 2.0, "pass_ratio": 0.9, "tolerance": 0.5}
+    values = {"small_problem_threshold": 2.0, "pass_ratio": 0.9, "tolerance": 0.5, "max_answer_loss": 3.0}
     policy = ScoringPolicy.from_dict(values)
-    assert policy == ScoringPolicy(2.0, 0.9, 0.5)
+    assert policy == ScoringPolicy(2.0, 0.9, 0.5, 3.0)
     assert policy.to_dict() == values
 
 
@@ -48,8 +66,8 @@ def test_policy_from_dict_with_missing_and_unknown_keys():
     assert ScoringPolicy.from_dict({"problems_per_game": 5}) == ScoringPolicy()
 
 
-@pytest.mark.parametrize("values", [{"tolerance": "small"}, {"pass_ratio": 80}])
+@pytest.mark.parametrize("values", [{"tolerance": "small"}, {"pass_ratio": 80}, {"max_answer_loss": -1}])
 def test_policy_from_dict_with_wrong_values(values):
-    """A value that is not a number, or a ratio over 1 (such as 80 for 80%), is an error."""
+    """A value that is not a number, a ratio over 1 (such as 80 for 80%), or a negative limit is an error."""
     with pytest.raises(ValueError):
         ScoringPolicy.from_dict(values)
