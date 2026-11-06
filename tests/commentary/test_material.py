@@ -140,3 +140,39 @@ def test_a_move_taken_back_is_explained_when_the_quiz_uses_it():
     prompt = build_prompt(make_material(root, "B", with_undone), PlayerInfo("18k", "same"), default_prompt_text())
     assert "第5手目(黒番,KaTrainの指導碁で待ったをした手)" in prompt.user
     assert [m.number for m in make_material(root, "B", ExtractSettings(problems_per_game=1)).moves] == [3]
+
+
+# The position before move 3 analyzed in KentoGo's mode: the best move A2 is ahead of the root's score,
+# and G7 (played) was read there too.
+KENTOGO_BEFORE_3 = {
+    "root": {"scoreLead": 2.0},
+    "moves": {
+        "A2": {"scoreLead": 2.5, "order": 0, "pv": ["A2", "C3"]},
+        "G7": {"scoreLead": -4.0, "order": 999},
+    },
+}
+
+
+def kentogo_material(mode: str):
+    """Make the material for black of GAME analyzed with KENTOGO_BEFORE_3, with KGM[mode] or without it."""
+    text = GAME.replace(kt(BEFORE_3), kt(KENTOGO_BEFORE_3), 1)
+    if mode:
+        text = text.replace("(;", f"(;KGM[{mode}]", 1)
+    return make_material(GoGame.parse_sgf(text), "B", ExtractSettings(problems_per_game=5))
+
+
+def test_a_game_analyzed_in_kentogo_mode_gives_the_quiz_numbers():
+    """With KGM[KentoGo], move 3 lost 6.5 points against A2 (not the 6.0 of the comment), the candidates lose
+    from A2, and move 5 without analysis data keeps the loss of its comment."""
+    game = kentogo_material("KentoGo")
+    move = game.moves[0]
+    assert [(m.number, m.points_lost) for m in game.moves] == [(3, 6.5), (5, 3.5)]
+    assert move.best_move == Move.from_gtp("A2", "B") and [m.gtp() for m in move.pv] == ["A2", "C3"]
+    assert move.candidates == (("A2", 0.0), ("G7", 6.5))
+    assert game.loss_counts == ((20, 0), (12, 0), (10, 0), (8, 0), (6, 1), (3, 2))
+
+
+def test_a_game_analyzed_by_katrain_keeps_its_numbers():
+    """Without KGM[KentoGo], the loss is KaTrain's comment, and the candidates lose from the root's score."""
+    move = kentogo_material("").moves[0]
+    assert (move.points_lost, move.candidates) == (6.0, (("A2", 0.0), ("G7", 6.0)))
