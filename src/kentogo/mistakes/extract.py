@@ -20,7 +20,14 @@ from pysgf import GoNode
 from kentogo.common import sgf
 from kentogo.common.types import Move, Position, moves_from_gtp
 from kentogo.mistakes.problem import Problem, Variation, problem_id_of
-from kentogo.mistakes.selection import DECIDED_LEAD, DECIDED_WINRATE, MoveChoice, Selection, choose_moves
+from kentogo.mistakes.selection import (
+    DECIDED_LEAD,
+    DECIDED_WINRATE,
+    MoveChoice,
+    Selection,
+    choose_moves,
+    choose_open_moves,
+)
 from kentogo.record.ai_comment import split_ai_comment
 from kentogo.record.katrain_comment import KatrainMoveInfo, read_comment
 from kentogo.record.katrain_kt import SUPPORTED_VERSION, candidate_losses, decode_kt, root_value
@@ -46,6 +53,9 @@ class ExtractSettings:
             decided: its moves are used only when there are not enough other problems
             (see mistakes.selection, which the AI commentary uses too).
         decided_lead: A position where one side leads by more than this many points is decided.
+        loss_stages: The thresholds of the staged problems, the biggest first (see quiz.stages),
+            or () if they are not used. With stages, every open mistake that lost at least the
+            smallest threshold becomes a problem (problems_per_game and min_points_lost are not used).
     """
 
     my_names: tuple[str, ...] = ()
@@ -55,6 +65,7 @@ class ExtractSettings:
     include_undone_moves: bool = False
     decided_winrate: float = DECIDED_WINRATE
     decided_lead: float = DECIDED_LEAD
+    loss_stages: tuple[float, ...] = ()
 
     @classmethod
     def from_dict(cls, values: dict) -> ExtractSettings:
@@ -85,6 +96,7 @@ class ExtractSettings:
                 include_undone_moves=include_undone_moves,
                 decided_winrate=_percent(values.get("decided_winrate", default.decided_winrate)),
                 decided_lead=float(values.get("decided_lead", default.decided_lead)),
+                loss_stages=_stages(values.get("loss_stages", default.loss_stages)),
             )
         except (TypeError, ValueError) as error:
             raise ValueError(f"wrong quiz setting: {error}") from error
@@ -99,7 +111,26 @@ class ExtractSettings:
             "include_undone_moves": self.include_undone_moves,
             "decided_winrate": self.decided_winrate,
             "decided_lead": self.decided_lead,
+            "loss_stages": list(self.loss_stages),
         }
+
+    def smallest_loss(self) -> float:
+        """Return the smallest loss of a problem: the last stage, or min_points_lost without stages."""
+        return self.loss_stages[-1] if self.loss_stages else self.min_points_lost
+
+
+def _stages(value: object) -> tuple[float, ...]:
+    """Return the thresholds of the staged problems from a list of numbers, the biggest first, without repeats.
+
+    Raises:
+        ValueError: If it is not a list, or a value is not a positive number.
+    """
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"loss_stages must be a list of numbers: {value!r}")
+    stages = {float(number) for number in value}
+    if any(not stage > 0 for stage in stages):
+        raise ValueError(f"loss_stages must be positive numbers: {value!r}")
+    return tuple(sorted(stages, reverse=True))
 
 
 def _percent(value: object) -> float:
@@ -189,7 +220,12 @@ def _choose(problems: list[tuple[Problem, bool]], settings: ExtractSettings) -> 
         MoveChoice(index, problem.points_lost, problem.best_move.gtp() if problem.best_move else None, decided)
         for index, (problem, decided) in enumerate(problems)
     ]
-    chosen = [problems[index][0] for index in choose_moves(choices, Selection.from_quiz(settings))]
+    selection = Selection.from_quiz(settings)
+    if settings.loss_stages:
+        numbers = choose_open_moves(choices, replace(selection, min_loss=settings.smallest_loss()))
+    else:
+        numbers = choose_moves(choices, selection)
+    chosen = [problems[index][0] for index in numbers]
     return tuple(sorted(chosen, key=lambda problem: (-problem.points_lost, problem.move_number)))
 
 
@@ -278,7 +314,7 @@ def _is_problem(move: Move, info: KatrainMoveInfo | None, number: int, settings:
     elif number <= settings.skip_opening_moves:
         return False
     else:
-        return info.points_lost >= settings.min_points_lost
+        return info.points_lost >= settings.smallest_loss()
 
 
 def _position_value(parent: GoNode | None, version: str) -> tuple[float | None, float | None]:

@@ -71,6 +71,7 @@ def test_all_texts_can_be_filled():
         "gain": 4.5,
         "path": "p",
         "explanation": "e",
+        "threshold": "20",
         "count": 3,
         "step": 1,
         "reason": "r",

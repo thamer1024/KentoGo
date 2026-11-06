@@ -1,7 +1,7 @@
 """Tests for kentogo.mistakes.selection."""
 
 from kentogo.mistakes.extract import ExtractSettings
-from kentogo.mistakes.selection import MoveChoice, Selection, choose_moves
+from kentogo.mistakes.selection import MoveChoice, Selection, choose_moves, choose_open_moves
 
 
 def test_is_decided():
@@ -50,3 +50,17 @@ def test_small_losses_wait():
     assert choose_moves(moves, Selection(2, 3.0)) == [10, 20]
     quiz = ExtractSettings(problems_per_game=3, min_points_lost=4.0, decided_winrate=97.0, decided_lead=30.0)
     assert Selection.from_quiz(quiz) == Selection(3, 4.0, 97.0, 30.0)
+
+
+def test_choose_open_moves_takes_every_big_enough_open_move():
+    """For staged problems: every open move of at least the smallest loss, one for each best move, no limit."""
+    moves = [
+        MoveChoice(10, 25.0, "D4"),
+        MoveChoice(20, 12.0, "Q11", decided=True),
+        MoveChoice(30, 8.0, "K10"),
+        MoveChoice(40, 7.0, "K10"),  # The same best move as move 30, with a smaller loss.
+        MoveChoice(50, 4.0, "C3"),
+        MoveChoice(60, 2.0, "R3"),  # Smaller than the smallest loss.
+    ]
+    assert choose_open_moves(moves, Selection(1, 3.0)) == [10, 30, 50]
+    assert choose_open_moves([], Selection(1, 3.0)) == []

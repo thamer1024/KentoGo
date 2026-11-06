@@ -27,6 +27,7 @@ from kentogo.gui.dialogs import show_message
 from kentogo.gui.menu import flag_row
 from kentogo.gui.widgets import flat_button, in_main_thread, set_background, set_text, wrapping_label
 from kentogo.notice import Notice
+from kentogo.quiz.stages import StageStatus
 from kentogo.today import Progress, TodayProblems
 
 # Key codes of Kivy.
@@ -160,11 +161,20 @@ class SplashScreen(AnchorLayout):
         return False
 
 
+def _stage_text(stage: StageStatus) -> str:
+    """Return the current stage of the staged problems, such as "Stage 1/4: ... 20 points or more (3 left)"."""
+    return texts.text(
+        "splash_stage", index=stage.index + 1, count=stage.count, threshold=f"{stage.threshold:g}", left=stage.left
+    )
+
+
 def _today_text(today: TodayProblems) -> str:
     """Return the numbers of today's problems, the games that gave no problems, and the message of the day."""
     numbers = texts.text("splash_today", new=today.new_count, review=today.review_count)
     if today.session_limit is not None:
         numbers += "\n" + texts.text("splash_limit", left=today.session_limit)
+    if today.stage.threshold is not None:
+        numbers += "\n" + _stage_text(today.stage)
     skipped = texts.skipped_text(today.skipped)
     if skipped:
         numbers += "\n\n" + skipped

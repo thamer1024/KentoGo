@@ -303,3 +303,21 @@ def test_read_recorded_colors_without_or_with_a_broken_database(tmp_path):
     assert not (tmp_path / "commentary_history.sqlite3").exists()  # Not made just to read it.
     (tmp_path / "commentary_history.sqlite3").write_text("not a database")
     assert read_recorded_colors(tmp_path / "settings.json") == {}
+
+
+def test_staged_problems(tmp_path):
+    """With stages, only the new problems of the current stage are asked; when they are answered, the next stage."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_with_mistake(25.0), encoding="utf-8")
+    other_position = sgf_with_mistake(12.0).replace("B[pd];W[dp]", "B[dd];W[pp]")
+    (games / "b.sgf").write_text(other_position, encoding="utf-8")
+    settings = AppSettings(quiz=QuizSettings(extract=ExtractSettings(loss_stages=(20.0, 10.0))))
+    history = open_history(tmp_path / "settings.json")
+    today = prepare_problems(games, settings, history, random.Random(0))
+    assert [problem.points_lost for problem in today.problems] == [25.0]
+    assert (today.stage.threshold, today.stage.index, today.stage.left) == (20.0, 0, 1)
+    answer_first_problem(history, games, "Q4")  # The 25-point problem (a.sgf), answered correctly.
+    today = prepare_problems(games, settings, history, random.Random(0))
+    assert [problem.points_lost for problem in today.problems] == [12.0]
+    assert (today.stage.threshold, today.stage.index, today.stage.left) == (10.0, 1, 1)

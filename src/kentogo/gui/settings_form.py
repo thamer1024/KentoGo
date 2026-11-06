@@ -16,6 +16,7 @@ from kentogo.commentary.commentary_settings import PROVIDERS
 from kentogo.katago.engine_settings import JUDGE_MODELS, EngineSettings
 from kentogo.katago.locate import KataGoNotFoundError, read_engine_config, resolve_path
 from kentogo.quiz.quiz_settings import ORDERS, QuizSettings
+from kentogo.quiz.stages import parse_stages
 from kentogo.repetition.modes import PRIORITIES, REVIEW_MODES
 from kentogo.seichi.seichi_settings import ORDERS as SEICHI_ORDERS
 
@@ -80,6 +81,7 @@ FIELDS = (
     FieldSpec("session_limit", "quiz", KIND_INT, GROUP_QUIZ),
     FieldSpec("problems_per_game", "quiz", KIND_INT, GROUP_QUIZ),
     FieldSpec("min_points_lost", "quiz", KIND_FLOAT, GROUP_QUIZ),
+    FieldSpec("loss_stages", "quiz", KIND_TEXT, GROUP_QUIZ),
     FieldSpec("skip_opening_moves", "quiz", KIND_INT, GROUP_QUIZ),
     FieldSpec("include_undone_moves", "quiz", KIND_BOOL, GROUP_QUIZ),
     FieldSpec("decided_winrate", "quiz", KIND_FLOAT, GROUP_QUIZ),
@@ -169,6 +171,8 @@ def form_values(settings: AppSettings) -> dict[str, str | bool]:
         value = sections[spec.section][spec.key]
         if spec.key == "my_names":
             values[spec.id] = ", ".join(value)
+        elif spec.key == "loss_stages":
+            values[spec.id] = ", ".join(f"{stage:g}" for stage in value)
         elif spec.kind == KIND_BOOL:
             values[spec.id] = bool(value)
         else:
@@ -271,6 +275,8 @@ def _parse(spec: FieldSpec, value: str | bool):
     text = str(value).strip()
     if spec.key == "my_names":
         return [name.strip() for name in re.split(r"[,、，]", text) if name.strip()]
+    elif spec.key == "loss_stages":
+        return list(parse_stages(text))
     elif spec.kind == KIND_INT:
         if not re.fullmatch(r"\d+", text):
             raise ValueError("a whole number is needed")

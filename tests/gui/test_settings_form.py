@@ -197,3 +197,14 @@ def test_wrong_decided_winrate():
     values["decided_winrate"] = "120"
     with pytest.raises(FormError):
         settings_from_form(values, SETTINGS)
+
+
+def test_loss_stages_on_the_form():
+    """The stages are shown as numbers joined with commas, and read back the biggest first."""
+    values = form_values(SETTINGS)
+    assert values["loss_stages"] == ""
+    values["loss_stages"] = "5、20, 10"
+    assert settings_from_form(values, SETTINGS).quiz.extract.loss_stages == (20.0, 10.0, 5.0)
+    values["loss_stages"] = "20, x"
+    with pytest.raises(FormError):
+        settings_from_form(values, SETTINGS)

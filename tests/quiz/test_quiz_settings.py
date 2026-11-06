@@ -28,6 +28,7 @@ def test_from_and_to_dict():
         "include_undone_moves": True,
         "decided_winrate": 99.0,
         "decided_lead": 40.0,
+        "loss_stages": [],
         "small_problem_threshold": 2.0,
         "pass_ratio": 0.9,
         "tolerance": 0.5,

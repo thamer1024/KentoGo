@@ -29,10 +29,11 @@ from kentogo.quiz.collect import SkippedGame, collect_problems
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
 from kentogo.quiz.quiz_settings import QuizSettings
+from kentogo.quiz.stages import NO_STAGES, StageStatus, current_stage, held_back
 from kentogo.repetition.daily import answered_on, left_today
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.repetition.plan import QuizPlan, plan_problems
-from kentogo.repetition.schedule import ReviewState, review_state
+from kentogo.repetition.schedule import STATE_NEW, ReviewState, review_state
 from kentogo.review.history import AnswerHistory
 from kentogo.review.review_settings import ReviewSettings
 from kentogo.review.store import ReviewStore
@@ -77,6 +78,7 @@ class TodayProblems:
         skipped: How many games gave no problems, for each reason (see quiz.collect.SkippedGame).
         skipped_games: The games that gave no problems, to show the user which ones.
         notices: Problems to tell the user in a dialog (for example that the cache cannot be used).
+        stage: The current stage of the staged problems (see quiz.stages; NO_STAGES if they are not used).
     """
 
     problems: list[Problem]
@@ -87,6 +89,7 @@ class TodayProblems:
     skipped: dict[str, int] = field(default_factory=dict)
     skipped_games: list[SkippedGame] = field(default_factory=list)
     notices: list[Notice] = field(default_factory=list)
+    stage: StageStatus = NO_STAGES
 
 
 def default_games_folder() -> Path:
@@ -197,36 +200,49 @@ def read_recorded_colors(settings_path: Path) -> dict[str, str]:
 
 
 def plan_today(
-    problems: list[Problem], history: AnswerHistory, settings: ReviewSettings, today: date
-) -> tuple[QuizPlan, int | None]:
+    problems: list[Problem],
+    history: AnswerHistory,
+    settings: ReviewSettings,
+    today: date,
+    stages: tuple[float, ...] = (),
+) -> tuple[QuizPlan, int | None, StageStatus]:
     """Choose today's problems: new problems and the reviews that are due, in the order of the settings.
 
     Answers before the last reset are not used, and problems set aside are not asked.
     Reviews whose problems are no longer made from the games are asked from the
-    copies kept in the history.
+    copies kept in the history. With staged problems, new problems that lost less than
+    the current stage are not asked yet (see quiz.stages).
 
     Args:
         problems: All problems, in the order chosen in the settings.
         history: The history of answers.
         settings: The review settings (the review settings, the priority and the session limit).
         today: Today's date.
+        stages: The thresholds of the staged problems, the biggest first, or () if they are not used.
 
     Returns:
-        A tuple (plan, limit). limit is how many more problems may be asked today, reviews
-        included (see repetition.daily), or None if there is no limit.
+        A tuple (plan, limit, stage). limit is how many more problems may be asked today, reviews
+        included (see repetition.daily), or None if there is no limit. stage is the current stage.
     """
     answers = history.all_previous()  # One query for all problems, so that many problems stay fast.
     done = answered_on((record.answered_at for records in answers.values() for record in records), today)
     last_before_reset = history.last_reset()
     once = settings.review_mode == REVIEW_ONCE
     states = {}
+    set_aside = history.exclusions()
+    answered = set(set_aside)  # Answered correctly at least once, or set aside (for the stages).
     for problem_id in {problem.problem_id for problem in problems} | set(answers):
         records = [r for r in answers.get(problem_id, []) if r.record_id > last_before_reset]
         states[problem_id] = review_state(records, settings.review_streak, once)
+        if any(record.correct for record in records):
+            answered.add(problem_id)
+    stage = current_stage(problems, answered, stages)
     all_problems = problems + _lost_reviews(problems, states, history, today)
     limit = left_today(settings.daily_limit, done)
-    plan = plan_problems(all_problems, states, today, settings.priority, history.exclusions(), limit)
-    return plan, limit
+    new_ids = {problem_id for problem_id, state in states.items() if state.state == STATE_NEW}
+    excluded = set_aside | held_back(problems, new_ids, stage)
+    plan = plan_problems(all_problems, states, today, settings.priority, excluded, limit)
+    return plan, limit, stage
 
 
 def _lost_reviews(
@@ -279,16 +295,23 @@ def prepare_problems(
     if history is None:
         print(f"{len(problems)} problems (no history)", file=sys.stderr)
         return TodayProblems(problems, None, len(problems), 0, skipped=skipped_counts, skipped_games=skipped)
-    plan, limit = plan_today(problems, history, settings.review, date.today())
+    stages = settings.quiz.extract.loss_stages
+    plan, limit, stage = plan_today(problems, history, settings.review, date.today(), stages)
     print(f"{len(problems)} problems: {plan.new_count} new, {plan.review_count} reviews today", file=sys.stderr)
     notices = [Notice("notice_history_error", {"reason": history.last_error})] if history.last_error else []
     if problems and not plan.problems:
         message = Notice("daily_done" if limit == 0 else "nothing_today")
         return TodayProblems(
-            [], message, session_limit=limit, skipped=skipped_counts, skipped_games=skipped, notices=notices
+            [],
+            message,
+            session_limit=limit,
+            skipped=skipped_counts,
+            skipped_games=skipped,
+            notices=notices,
+            stage=stage,
         )
     return TodayProblems(
-        plan.problems, None, plan.new_count, plan.review_count, limit, skipped_counts, skipped, notices
+        plan.problems, None, plan.new_count, plan.review_count, limit, skipped_counts, skipped, notices, stage
     )
 
 

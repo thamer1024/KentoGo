@@ -18,7 +18,7 @@ the AI commentary (commentary.material) both choose in this way.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -91,6 +91,24 @@ def choose_moves(moves: list[MoveChoice], selection: Selection) -> list[int]:
     by_loss = sorted(moves, key=lambda move: (-move.loss, move.number))
     chosen = _first_round(by_loss, selection)
     chosen += [move for move in by_loss if move not in chosen][: selection.count - len(chosen)]
+    return sorted(move.number for move in chosen)
+
+
+def choose_open_moves(moves: list[MoveChoice], selection: Selection) -> list[int]:
+    """Choose every open move that lost at least the smallest loss, one for each best move (staged problems).
+
+    This is the first round of choose_moves without its limit and without the second round:
+    the staged problems (quiz.stages) need all big enough mistakes, not only the biggest few.
+
+    Args:
+        moves: The user's moves that KaTrain evaluated.
+        selection: The smallest loss and the decided positions (its count is not used).
+
+    Returns:
+        The numbers of the chosen moves, in the order they were played.
+    """
+    by_loss = sorted(moves, key=lambda move: (-move.loss, move.number))
+    chosen = _first_round(by_loss, replace(selection, count=len(moves)))
     return sorted(move.number for move in chosen)
 
 

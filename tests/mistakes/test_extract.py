@@ -163,6 +163,7 @@ def test_settings_from_and_to_dict():
         "include_undone_moves": True,
         "decided_winrate": 97.0,
         "decided_lead": 30.0,
+        "loss_stages": [],
     }
     settings = ExtractSettings.from_dict(values)
     assert settings == ExtractSettings(("Taro",), 3, 2.5, 10, True, 97.0, 30.0)
@@ -223,3 +224,25 @@ def test_decided_position_thresholds_are_settings():
     text = game().replace(";W[pp]C[", f";W[pp]{kt_property(decided)}C[", 1)
     result = extract(text, problems_per_game=1, decided_winrate=99.9, decided_lead=50.0)
     assert [p.move_number for p in result.problems] == [7]
+
+
+def test_loss_stages():
+    """With stages, every mistake of at least the smallest stage is a problem, without the limit per game.
+
+    Move 5 (2.0 points) has the same best move as move 3 (Q4), so only move 3 is kept.
+    """
+    result = extract(game(), problems_per_game=1, min_points_lost=10.0, loss_stages=(9.0, 2.0))
+    assert [p.move_number for p in result.problems] == [7, 3]
+    assert [p.move_number for p in extract(game(), loss_stages=(12.0, 9.0)).problems] == [7]
+
+
+def test_loss_stages_setting():
+    """The stages are kept as a list of numbers, the biggest first; the smallest is the smallest loss."""
+    settings = ExtractSettings.from_dict({"loss_stages": [5, 20, 10, 5]})
+    assert settings.loss_stages == (20.0, 10.0, 5.0)
+    assert settings.smallest_loss() == 5.0
+    assert ExtractSettings.from_dict(settings.to_dict()) == settings
+    assert ExtractSettings().smallest_loss() == 3.0
+    for wrong in ([0], [-5], "20,10"):
+        with pytest.raises(ValueError):
+            ExtractSettings.from_dict({"loss_stages": wrong})
