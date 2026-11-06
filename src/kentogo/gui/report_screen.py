@@ -2,17 +2,22 @@
 
 The numbers come from kentogo.report (made in a background thread by the app). The charts are
 plain bars drawn on the canvas, the oldest on the left: one for each practice day (the part of
-correct answers and the average part got back, with the pass ratio as a line), and one for each
-game (its big mistakes, stacked). Only the latest SHOWN days and games are drawn.
+correct answers and the average part got back, with the pass ratio as a dotted line), and one for
+each game (its big mistakes, stacked). Each bar has its value written above it (also 0, so that a
+day or a game with nothing to draw is not mistaken for a gap), and each group has its day (and
+the number of problems, or the time of the game) written below it. A legend with the colors is
+above each chart. Only the latest SHOWN days and games are drawn.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+from kivy.core.text import Label as CoreLabel
 from kivy.graphics import Color, Line, Rectangle
 from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
@@ -21,7 +26,10 @@ from kentogo.gui.widgets import flat_button, growing_label, set_background, set_
 from kentogo.report import RECENT, Report
 
 SHOWN = 20  # The most days (or games) drawn in a chart.
-CHART_HEIGHT = 160  # dp
+CHART_HEIGHT = 220  # dp, with the texts above and below the bars.
+TOP_SPACE = 18  # dp above the bars, for the values.
+BOTTOM_SPACE = 34  # dp below the bars, for two lines about each group.
+TEXT_SIZE = 11  # sp
 CORRECT_COLOR = (0.35, 0.6, 0.95, 1)  # The part of correct answers.
 AVERAGE_COLOR = (0.4, 0.8, 0.5, 1)  # The average part got back.
 BIG_COLOR = (0.9, 0.35, 0.35, 1)  # Mistakes of 20 points or more.
@@ -31,7 +39,7 @@ GRID_COLOR = (1, 1, 1, 0.12)
 
 
 class BarChart(Widget):
-    """Bars in groups, side by side or stacked, with an optional level line.
+    """Bars in groups, side by side or stacked, with their values above and two lines of text below.
 
     Each group is drawn in a slot of the same width; inside a group, each value has its own color.
     """
@@ -41,6 +49,8 @@ class BarChart(Widget):
         groups: Sequence[Sequence[float]],
         colors: Sequence[tuple],
         top: float,
+        values_above: Sequence[Sequence[str]],
+        texts_below: Sequence[tuple[str, str]],
         stacked: bool = False,
         level: float | None = None,
         **kwargs,
@@ -51,44 +61,68 @@ class BarChart(Widget):
             groups: The values of each group, the oldest first.
             colors: The color of each value of a group.
             top: The value at the top of the chart.
+            values_above: The texts written above each group: one for each bar (side by side), or
+                one for the whole group (stacked).
+            texts_below: Two lines written below each group (such as the day and the number of problems).
             stacked: Stack the values of a group (else they are side by side).
-            level: A value drawn as a line across the chart, or None.
+            level: A value drawn as a dotted line across the chart, or None.
             **kwargs: Kivy's widget arguments.
         """
         super().__init__(size_hint_y=None, height=dp(CHART_HEIGHT), **kwargs)
         self.groups, self.colors, self.top_value = list(groups), list(colors), max(top, 1e-9)
+        self.values_above, self.texts_below = list(values_above), list(texts_below)
         self.stacked, self.level = stacked, level
         self.bind(pos=lambda *_: self.redraw(), size=lambda *_: self.redraw())
 
     def redraw(self) -> None:
-        """Draw the bars again for the size and the place of the widget."""
+        """Draw the bars and the texts again for the size and the place of the widget."""
         self.canvas.clear()
+        bottom, height = self.y + dp(BOTTOM_SPACE), self.height - dp(BOTTOM_SPACE) - dp(TOP_SPACE)
         with self.canvas:
             Color(*GRID_COLOR)
-            Rectangle(pos=self.pos, size=self.size)
-            if self.groups:
-                self._draw_bars()
+            Rectangle(pos=(self.x, bottom), size=(self.width, height))
+            slot = self.width / max(len(self.groups), RECENT)
+            for index, values in enumerate(self.groups):
+                self._draw_group(self.x + index * slot, slot, bottom, height, index, values)
             Color(*LINE_COLOR)
-            Line(points=[self.x, self.y, self.right, self.y], width=1)
+            Line(points=[self.x, bottom, self.right, bottom], width=1)
             if self.level is not None:
-                y = self.y + self.height * min(self.level / self.top_value, 1.0)
+                y = bottom + height * min(self.level / self.top_value, 1.0)
                 Line(points=[self.x, y, self.right, y], width=1, dash_length=6, dash_offset=4)
 
-    def _draw_bars(self) -> None:
-        """Draw each group in its slot."""
-        slot = self.width / max(len(self.groups), RECENT)
-        count = len(self.colors)
-        bar = slot * 0.8 if self.stacked else slot * 0.8 / count
-        for index, values in enumerate(self.groups):
-            left = self.x + index * slot + slot * 0.1
-            bottom = self.y
-            for value_index, value in enumerate(values):
-                height = self.height * min(value / self.top_value, 1.0)
-                x = left if self.stacked else left + value_index * bar
-                Color(*self.colors[value_index])
-                Rectangle(pos=(x, bottom), size=(bar, height))
-                if self.stacked:
-                    bottom += height
+    def _draw_group(self, left: float, slot: float, bottom: float, height: float, index: int, values) -> None:
+        """Draw the bars of one group, their values above, and its two lines below."""
+        count = 1 if self.stacked else len(values)
+        bar = slot * 0.8 / count
+        base = bottom
+        tops = []
+        for value_index, value in enumerate(values):
+            bar_height = height * min(value / self.top_value, 1.0)
+            x = left + slot * 0.1 + (0 if self.stacked else value_index * bar)
+            Color(*self.colors[value_index])
+            Rectangle(pos=(x, base), size=(bar, bar_height))
+            tops.append((x, base + bar_height))
+            if self.stacked:
+                base += bar_height
+        above = self.values_above[index]
+        places = [tops[-1]] if self.stacked else tops
+        for (x, y), label in zip(places, above, strict=False):
+            _draw_text(label, x + bar / 2, y + dp(2), anchor_bottom=True)
+        first, second = self.texts_below[index]
+        _draw_text(first, left + slot / 2, bottom - dp(3), anchor_bottom=False)
+        _draw_text(second, left + slot / 2, bottom - dp(18), anchor_bottom=False)
+
+
+def _draw_text(text: str, center_x: float, y: float, anchor_bottom: bool) -> None:
+    """Draw a short text centered at center_x: its bottom at y (anchor_bottom), or else its top at y."""
+    if not text:
+        return
+    label = CoreLabel(text=text, font_size=sp(TEXT_SIZE), color=theme.TEXT_COLOR)
+    label.refresh()
+    texture = label.texture
+    bottom = y if anchor_bottom else y - texture.height
+    Color(1, 1, 1, 1)
+    Rectangle(texture=texture, pos=(center_x - texture.width / 2, bottom), size=texture.size)
 
 
 class ReportScreen(BoxLayout):
@@ -114,28 +148,84 @@ class ReportScreen(BoxLayout):
 
 def _content(report: Report) -> BoxLayout:
     """Make the column with the numbers and the charts."""
-    box = BoxLayout(orientation="vertical", size_hint_y=None, padding=dp(16), spacing=dp(12))
+    box = BoxLayout(orientation="vertical", size_hint_y=None, padding=dp(16), spacing=dp(10))
     box.bind(minimum_height=box.setter("height"))
     set_background(box, theme.BOX_BACKGROUND_COLOR)
     box.add_widget(_label(lambda: texts.totals_text(report.totals)))
     box.add_widget(_label(lambda: texts.recent_text(report.recent)))
-    box.add_widget(_label(lambda: texts.text("report_days_title", ratio=round(100 * report.pass_ratio))))
+    for widget in _days_part(report) + _games_part(report):
+        box.add_widget(widget)
+    return box
+
+
+def _days_part(report: Report) -> list[Widget]:
+    """Make the title, the legend, the chart and the note of the practice days."""
     days = report.days[-SHOWN:]
-    box.add_widget(
-        BarChart(
-            [(day.correct / day.answered, day.average or 0.0) for day in days],
-            [CORRECT_COLOR, AVERAGE_COLOR],
-            1.0,
-            level=report.pass_ratio,
-        )
+    chart = BarChart(
+        [(day.correct / day.answered, day.average or 0.0) for day in days],
+        [CORRECT_COLOR, AVERAGE_COLOR],
+        1.0,
+        [(_percent(day.correct / day.answered), _percent(day.average)) for day in days],
+        [(f"{day.day.month}/{day.day.day}", texts.text("report_day_count", count=day.answered)) for day in days],
+        level=report.pass_ratio,
     )
-    box.add_widget(_label(lambda: texts.text("report_chart_note", count=SHOWN)))
-    box.add_widget(_label(lambda: texts.text("report_games_title")))
+    legend = _legend(
+        [
+            (CORRECT_COLOR, "legend_correct", {}),
+            (AVERAGE_COLOR, "legend_average", {}),
+            (LINE_COLOR, "legend_pass", {"ratio": round(100 * report.pass_ratio)}),
+        ]
+    )
+    return [
+        _label(texts.lazy("report_days_title")),
+        legend,
+        chart,
+        _label(texts.lazy("report_chart_note", count=SHOWN)),
+    ]
+
+
+def _games_part(report: Report) -> list[Widget]:
+    """Make the title, the legend, the chart and the notes of the games."""
     games = report.games[-SHOWN:]
     top = max([game.big + game.large for game in games] + [4])
-    box.add_widget(BarChart([(game.big, game.large) for game in games], [BIG_COLOR, LARGE_COLOR], top, stacked=True))
-    box.add_widget(_label(lambda: texts.game_averages_text(report.game_averages)))
-    return box
+    chart = BarChart(
+        [(game.big, game.large) for game in games],
+        [BIG_COLOR, LARGE_COLOR],
+        top,
+        [(str(game.big + game.large),) for game in games],
+        [(f"{game.played.month}/{game.played.day}", game.played.strftime("%H:%M")) for game in games],
+        stacked=True,
+    )
+    legend = _legend([(BIG_COLOR, "legend_big", {}), (LARGE_COLOR, "legend_large", {})])
+    return [
+        _label(texts.lazy("report_games_title")),
+        legend,
+        chart,
+        _label(texts.lazy("report_games_note", count=SHOWN)),
+        _label(lambda: texts.game_averages_text(report.game_averages)),
+    ]
+
+
+def _percent(value: float | None) -> str:
+    """Return a part as a percentage, such as "58%", or a dash when it is not known."""
+    return texts.text("no_value") if value is None else f"{round(100 * value)}%"
+
+
+def _legend(items: list[tuple[tuple, str, dict]]) -> BoxLayout:
+    """Make a row with a colored square and a name for each item (color, text key, values of the text)."""
+    row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(22), spacing=dp(6))
+    for color, key, values in items:
+        square = Widget(size_hint=(None, None), size=(dp(14), dp(14)))
+        set_background(square, color)
+        holder = BoxLayout(size_hint=(None, 1), width=dp(14), padding=(0, dp(4)))
+        holder.add_widget(square)
+        name = Label(size_hint=(None, 1), color=theme.TEXT_COLOR, font_size=sp(13))
+        name.bind(texture_size=lambda widget, size: setattr(widget, "width", size[0] + dp(12)))
+        set_text(name, texts.lazy(key, **values))
+        row.add_widget(holder)
+        row.add_widget(name)
+    row.add_widget(Widget())  # Keeps the items on the left.
+    return row
 
 
 def _label(make: Callable[[], str]):

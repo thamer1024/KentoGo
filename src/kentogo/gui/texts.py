@@ -226,9 +226,18 @@ TEXTS = {
         "（その前の {count} 回：正答率 {earlier_rate}　取り戻し率 {earlier_average}）"
     ),
     "report_recent_none": "最近の練習\nまだ記録がありません",
-    "report_days_title": "練習ごとの推移（青：正答率、緑：平均の取り戻し率、点線：合格ライン {ratio}%）",
-    "report_chart_note": "左が古く、右が新しい（最大 {count} 回）",
-    "report_games_title": "1局あたりの大きな悪手（赤：20目以上、橙：10〜20目）",
+    "report_days_title": "練習した日ごとの成績",
+    "report_chart_note": "棒の上は正答率と取り戻し率、棒の下は練習した日と解いた問題数。左が古く、右が新しい（最大 {count} 回）",
+    "report_day_count": "{count} 問",
+    "report_games_title": "対局ごとの大きな悪手の数",
+    "report_games_note": (
+        "棒の上は大きな悪手の数（0 は大きな悪手のなかった対局）、棒の下は対局した日時。左が古く、右が新しい（最大 {count} 局）"
+    ),
+    "legend_correct": "正答率",
+    "legend_average": "平均の取り戻し率",
+    "legend_pass": "点線：合格ライン {ratio}%",
+    "legend_big": "20目以上",
+    "legend_large": "10〜20目",
     "report_games_recent": "直近 {count} 局の平均：20目以上 {big}　10〜20目 {large}（その前：{earlier_big}　{earlier_large}）",
     "report_games_none": "まだ対局がありません",
     "trend_up": " ↑",
