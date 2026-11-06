@@ -23,6 +23,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "最佳直觉选点是 {move} ({probability:.1%}).",
         "short color B": "黑",
         "short color W": "白",
+        "SGF start message": " 'X' 是KataGo的最佳选点, 正方形 表明这一手棋损失在0.5目以内",
     },
     "de": {
         "player:human": "Mensch",
@@ -42,6 +43,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "Bester Policy-Zug war {move} ({probability:.1%}).",
         "short color B": "S",
         "short color W": "W",
+        "SGF start message": "Züge, die mit 'X' markiert sind, sind die besten Züge für KataGo; die mit einem Quadrat sind Züge, die weniger als 0.5 Punkte verlieren.",
     },
     "en": {
         "player:human": "Human",
@@ -61,6 +63,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "Top policy move was {move} ({probability:.1%}).",
         "short color B": "B",
         "short color W": "W",
+        "SGF start message": "Moves marked 'X' indicate the top move according to KataGo, those with a square are moves that lose less than 0.5 points",
     },
     "es": {
         "player:human": "Humano",
@@ -80,6 +83,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "La jugada más intuitiva fue {move} ({probability:.1%}).",
         "short color B": "B",
         "short color W": "W",
+        "SGF start message": "Jugadas marcadas 'X' indican la mejor jugada segúnKataGo, aquellas con un cuadrado son jugadas que pierden menos de 0.5 puntos",
     },
     "fr": {
         "player:human": "Humain",
@@ -99,6 +103,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "La première intuition était {move} ({probability:.1%}).",
         "short color B": "N",
         "short color W": "B",
+        "SGF start message": "Les coups préférés de KataGo sont marqués d'un X. En comparaison, ceux perdant moins de 0.5 point sont marqués d'un carré",
     },
     "jp": {
         "player:human": "人間",
@@ -118,6 +123,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "第一感での最有力手は{move} ({probability:.1%})",
         "short color B": "黒",
         "short color W": "白",
+        "SGF start message": "×印はKataGoの推奨手、四角は半目損以内の手",
     },
     "ko": {
         "player:human": "사람",
@@ -137,6 +143,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "정책망의 일감은 {move}입니다 ({probability:.1%}).",
         "short color B": "흑",
         "short color W": "백",
+        "SGF start message": "'X'표시된 수들은 KataGo가 생각하는 최선의 수이며, 네모 표시된 수들은 0.5집보다 적게 손해본 수들입니다.",
     },
     "ru": {
         "player:human": "Человек",
@@ -156,6 +163,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "Лучший ход согласно политике сети был {move} ({probability:.1%}).",
         "short color B": "Ч",
         "short color W": "Б",
+        "SGF start message": "Ходы, отмеченные 'X', соответствуют лучшему ходу согласно KataGo, а ходы, отмеченные квадратом, соответствуют потере не более 0.5 очка",
     },
     "tr": {
         "player:human": "İnsan",
@@ -175,6 +183,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "En iyi AI ilkesi hamlesi: {move} ({probability:.1%}).",
         "short color B": "S",
         "short color W": "B",
+        "SGF start message": "'X' ile işaretlenen hamleler KataGo’ya göre en iyi hamleleri gösterir, kareyle işaretlenenler 0,5 puandan daha az kaybettiren hamlelerdir",
     },
     "tw": {
         "player:human": "人類",
@@ -194,6 +203,7 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "最佳直覺選點是 {move} ({probability:.1%}).",
         "short color B": "黑",
         "short color W": "白",
+        "SGF start message": " 'X' 是KataGo的最佳選點，正方形為損失少於0.5目的選點",
     },
     "ua": {
         "player:human": "Людина",
@@ -213,5 +223,6 @@ KATRAIN_TEXTS: dict[str, dict[str, str]] = {
         "Info:policy best": "Найкращий хід за політикою: {move} ({probability:.1%}).",
         "short color B": "Ч",
         "short color W": "Б",
+        "SGF start message": "Ходи з позначкою 'X' означають найкращий хід згідно з KataGo, а позначені квадратом ходи втрачають менше 0,5 очка",
     },
 }

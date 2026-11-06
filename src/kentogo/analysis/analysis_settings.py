@@ -14,6 +14,8 @@ values are copied from KaTrain's config.json when the settings file is made (see
   eval_show_ai is on, with the marks of the best moves when save_marks is on, in KaTrain's language.
 
 The analysis data (the KT property) is always written: KentoGo needs it, so it is not a setting.
+katrain_compatible chooses KaTrain's behavior as it is (the default); the other mode, which fixes
+some of KaTrain's problems, is planned (the check box "KaTrain compatible" on the settings screen).
 The visits of the engine (max_visits) are the engine settings (see katago.engine_settings).
 """
 
@@ -48,6 +50,7 @@ class AnalysisSettings:
         eval_show_ai: The AI's moves get comments too.
         save_marks: Mark the best moves in the position before each commented move (KaTrain's MA and SQ).
         language: The language of the comments (KaTrain's language code, such as "en" or "jp").
+        katrain_compatible: Analyze and write exactly as KaTrain does.
     """
 
     games_folder: str = ""
@@ -65,6 +68,7 @@ class AnalysisSettings:
     eval_show_ai: bool = True
     save_marks: bool = False
     language: str = "en"
+    katrain_compatible: bool = True
 
     @classmethod
     def from_dict(cls, values: dict) -> AnalysisSettings:

@@ -25,7 +25,10 @@ BEFORE = {
     },
     "policy": policy({12: 0.5, 20: 0.02, 25: 0.0}),
 }
-AFTER_A1 = {"root": {"scoreLead": -3.0, "winrate": 0.3}, "moves": {"B2": {"order": 0, "scoreLead": -3.1, "pv": ["B2"]}}}
+AFTER_A1 = {
+    "root": {"scoreLead": -3.0, "winrate": 0.3},
+    "moves": {"B2": {"order": 0, "scoreLead": -3.1, "winrate": 0.3, "pv": ["B2"]}},
+}
 AFTER_C3 = {"root": {"scoreLead": 1.2, "winrate": 0.56}, "moves": {}}
 
 
@@ -66,10 +69,8 @@ def test_teaching_undo_lines():
 
 def test_top_candidate_by_order_then_loss_and_by_policy_without_moves():
     assert top_candidate(BEFORE, "B", SIZE)["move"] == "C3"
-    tied = {
-        "root": {"scoreLead": 0.0},
-        "moves": {"A": {"order": 0, "scoreLead": -1.0}, "B": {"order": 0, "scoreLead": 2.0}},
-    }
+    moves = {"A": {"order": 0, "scoreLead": -1.0, "winrate": 0.4}, "B": {"order": 0, "scoreLead": 2.0, "winrate": 0.6}}
+    tied = {"root": {"scoreLead": 0.0, "winrate": 0.5}, "moves": moves}
     assert top_candidate(tied, "B", SIZE)["scoreLead"] == 2.0  # The smaller loss first for black.
     no_moves = {"root": {"scoreLead": 1.0}, "moves": {}, "policy": BEFORE["policy"]}
     assert top_candidate(no_moves, "B", SIZE) == {

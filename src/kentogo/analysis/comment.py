@@ -110,22 +110,36 @@ def _undo_lines(move: Move, after: dict, size: tuple[int, int], texts: dict[str,
 
 
 def top_candidate(analysis: dict, next_color: str, size: tuple[int, int]) -> dict:
-    """Return KaTrain's top candidate move of a position (the first of GameNode.candidate_moves).
+    """Return KaTrain's top candidate move of a position (the first of GameNode.candidate_moves)."""
+    return candidate_moves(analysis, next_color, size)[0]
 
-    The candidates are sorted by KataGo's order and then by the points lost; without candidate
-    moves, the move with the highest policy (or a pass) is the top move, as in KaTrain.
+
+def candidate_moves(analysis: dict, next_color: str, size: tuple[int, int]) -> list[dict]:
+    """Return KaTrain's candidate moves of a position, as GameNode.candidate_moves.
+
+    The candidates are sorted by KataGo's order and then by the points lost, and each gets its
+    "pointsLost" (and KaTrain's "relativePointsLost" and "winrateLost"); without candidate moves,
+    the move with the highest policy (or a pass) is the only candidate, as in KaTrain.
     """
     root = analysis["root"]
     moves = list((analysis.get("moves") or {}).values())
     if not moves:
         ranking = policy_ranking(analysis, next_color, size)
         point = ranking[0][1].gtp() if ranking else "pass"
-        return {**root, "pointsLost": 0, "winrateLost": 0, "order": 0, "move": point, "pv": [point]}
+        return [{**root, "pointsLost": 0, "winrateLost": 0, "order": 0, "move": point, "pv": [point]}]
     sign = _SIGNS[next_color]
-    return min(
-        ({"pointsLost": sign * (root["scoreLead"] - values["scoreLead"]), **values} for values in moves),
-        key=lambda values: (values["order"], values["pointsLost"]),
-    )
+    top = [values for values in moves if values["order"] == 0]
+    top_score = top[0]["scoreLead"] if top else root["scoreLead"]
+    candidates = [
+        {
+            "pointsLost": sign * (root["scoreLead"] - values["scoreLead"]),
+            "relativePointsLost": sign * (top_score - values["scoreLead"]),
+            "winrateLost": sign * (root["winrate"] - values["winrate"]),
+            **values,
+        }
+        for values in moves
+    ]
+    return sorted(candidates, key=lambda values: (values["order"], values["pointsLost"]))
 
 
 def policy_ranking(analysis: dict, next_color: str, size: tuple[int, int]) -> list[tuple[float, Move]]:

@@ -52,6 +52,7 @@ KEYS = [
     "Info:policy best",
     "short color B",
     "short color W",
+    "SGF start message",
 ]
 
 HEADER = '''"""KaTrain texts for each language, used to read and write KaTrain's SGF comments.
