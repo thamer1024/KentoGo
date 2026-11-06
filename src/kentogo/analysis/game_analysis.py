@@ -1,22 +1,10 @@
-"""Analyze all nodes of a game with KataGo, in the same way as KaTrain.
+"""The analyses of all nodes of a game, and how KataGo is asked about the nodes.
 
-KaTrain 1.20.0 (katrain/core/game.py) does it in two steps, and so does this module:
-
-1. When a game is opened (Game.analyze_all_nodes), every node of the tree (branches too) that
-   has no saved analysis data (KT) is analyzed with the engine's max_visits (or fast_visits),
-   with the time limit, at KaTrain's priority for a game (-100). Saved analysis data is used as it is.
-2. "Re-analyze game" (Game.analyze_extra, mode "game") analyzes the nodes again with more visits
-   (by default the fewest visits asked for any node plus max_visits), without the time limit:
-   only the mistakes when asked (the node's own move or a move after it lost more than the
-   mistake threshold), and only the nodes whose depth - 1 is in the range of moves when one is given.
-
-These are methods of KaTrain's Game class, so they are written for KentoGo with the same behavior.
-Which nodes and how many visits "Re-analyze game" uses, and whether a failed node is asked again,
-depend on the mode (KaTrain's own rules, or KentoGo's fixed ones): see analysis.rules.
-Two differences make the result the same every time: KataGo's reports during the search are not
-asked for (KaTrain shows them while it thinks; only the final answer is kept in the end), and the
-answers are put into the analyses in the order of the tree, the node before its children,
-whatever order KataGo answers in.
+The analysis of a node is kept as KaTrain keeps it (see analysis.node_analysis), so the analysis data
+(KT) can be read by KaTrain too. Saved analysis data is used as it is, as KaTrain's GameNode.load_analysis.
+KataGo's reports during the search are not asked for, and the answers are put into the analyses in the
+order of the tree, the node before its children, whatever order KataGo answers in, so the result is the
+same every time. The steps of the analysis of a game are in analysis.analyze.
 """
 
 from __future__ import annotations
@@ -24,26 +12,17 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from pysgf import GoNode
 
-from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.node_analysis import empty_analysis, points_lost
+from kentogo.analysis.node_analysis import apply_answer, empty_analysis, points_lost
 from kentogo.analysis.query import QuerySettings, node_query
 from kentogo.record.katrain_kt import decode_kt, decode_kt_numbers
 
-if TYPE_CHECKING:
-    from kentogo.analysis.rules import AnalysisRules
-
 GAME_PRIORITY = -100  # KaTrain's PRIORITY_GAME_ANALYSIS.
 REANALYSIS_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game".
-
-FIRST_STEP = "first"  # The analysis of the nodes without saved data.
-REANALYSIS_STEP = "again"  # "Re-analyze game".
 Progress = Callable[[str, int, int], None]  # (step, answers received, queries sent).
-# Puts an answer into a node's analysis and the analysis of the node before it (see node_analysis.apply_answer).
-AnswerApply = Callable[[dict, dict, dict | None, str | None], None]
 
 
 class Engine(Protocol):
@@ -75,7 +54,7 @@ class GameAnalysis:
         root: The root node of the game.
         analyses: The analysis of each node, by id(node) (KaTrain's analysis dicts, see node_analysis).
         visits: The visits asked for each node (KaTrain's analysis_visits_requested).
-        failed_nodes: The nodes that KataGo could not analyze (after the retries of the mode).
+        failed_nodes: The nodes that KataGo could not analyze (after the retries).
         loaded: The nodes whose analysis comes from saved analysis data (by id(node)).
     """
 
@@ -101,7 +80,10 @@ class GameAnalysis:
         return analysis if analysis is not None and analysis["root"] is not None else None
 
     def points_lost(self, node: GoNode) -> float | None:
-        """Return the points lost by the move of a node (KaTrain's GameNode.points_lost), or None."""
+        """Return the score before a node's move minus the score after it (KaTrain's GameNode.points_lost), or None.
+
+        Only used when the played move was not read in the position before it (see analysis.played_moves).
+        """
         move = node.move
         if move is None or node.parent is None:
             return None
@@ -146,19 +128,15 @@ class NodeStep:
     apply: Callable[[GameAnalysis, GoNode, dict], None]
 
 
-def analysis_step(game: GameAnalysis, settings: QuerySettings, apply: AnswerApply) -> NodeStep:
-    """Return the step that analyzes nodes (KaTrain's GameNode.analyze), with the mode's way of keeping answers."""
+def analysis_step(game: GameAnalysis, settings: QuerySettings) -> NodeStep:
+    """Return the step that analyzes nodes (KaTrain's GameNode.analyze); each answer is kept in its own node."""
 
     def query(node: GoNode) -> dict | None:
-        game.visits[id(node)] = max(game.visits.get(id(node), 0), settings.visits)  # KaTrain counts them when asked.
+        game.visits[id(node)] = max(game.visits.get(id(node), 0), settings.visits)  # Counted when asked.
         return node_query(node, settings)
 
     def keep(game: GameAnalysis, node: GoNode, answer: dict) -> None:
-        analysis = game.analyses.setdefault(id(node), empty_analysis())
-        parent = node.parent
-        parent_analysis = game.analyses.setdefault(id(parent), empty_analysis()) if parent is not None else None
-        move = node.move
-        apply(analysis, answer, parent_analysis, move.gtp() if move is not None else None)
+        apply_answer(game.analyses.setdefault(id(node), empty_analysis()), answer)
 
     return NodeStep(query, keep)
 
@@ -229,46 +207,3 @@ def _ask_all(engine: Engine, queries: list[dict], progress: Callable[[int, int],
         engine.query(query, receiver(index))
     done.wait()
     return [answer or {"error": "no answer"} for answer in answers]
-
-
-def analyze_game(
-    engine: Engine,
-    root: GoNode,
-    settings: AnalysisSettings,
-    values: EngineValues,
-    progress: Progress,
-    rules: AnalysisRules,
-) -> GameAnalysis:
-    """Analyze a game as KaTrain: the saved data, the first step, and "Re-analyze game" when it is on.
-
-    Args:
-        engine: KataGo.
-        root: The root node of the game.
-        settings: The settings of the analysis.
-        values: The engine settings that the analysis uses.
-        progress: Called after each answer, in KataGo's thread.
-        rules: The rules of the mode (see analysis.rules).
-
-    Returns:
-        The analyses of the nodes.
-    """
-    game = GameAnalysis(root)
-    load_saved_analyses(game)
-    retries = rules.retries(settings)
-    visits = settings.fast_visits if settings.fast else values.max_visits
-    first = QuerySettings(visits, values.wide_root_noise, rules.max_time(settings), GAME_PRIORITY)
-    first_step = analysis_step(game, first, rules.apply_answer)
-    analyze_with_retries(engine, game, first_nodes(game), first_step, _step(progress, FIRST_STEP), retries)
-    if settings.reanalyze:
-        again_visits = settings.reanalyze_visits or rules.reanalysis_visits(game, values.max_visits)
-        again = QuerySettings(again_visits, values.wide_root_noise, None, REANALYSIS_PRIORITY)
-        nodes = rules.reanalysis_nodes(game, settings)
-        again_step = analysis_step(game, again, rules.apply_answer)
-        analyze_with_retries(engine, game, nodes, again_step, _step(progress, REANALYSIS_STEP), retries)
-    rules.last_step(engine, game, values, progress, retries)
-    return game
-
-
-def _step(progress: Progress, step: str) -> Callable[[int, int], None]:
-    """Return the progress of one step."""
-    return lambda done, total: progress(step, done, total)

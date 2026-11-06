@@ -3,7 +3,6 @@
 from kentogo.analysis.comment import (
     CommentedMove,
     format_score,
-    format_score_exactly,
     move_comment,
     policy_ranking,
     top_candidate,
@@ -99,15 +98,9 @@ def test_policy_ranking_keeps_katrains_order_for_equal_values():
     assert policy_ranking({"policy": None}, "B", SIZE) == []
 
 
-def test_format_score_uses_the_own_score_for_zero_as_katrain():
-    """KaTrain writes "score or self.score", so a score of 0 shows the node's own score."""
-    assert format_score(0.0, -2.0, EN) == "W+2.0"
-    assert format_score(0.0, None, EN) is None
+def test_format_score_keeps_zero():
+    """A score of 0 is written as 0 (KaTrain writes the node's own score instead)."""
+    assert format_score(0.0, -2.0, EN) == "B+0.0"
+    assert format_score(None, -2.0, EN) == "W+2.0"
+    assert format_score(None, None, EN) is None
     assert format_score(-0.04, None, EN) == "W+0.0"
-
-
-def test_format_score_exactly_keeps_zero():
-    """KentoGo's mode writes a score of 0 as 0."""
-    assert format_score_exactly(0.0, -2.0, EN) == "B+0.0"
-    assert format_score_exactly(None, -2.0, EN) == "W+2.0"
-    assert format_score_exactly(None, None, EN) is None

@@ -130,16 +130,18 @@ def test_plan_analysis_counts_the_games_to_analyze(tmp_path):
     assert plan_analysis(AppSettings(analysis=AnalysisSettings(games_folder=str(tmp_path / "x")))).games == 0
 
 
-def test_games_analyzed_in_katrains_way_are_analyzed_again_for_kentogo_when_asked(tmp_path):
+def test_games_analyzed_by_katrain_are_analyzed_again_for_kentogo_when_asked(tmp_path):
     folder = games(tmp_path)
-    compatible = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
-    analyze_games(FakeEngine(), [folder / "a.sgf"], compatible, Recorder().listener())  # No KGM.
-    kentogo = AppSettings(analysis=AnalysisSettings(games_folder=str(folder), katrain_compatible=False))
-    plan = plan_analysis(kentogo)
+    settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
+    game = folder / "a.sgf"
+    analyze_games(FakeEngine(), [game], settings, Recorder().listener())
+    game.write_text(game.read_text(encoding="utf-8").replace("KGM[KentoGo]", ""), encoding="utf-8")  # As KaTrain.
+    plan = plan_analysis(settings)
     assert (plan.analyzed, plan.kentogo_redo, plan.count(), plan.count(True)) == (1, 1, 1, 2)
-    assert plan_analysis(compatible).kentogo_redo == 0
-    skipped = analyze_games(FakeEngine(), [folder / "a.sgf"], kentogo, Recorder().listener())
+    again = AppSettings(analysis=AnalysisSettings(games_folder=str(folder), reanalyze=True))
+    assert plan_analysis(again).kentogo_redo == 0  # Analyzed again anyway.
+    skipped = analyze_games(FakeEngine(), [game], settings, Recorder().listener())
     assert skipped.outcomes[SKIPPED] == 1
-    redone = analyze_games(FakeEngine(), [folder / "a.sgf"], kentogo, Recorder().listener(), redo_kentogo=True)
-    assert redone.outcomes[WRITTEN] == 1 and "KGM[KentoGo]" in (folder / "a.sgf").read_text(encoding="utf-8")
-    assert plan_analysis(kentogo).kentogo_redo == 0  # Analyzed in KentoGo's mode now.
+    redone = analyze_games(FakeEngine(), [game], settings, Recorder().listener(), redo_kentogo=True)
+    assert redone.outcomes[WRITTEN] == 1 and "KGM[KentoGo]" in game.read_text(encoding="utf-8")
+    assert plan_analysis(settings).kentogo_redo == 0  # Analyzed by KentoGo now.

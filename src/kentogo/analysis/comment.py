@@ -17,7 +17,6 @@ thoughts (only for moves that KaTrain's AI played in that session) and the "SGF 
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from kentogo.common.types import Move, opponent
@@ -26,9 +25,6 @@ from kentogo.vendor.katrain_analysis import var_to_grid
 
 DEFAULT_LANGUAGE = "en"  # KaTrain's texts when a language has none.
 _SIGNS = {"B": 1, "W": -1}  # KaTrain's GameNode.player_sign.
-
-# How a score is written: (score, the score of the node that writes it, KaTrain's texts) -> text.
-ScoreFormat = Callable[[float | None, float | None, dict[str, str]], str | None]
 
 
 @dataclass(frozen=True)
@@ -39,7 +35,7 @@ class CommentedMove:
         number: Its move number (KaTrain's node depth).
         move: The move.
         auto_undo: KaTrain took it back in a teaching game (KaTrain writes two more lines).
-        points_lost: The loss to write, or None for KaTrain's (the score before minus the score after).
+        points_lost: The loss to write (see analysis.played_moves), or None for the score before minus the score after.
     """
 
     number: int
@@ -54,7 +50,6 @@ def move_comment(
     after: dict,
     size: tuple[int, int],
     language: str,
-    score_format: ScoreFormat | None = None,
 ) -> str:
     """Return KaTrain's comment on a move (as GameNode.comment(sgf=True, interactive=False)).
 
@@ -64,18 +59,16 @@ def move_comment(
         after: The analysis of the position after the move (KaTrain's node of the move).
         size: The board size (x, y).
         language: KaTrain's language code, such as "jp".
-        score_format: How a score is written (KaTrain's format_score when None; see analysis.rules).
 
     Returns:
         The comment, each line ending with a newline.
     """
     texts = KATRAIN_TEXTS.get(language, KATRAIN_TEXTS[DEFAULT_LANGUAGE])
-    score_format = score_format or format_score
     move = commented.move
     text = texts["move"].format(number=commented.number) + f": {move.color} {move.gtp()}\n"
-    text += texts["Info:score"].format(score=score_format(_score(after), _score(after), texts)) + "\n"
+    text += texts["Info:score"].format(score=format_score(_score(after), _score(after), texts)) + "\n"
     text += texts["Info:winrate"].format(winrate=format_winrate(_winrate(after), texts)) + "\n"
-    text += _top_move_lines(commented, before, after, size, texts, score_format)
+    text += _top_move_lines(commented, before, after, size, texts)
     text += _policy_lines(move, before, size, texts)
     if commented.auto_undo:
         text += _undo_lines(move, after, size, texts)
@@ -88,7 +81,6 @@ def _top_move_lines(
     after: dict,
     size: tuple[int, int],
     texts: dict[str, str],
-    score_format: ScoreFormat,
 ) -> str:
     """Return the lines about the points lost, KaTrain's top move and its sequence."""
     move = commented.move
@@ -100,7 +92,7 @@ def _top_move_lines(
             points_lost = _SIGNS[move.color] * (_score(before) - _score(after))
         if points_lost > 0.5:
             text += texts["Info:point loss"].format(points_lost=points_lost) + "\n"
-        score = score_format(top["scoreLead"], _score(after), texts)
+        score = format_score(top["scoreLead"], _score(after), texts)
         text += texts["Info:top move"].format(top_move=top["move"], score=score) + "\n"
     else:
         text = texts["Info:best move"] + "\n"
@@ -188,18 +180,13 @@ def format_score(score: float | None, own_score: float | None, texts: dict[str, 
 
     Args:
         score: The score lead (black's side).
-        own_score: The score of the node that formats it. As in KaTrain ("score or self.score"),
-            it is used when score is None or 0.
+        own_score: The score of the node that formats it, used when score is None. (KaTrain uses it
+            for a score of 0 too, "score or self.score"; KentoGo writes 0 as 0.)
         texts: KaTrain's texts of the language.
 
     Returns:
         The text, or None when there is no score.
     """
-    return _score_text(score or own_score, texts)
-
-
-def format_score_exactly(score: float | None, own_score: float | None, texts: dict[str, str]) -> str | None:
-    """Return a score as format_score, but a score of 0 stays 0 (KentoGo's mode, see analysis.rules)."""
     return _score_text(own_score if score is None else score, texts)
 
 

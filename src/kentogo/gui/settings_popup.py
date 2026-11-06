@@ -16,8 +16,7 @@ menu (see settings_form.PAGES):
 - AI解説: which language AI and model the AI commentary uses (the values are used as they are
   written, so any model that the AI publishes can be used), the environment variable of the
   API key, and a button that opens the user's prompt file.
-- KataGo棋譜解析: the analysis of games with KataGo (see analysis.analysis_settings): the mode
-  (KaTrain compatible or KentoGo's), the folders, the first analysis, analyzing again, and the comments.
+- KataGo棋譜解析: the analysis of games with KataGo (see analysis.analysis_settings): the folders, the first analysis, analyzing again, and the comments.
   The "KataGoで棋譜を解析" button is at the bottom, in its own color: it saves the inputs as
   "設定を更新" does, tells which folder and how many games will be overwritten, and starts the
   analysis when the user says yes (see gui.analysis_popup).
@@ -275,7 +274,7 @@ class SettingsPopup(Popup):
         threading.Thread(target=work, daemon=True).start()
 
     def _ask_analysis(self, settings: AppSettings, plan: AnalysisPlan) -> None:
-        """Ask about the games analyzed in KaTrain's way when KentoGo's mode is used, then confirm the run.
+        """Ask about the games analyzed by KaTrain, then confirm the run.
 
         When there is nothing to analyze, only tell why.
         """
@@ -299,7 +298,7 @@ class SettingsPopup(Popup):
     def _confirm_analysis(self, settings: AppSettings, plan: AnalysisPlan, redo_kentogo: bool) -> None:
         """Tell which folder and how many games will be overwritten, and start when the user says yes.
 
-        redo_kentogo: True if the user said yes to analyzing again for KentoGo the games analyzed in KaTrain's way.
+        redo_kentogo: True if the user said yes to analyzing again for KentoGo the games analyzed by KaTrain.
         """
         problem = texts.analysis_plan_problem(plan, redo_kentogo)
         if problem:  # The user said no, and every game is analyzed.

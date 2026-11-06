@@ -455,20 +455,18 @@ TEXTS = {
     "analysis_settings": "解析",
     "reanalysis_settings": "解析し直す",
     "analysis_comment_settings": "棋譜に書くコメント",
-    "analysis_settings_hint": "KataGoで棋譜を解析し、KaTrainと同じ形で解析データとコメントを棋譜に書き込みます。元の棋譜は先にバックアップします。KaTrain互換をオフにすると、損失を打つ前の局面で比べるなど、KentoGoの改良した方法で解析します。",
-    "field_katrain_compatible": "KaTrain互換（KaTrainと同じ方法で解析する）",
+    "analysis_settings_hint": "KataGoで棋譜を解析し、KaTrainでも開ける形で解析データとコメントを棋譜に書き込みます。元の棋譜は先にバックアップします。損失は、打つ前の局面で最善手と比べて出します（KaTrainの方法とは違います。KaTrainと同じ解析が欲しいときはKaTrainで解析してください）。",
     "field_analysis_games_folder": "解析する棋譜のフォルダ（空：出題と同じ）",
     "field_analysis_backup_folder": "元の棋譜のバックアップ先（空：棋譜フォルダの backup）",
-    "field_max_time": "1局面の最長の読み時間（秒、KaTrain互換のとき）",
     "field_analysis_fast": "最初は高速解析で読む",
     "field_fast_visits": "高速解析の探索数",
     "field_reanalyze": "解析し直す（KaTrainの「棋譜を再解析」）",
-    "field_reanalyze_visits": "解析し直す探索数（0：KaTrainと同じ決め方）",
+    "field_reanalyze_visits": "解析し直す探索数（0：前回の探索数＋エンジンの探索数）",
     "field_mistakes_only": "悪手だけを解析し直す",
     "field_move_from": "解析し直す最初の手（0：最初から）",
     "field_move_to": "解析し直す最後の手（0：最後まで）",
-    "field_reanalyze_threshold": "解析し直す悪手の損失（目、KaTrain互換でないとき）",
-    "field_retries": "失敗した局面をやり直す回数（KaTrain互換でないとき）",
+    "field_reanalyze_threshold": "解析し直す悪手の損失（目）",
+    "field_retries": "失敗した局面をやり直す回数",
     "field_analysis_language": "コメントの言語",
     "field_eval_show_ai": "AIの手にもコメントを付ける",
     "field_save_marks": "最善手に印（×・□）を付ける",
@@ -913,7 +911,7 @@ def analysis_plan_problem(plan: AnalysisPlan, redo_kentogo: bool = False) -> str
 
 
 def analysis_kentogo_question(plan: AnalysisPlan) -> str:
-    """Return the question whether the games analyzed in KaTrain's way are analyzed again for KentoGo."""
+    """Return the question whether the games analyzed by KaTrain are analyzed again for KentoGo."""
     return text("analysis_kentogo_question", count=plan.kentogo_redo)
 
 

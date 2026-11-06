@@ -196,7 +196,7 @@ class _Game:
     start: Position  # The empty board with setup stones, komi and rules.
     my_color: str
     kt_version: str = SUPPORTED_VERSION  # The version of KaTrain's analysis data (the KTV property).
-    # How a move and the candidates are evaluated from the analysis data: KaTrain's way, or KentoGo's mode.
+    # How a move and the candidates are evaluated from the analysis data: KaTrain's way, or KentoGo's (KGM).
     evaluate: Callable[[dict, dict, str, str], KtEvaluation | None] = evaluate_katrain_move
     candidate_losses: Callable[[dict, str], dict[str, float]] = candidate_losses
 

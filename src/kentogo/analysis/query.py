@@ -4,7 +4,8 @@ Written for KentoGo with the same contents as KaTrain 1.20.0's KataGoEngine.requ
 (katrain/core/engine.py), which is a method of KaTrain's engine class and cannot be copied
 unchanged: the moves and the placed stones from the start of the game to the node, the rules,
 komi and board size, the visits, the ownership and the policy, and KaTrain's settings
-(scores from black's side, wide root noise, and the time limit when there is one).
+(scores from black's side and wide root noise). KentoGo sets no time limit, so every position is
+read with all its visits.
 KaTrain's own key for continuous analysis ("_kt_continuous") is not sent to KataGo, so it is not here.
 """
 
@@ -26,21 +27,18 @@ class QuerySettings:
     Attributes:
         visits: KataGo's maxVisits.
         wide_root_noise: KaTrain's engine setting "wide_root_noise".
-        max_time: KaTrain's engine setting "max_time" in seconds, or None without a time limit
-            (KaTrain's "Re-analyze game" has none).
         priority: KataGo's priority of the query (KaTrain: -100 for a game, -1000000 for re-analysis).
         ownership: Ask for the ownership (KaTrain's engine setting "_enable_ownership", on by default).
     """
 
     visits: int
     wide_root_noise: float
-    max_time: float | None
     priority: int
     ownership: bool = True
 
 
 def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
-    """Return the query that analyzes the position before a node with only the node's move allowed (KentoGo's mode).
+    """Return the query that analyzes the position before a node with only the node's move allowed.
 
     It is the query of the node before (see node_query), with KataGo's allowMoves for the first move,
     and without the ownership and the policy, which the answer does not need.
@@ -70,8 +68,6 @@ def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
     moves = [move for item in nodes for move in item.moves]
     stones = [move for item in nodes for move in item.placements]
     override = {**FORCED_SETTINGS, "wideRootNoise": settings.wide_root_noise}
-    if settings.max_time is not None:
-        override["maxTime"] = settings.max_time
     size_x, size_y = node.board_size
     return {
         "rules": normalize_rules(node.ruleset),

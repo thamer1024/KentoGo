@@ -7,9 +7,9 @@ KentoGo with the same behavior as KaTrain's GameNode.update_move_analysis and th
 (not refined, not limited to a region) part of GameNode.set_analysis. They are methods of
 KaTrain's GameNode class, so they cannot be copied unchanged.
 
-As in KaTrain, the answer for a node also updates the node before it: the move that was played
-gets the score of the position after it (KataGo's rootInfo, with the move and the sequence after
-it as "pv"), and the same rootInfo dict becomes the node's own "root".
+Unlike KaTrain, the answer for a node is kept in that node only: KaTrain also gives the move that was
+played the score of the position after it in the node before it; KentoGo reads the played move in the
+position before it instead (see analysis.played_moves).
 """
 
 from __future__ import annotations
@@ -40,17 +40,14 @@ def update_move_analysis(analysis: dict, move_analysis: dict, move_gtp: str) -> 
         current.update({key: value for key, value in move_analysis.items() if key not in current})
 
 
-def apply_answer(analysis: dict, answer: dict, parent_analysis: dict | None, move_gtp: str | None) -> None:
-    """Put KataGo's final answer for a node into its analysis, as KaTrain's GameNode.set_analysis.
+def apply_answer(analysis: dict, answer: dict) -> None:
+    """Put KataGo's final answer for a node into its analysis, as KaTrain's GameNode.set_analysis for the node itself.
 
-    The moves already known go to the end (KaTrain's ADDITIONAL_MOVE_ORDER) and the new ranking counts;
-    then the node before it gets the score of the played move (see the module's docstring).
+    The moves already known go to the end (KaTrain's ADDITIONAL_MOVE_ORDER) and the new ranking counts.
 
     Args:
         analysis: The node's analysis (changed).
         answer: KataGo's final answer (with "rootInfo" and "moveInfos").
-        parent_analysis: The analysis of the node before it (changed), or None for the first node.
-        move_gtp: The move of the node (GTP), or None for a node without a move.
     """
     for move_dict in analysis["moves"].values():
         move_dict["order"] = ADDITIONAL_MOVE_ORDER
@@ -59,23 +56,11 @@ def apply_answer(analysis: dict, answer: dict, parent_analysis: dict | None, mov
     analysis["ownership"] = answer.get("ownership")
     analysis["policy"] = answer.get("policy")
     analysis["root"] = answer["rootInfo"]
-    if parent_analysis is not None and move_gtp is not None:
-        answer["rootInfo"]["pv"] = [move_gtp] + (answer["moveInfos"][0]["pv"] if answer["moveInfos"] else [])
-        update_move_analysis(parent_analysis, answer["rootInfo"], move_gtp)
     analysis["completed"] = True
 
 
-def apply_own_answer(analysis: dict, answer: dict, parent_analysis: dict | None, move_gtp: str | None) -> None:
-    """Put KataGo's final answer into the node's analysis only (KentoGo's mode).
-
-    The node before it keeps its own candidate moves: the played move's value there comes from
-    an analysis of that position (see analysis.played_moves), not from the position after the move.
-    """
-    apply_answer(analysis, answer, None, None)
-
-
 def apply_played_move(parent_analysis: dict, answer: dict, move_gtp: str) -> None:
-    """Put the played move's analysis in the position before it into that position's candidates (KentoGo's mode).
+    """Put the played move's analysis in the position before it into that position's candidates.
 
     The answer comes from an analysis where only the played move was allowed (see analysis.played_moves),
     so its candidate is the played move, read as deeply as the position itself. The move keeps

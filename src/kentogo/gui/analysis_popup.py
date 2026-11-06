@@ -35,7 +35,7 @@ class FolderAnalysis:
     Attributes:
         plan: Returns what a run with the settings would do (the folder and the numbers of games).
         run: Analyzes the games with the settings, telling the listener; stops when the event is set.
-            The last argument is True when the games analyzed in KaTrain's way are analyzed again for
+            The last argument is True when the games analyzed by KaTrain are analyzed again for
             KentoGo (see analysis_run.needs_kentogo_analysis).
     """
 

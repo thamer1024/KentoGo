@@ -32,7 +32,7 @@ from kentogo.vendor.katrain_analysis import analysis_dumps, unpack_floats
 # The newest version of the format that this module can read (KaTrain's ANALYSIS_FORMAT_VERSION).
 SUPPORTED_VERSION = "1.0"
 
-# Games analyzed in KentoGo's own mode (see analysis.rules) have KGM[KentoGo] at the root. Their
+# Games analyzed by KentoGo (see analysis.analyze) have KGM[KentoGo] at the root. Their
 # losses are read in the position before each move, from the best move (see played_move_loss).
 KENTOGO_MODE_PROPERTY = "KGM"
 KENTOGO_MODE = "KentoGo"
@@ -130,7 +130,7 @@ def candidate_losses(analysis: dict, color: str) -> dict[str, float]:
 def relative_candidate_losses(analysis: dict, color: str) -> dict[str, float]:
     """Return the loss of each candidate move from the best one (KaTrain's relativePointsLost), never below 0.
 
-    KentoGo's mode uses it: the best candidate (KataGo's order 0) loses exactly 0, and the others
+    KentoGo uses it: the best candidate (KataGo's order 0) loses exactly 0, and the others
     lose what they give up against it. Without a ranked candidate, the root's score is the reference.
     """
     root = analysis.get("root") or {}
@@ -147,7 +147,7 @@ def relative_candidate_losses(analysis: dict, color: str) -> dict[str, float]:
 
 
 def played_move_loss(before: dict, color: str, move_gtp: str) -> float | None:
-    """Return the points lost by a played move from the best move, read in the position before it (KentoGo's mode).
+    """Return the points lost by a played move from the best move, read in the position before it (a game analyzed by KentoGo).
 
     The value can be below 0 when the played move, read as deeply as the position, turned out better
     than KataGo's first choice. None when the position before has no value for the played move.
@@ -159,7 +159,7 @@ def played_move_loss(before: dict, color: str, move_gtp: str) -> float | None:
 
 
 def evaluate_played_move(before: dict, after: dict, color: str, move_gtp: str) -> KtEvaluation | None:
-    """Return the evaluation of a move of a game analyzed in KentoGo's mode (see played_move_loss).
+    """Return the evaluation of a move of a game analyzed by KentoGo (see played_move_loss).
 
     The loss is never below 0 here: a move better than KataGo's first choice lost nothing. Without
     the played move's value in the position before it, the move is evaluated as KaTrain does it.

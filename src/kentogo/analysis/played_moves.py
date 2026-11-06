@@ -1,7 +1,7 @@
-"""KentoGo's mode: the value of each played move, read in the position before it.
+"""The value of each played move, read in the position before it.
 
 KaTrain's loss of a move is the score before it minus the score after it: two separate analyses,
-the second one from the opponent's side, so the noise of both goes into the loss. KentoGo's mode
+the second one from the opponent's side, so the noise of both goes into the loss. KentoGo
 compares inside the position before the move instead: the best move's score with the played move's score.
 When KataGo's analysis of that position already read the played move well enough (at least
 PLAYED_SHARE of its visits), that value is used; otherwise the position is analyzed again with
@@ -9,8 +9,8 @@ only the played move allowed (KataGo's allowMoves), with the same visits as the 
 The value is kept in the candidates of the position before the move, so the analysis data (KT)
 keeps KaTrain's format and KaTrain can still read it.
 
-Saved analysis data counts only when KentoGo's mode wrote it (the root's KGM[KentoGo]): in data that
-KaTrain (or the compatible mode) wrote, the played move's value comes from the position after it.
+Saved analysis data counts only when KentoGo wrote it (the root's KGM[KentoGo]): in data that
+KaTrain wrote, the played move's value comes from the position after it, so it is read again.
 """
 
 from __future__ import annotations
@@ -33,14 +33,15 @@ from kentogo.record.katrain_kt import played_move_loss as loss_in_position
 
 PLAYED_SHARE = 0.1  # The played move is read well enough with this share of the position's visits.
 PLAYED_STEP = "played"  # The name of this step in the progress.
-MODE_MARK = KENTOGO_MODE  # The root's KGM property of games analyzed in KentoGo's mode.
+MODE_MARK = KENTOGO_MODE  # The root's KGM property of games analyzed by KentoGo.
 
 
 def played_move_loss(game: GameAnalysis, node: GoNode) -> float | None:
-    """Return the points lost by a node's move from the best move, in the position before it (or as KaTrain).
+    """Return the points lost by a node's move from the best move, in the position before it.
 
     See record.katrain_kt.played_move_loss: the best move loses exactly 0, and a move better than
-    KataGo's first choice gets a value below 0.
+    KataGo's first choice gets a value below 0. When the played move was not read there (KataGo
+    could not analyze it), the loss is the score before the move minus the score after it, as KaTrain.
     """
     move, parent = node.move, node.parent
     before = game.analysis(parent) if parent is not None else None
@@ -55,7 +56,7 @@ def needs_reading(game: GameAnalysis, node: GoNode) -> bool:
     if move is None or before is None:
         return False
     if id(parent) in game.loaded and game.root.get_property("KGM", "") != MODE_MARK:
-        return True  # Saved by KaTrain's way: the played move's value is not from this position.
+        return True  # Saved by KaTrain: the played move's value is not from this position.
     played = before["moves"].get(move.gtp())
     return played is None or played.get("visits", 0) < PLAYED_SHARE * before["root"].get("visits", 0)
 
@@ -68,7 +69,7 @@ def read_played_moves(
 
     def query(node: GoNode) -> dict | None:
         visits = max(game.visits.get(id(node.parent), 0), game.analysis(node.parent)["root"].get("visits", 0))
-        settings = QuerySettings(visits or values.max_visits, values.wide_root_noise, None, GAME_PRIORITY)
+        settings = QuerySettings(visits or values.max_visits, values.wide_root_noise, GAME_PRIORITY)
         return played_move_query(node, settings)
 
     def keep(game: GameAnalysis, node: GoNode, answer: dict) -> None:

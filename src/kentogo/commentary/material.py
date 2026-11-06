@@ -17,7 +17,7 @@ it out itself, which is where an AI makes most of its mistakes:
   the score after the move, and the opponent's reply.
 - For the game: how many of the user's moves lost at least each size of points.
 
-A game analyzed in KentoGo's mode (KGM[KentoGo], see analysis.rules) is read as the quiz reads it
+A game analyzed by KentoGo (KGM[KentoGo], see analysis.analyze) is read as the quiz reads it
 (mistakes.extract): the loss of a played move and the best move come from the analysis data of the
 position before it (record.katrain_kt.evaluate_played_move), and the candidates lose from the best
 one. So the AI is told the same numbers as the quiz screen shows. A move without analysis data is
@@ -197,12 +197,12 @@ def make_material(root: GoNode, my_color: str, conditions: ExtractSettings = Ext
 
 
 def is_kentogo_mode(root: GoNode) -> bool:
-    """True if the game was analyzed in KentoGo's mode (it has KGM[KentoGo])."""
+    """True if the game was analyzed by KentoGo (it has KGM[KentoGo])."""
     return root.get_property(KENTOGO_MODE_PROPERTY, "") == KENTOGO_MODE
 
 
 def _analyzed_losses(nodes: list[GoNode], my_color: str, version: str) -> dict[int, float]:
-    """Return the loss of each of the user's moves in KentoGo's mode, by move number (moves without data are left out)."""
+    """Return the loss of each of the user's moves in a game analyzed by KentoGo, by move number (moves without data are left out)."""
     losses = {}
     for number, node in enumerate(nodes, 1):
         evaluation = _kentogo_evaluation(node, version)
@@ -212,7 +212,7 @@ def _analyzed_losses(nodes: list[GoNode], my_color: str, version: str) -> dict[i
 
 
 def _kentogo_evaluation(node: GoNode, version: str) -> KtEvaluation | None:
-    """Return the evaluation of a node's move in KentoGo's mode, or None without analysis data."""
+    """Return the evaluation of a node's move in a game analyzed by KentoGo, or None without analysis data."""
     move = sgf.node_move(node)
     before, after = _analysis(node.parent, version), _analysis(node, version)
     if move is None or before is None or after is None:
@@ -287,7 +287,7 @@ def _move_material(
 ) -> MoveMaterial:
     """Make the facts about one mistake (number is its move number, and node its node: in the game or a branch).
 
-    In KentoGo's mode (kentogo), the loss, the best move and the sequence come from the analysis data.
+    In a game analyzed by KentoGo (kentogo), the loss, the best move and the sequence come from the analysis data.
     """
     move = read_move_record(node, number)
     info = move.katrain
@@ -390,7 +390,7 @@ def _candidates(
 ) -> tuple[tuple[str, float], ...]:
     """Return the candidate moves before a move with their losses, the smallest loss first.
 
-    In KentoGo's mode (kentogo), the losses are from the best candidate, as the quiz reads them.
+    In a game analyzed by KentoGo (kentogo), the losses are from the best candidate, as the quiz reads them.
     """
     analysis = _analysis(parent, version)
     losses_of = relative_candidate_losses if kentogo else candidate_losses
