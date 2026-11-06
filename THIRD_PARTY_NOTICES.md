@@ -21,9 +21,13 @@ Each part is under its own license, which is given here.
     and in each language file in `src/kentogo/locales`, taken from KaTrain's translation
     files of that language. The translators are listed in KaTrain's `CONTRIBUTIONS.md`.
   - Code copied unchanged, letter for letter, into `src/kentogo/vendor/katrain_analysis.py`:
-    the functions `pack_floats` and `unpack_floats` (from `katrain/core/utils.py`) and
-    `analysis_dumps` (from `katrain/core/game_node.py`). KentoGo uses them to write and read
-    KaTrain's analysis data (the KT property of SGF files) in exactly KaTrain's format.
+    the functions `var_to_grid`, `evaluation_class`, `pack_floats` and `unpack_floats` (from
+    `katrain/core/utils.py`) and `analysis_dumps` (from `katrain/core/game_node.py`). KentoGo uses
+    them to write and read KaTrain's analysis data (the KT property of SGF files) in exactly
+    KaTrain's format, and to write KaTrain's comments on analyzed moves.
+  - `src/kentogo/analysis/comment.py` is written for KentoGo with the same behavior as KaTrain's
+    `GameNode.comment` (from `katrain/core/game_node.py`), which cannot be copied unchanged
+    because it is part of KaTrain's game tree class.
   - Code copied unchanged into `src/kentogo/vendor/katrain_engine.py`: the constant
     `ENGINE_BACKENDS` and the function `resolve_engine_backend` (from `katrain/core/engine.py`),
     which tell the kind of engine (local, remote or custom) that KaTrain's settings choose.

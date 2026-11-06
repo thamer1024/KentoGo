@@ -30,7 +30,7 @@ ALLOWED = {
     "seichi": {"common", "repetition", "vendor"},
     "commentary": {"common", "record", "mistakes"},
     "viewer": {"common", "record", "mistakes", "katago"},
-    "analysis": {"common", "record", "katago"},
+    "analysis": {"common", "record", "katago", "vendor"},
 }
 LOGIC = set(ALLOWED)
 
