@@ -28,6 +28,13 @@ Each part is under its own license, which is given here.
   - `src/kentogo/analysis/comment.py` is written for KentoGo with the same behavior as KaTrain's
     `GameNode.comment` (from `katrain/core/game_node.py`), which cannot be copied unchanged
     because it is part of KaTrain's game tree class.
+  - `src/kentogo/analysis/node_analysis.py`, `query.py` and `game_analysis.py` are written for
+    KentoGo with the same behavior as KaTrain's `GameNode.update_move_analysis` and
+    `GameNode.set_analysis` (from `katrain/core/game_node.py`), `KataGoEngine.request_analysis`
+    (from `katrain/core/engine.py`) and `Game.analyze_all_nodes` and `Game.analyze_extra`
+    (from `katrain/core/game.py`), which are methods of KaTrain's classes and cannot be copied unchanged.
+  - `src/kentogo/analysis/sgf_writer.py` is written for KentoGo with the same behavior as KaTrain's
+    `GameNode.sgf_properties` and `Game.write_sgf` (from `katrain/core/game_node.py` and `game.py`).
   - Code copied unchanged into `src/kentogo/vendor/katrain_engine.py`: the constant
     `ENGINE_BACKENDS` and the function `resolve_engine_backend` (from `katrain/core/engine.py`),
     which tell the kind of engine (local, remote or custom) that KaTrain's settings choose.
