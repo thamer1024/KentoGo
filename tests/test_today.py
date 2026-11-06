@@ -15,6 +15,8 @@ from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.session import QuizSession
 from kentogo.record.katrain_comment import INTERNAL_MARKER
+from kentogo.repetition.modes import REVIEW_ONCE
+from kentogo.review.record import LOSS_FROM_KATAGO, AnswerRecord
 from kentogo.review.review_settings import ReviewSettings
 from kentogo.today import (
     PROJECT_FOLDER,
@@ -321,3 +323,36 @@ def test_staged_problems(tmp_path):
     today = prepare_problems(games, settings, history, random.Random(0))
     assert [problem.points_lost for problem in today.problems] == [12.0]
     assert (today.stage.threshold, today.stage.index, today.stage.left) == (10.0, 1, 1)
+
+
+def test_raising_the_pass_ratio_does_not_bring_back_finished_problems(tmp_path, monkeypatch):
+    """A problem answered correctly stays finished after the rule gets stricter: the saved judgment counts."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_with_mistake(9.0), encoding="utf-8")
+    history = open_history(tmp_path / "settings.json")
+    once = ReviewSettings(review_mode=REVIEW_ONCE)
+    problem = prepare_problems(games, AppSettings(review=once), history, random.Random(0)).problems[0]
+    # Gets back 67%: correct with the rule used then (60%), but it would be wrong with 90%.
+    record = AnswerRecord(
+        problem_id=problem.problem_id,
+        answered_at=history.now().isoformat(),
+        sgf_path=problem.sgf_path,
+        move_number=3,
+        color="B",
+        answer="D4",
+        actual_move="A19",
+        best_move="Q4",
+        answer_loss=3.0,
+        actual_loss=9.0,
+        loss_source=LOSS_FROM_KATAGO,
+        max_visits=100,
+        correct=True,
+        symmetry=0,
+        swap_colors=False,
+    )
+    history.save(record)
+    strict = AppSettings(quiz=QuizSettings(scoring=ScoringPolicy(pass_ratio=0.9)), review=once)
+    assert prepare_problems(games, strict, history, random.Random(0)).problems == []
+    monkeypatch.setattr(today_module, "date", Tomorrow)
+    assert prepare_problems(games, strict, history, random.Random(0)).problems == []

@@ -148,6 +148,15 @@ TEXTS = {
     ),
     "yes_save": "はい（保存する）",
     "no_cancel": "いいえ",
+    "ratio_offer_raise": (
+        "直近 {total} 問の平均の取り戻し率は {average}% です。\n"
+        "合格ラインを {current}% から {proposed}% に上げますか？\n（完了した問題がまた出ることはありません）"
+    ),
+    "ratio_offer_lower": (
+        "直近 {total} 問の平均の取り戻し率は {average}% です。\n"
+        "合格ラインを {current}% から {proposed}% に下げますか？\n（完了した問題や過去の判定は変わりません）"
+    ),
+    "ratio_offer_no": "いいえ（今のまま）",
     "ok": "OK",
     "error_title": "エラー",
     # Dialogs about problems, so that the user does not need to look at the console.
@@ -355,6 +364,7 @@ TEXTS = {
     "field_pass_ratio": "合格ライン（取り戻した割合 0〜1）",
     "field_tolerance": "許容幅（目）",
     "field_max_answer_loss": "正解とする答えの損の上限（目、0 で上限なし）",
+    "field_ratio_offer": "正答率に合わせて、合格ラインの上げ下げを提案する",
     "order_file_name": "ファイル名順",
     "order_newest": "新しい順",
     "order_random": "ランダム",

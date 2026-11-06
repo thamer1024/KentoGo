@@ -31,6 +31,10 @@ class QuizSettings:
         swap_colors: Swap black and white at random.
         extract: Conditions for choosing problems.
         scoring: The rule for judging answers.
+        ratio_offer: Offer to raise or lower the pass ratio to suit the latest answers (see quiz.ratio_offer).
+        ratio_asked_at: How many judged answers there were when the offer was last answered (0 if
+            never), so that it is asked again only after enough new answers. It is changed only by
+            the offer, not on the settings screen.
     """
 
     games_folder: str = ""
@@ -39,6 +43,8 @@ class QuizSettings:
     swap_colors: bool = False
     extract: ExtractSettings = field(default_factory=ExtractSettings)
     scoring: ScoringPolicy = field(default_factory=ScoringPolicy)
+    ratio_offer: bool = True
+    ratio_asked_at: int = 0
 
     @classmethod
     def from_dict(cls, values: dict) -> QuizSettings:
@@ -67,6 +73,8 @@ class QuizSettings:
             swap_colors=_boolean(values, "swap_colors", default.swap_colors),
             extract=ExtractSettings.from_dict(values),
             scoring=ScoringPolicy.from_dict(values),
+            ratio_offer=_boolean(values, "ratio_offer", default.ratio_offer),
+            ratio_asked_at=_count(values, "ratio_asked_at", default.ratio_asked_at),
         )
 
     def to_dict(self) -> dict:
@@ -78,7 +86,17 @@ class QuizSettings:
             "swap_colors": self.swap_colors,
             **self.extract.to_dict(),
             **self.scoring.to_dict(),
+            "ratio_offer": self.ratio_offer,
+            "ratio_asked_at": self.ratio_asked_at,
         }
+
+
+def _count(values: dict, key: str, default: int) -> int:
+    """Read a whole number that is not negative."""
+    value = values.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"wrong quiz setting: {key} must be a whole number of 0 or more: {value!r}")
+    return value
 
 
 def _boolean(values: dict, key: str, default: bool) -> bool:

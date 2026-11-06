@@ -33,6 +33,8 @@ def test_from_and_to_dict():
         "pass_ratio": 0.9,
         "tolerance": 0.5,
         "max_answer_loss": 0.0,
+        "ratio_offer": False,
+        "ratio_asked_at": 40,
     }
     settings = QuizSettings.from_dict(values)
     assert settings.order == ORDER_NEWEST
@@ -49,6 +51,8 @@ def test_from_and_to_dict():
         {"games_folder": 5},
         {"problems_per_game": "many"},
         {"pass_ratio": 80},
+        {"ratio_asked_at": -1},
+        {"ratio_offer": "yes"},
     ],
 )
 def test_wrong_values(values):

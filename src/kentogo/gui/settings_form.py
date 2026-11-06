@@ -99,6 +99,7 @@ FIELDS = (
     FieldSpec("small_problem_threshold", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("pass_ratio", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("max_answer_loss", "quiz", KIND_FLOAT, GROUP_JUDGE),
+    FieldSpec("ratio_offer", "quiz", KIND_BOOL, GROUP_JUDGE),
     FieldSpec("tolerance", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("review_mode", "quiz", KIND_CHOICE, GROUP_REVIEW, REVIEW_MODES),
     FieldSpec("review_streak", "quiz", KIND_INT, GROUP_REVIEW),

@@ -15,6 +15,7 @@ from kentogo.engines import Engines
 from kentogo.katago.startup import StartTimes
 from kentogo.notice import Notice
 from kentogo.quiz.judge import ScoringPolicy
+from kentogo.quiz.ratio_offer import RatioOffer
 from kentogo.quiz.transform import BoardTransform
 from kentogo.review.history import AnswerHistory
 from kentogo.seichi.seichi_history import SeichiHistory
@@ -47,6 +48,8 @@ class ScreenSetup:
             or why it could not be saved.
         commentary: What the screens of the AI commentary need, or None (no AI commentary).
         start_times: The times that KataGo took to load before (shown while it loads).
+        ratio_offer: Returns the offer to raise or lower the pass ratio, or None (see quiz.ratio_offer).
+        answer_ratio_offer: Saves the user's answer to the offer (True: change the ratio).
     """
 
     load: Callable[[Progress], TodayProblems]
@@ -63,3 +66,5 @@ class ScreenSetup:
     save_language: Callable[[str], str] = lambda _language: ""
     commentary: CommentaryWorkspace | None = None
     start_times: StartTimes = StartTimes(None)
+    ratio_offer: Callable[[], RatioOffer | None] = lambda: None
+    answer_ratio_offer: Callable[[RatioOffer, bool], None] = lambda _offer, _yes: None

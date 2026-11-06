@@ -44,7 +44,7 @@ import os
 import random
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from kentogo.app_settings import AppSettings
@@ -57,8 +57,10 @@ from kentogo.katago.startup import TIMES_FILE, StartTimes
 from kentogo.notice import Notice
 from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_with_angle
 from kentogo.quiz.quiz_settings import QuizSettings
+from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
 from kentogo.quiz.transform import BoardTransform, random_transform
 from kentogo.review.history import AnswerHistory
+from kentogo.review.record import AnswerRecord
 from kentogo.screen_setup import ScreenSetup
 from kentogo.seichi.seichi_history import SeichiHistory, open_seichi_history
 from kentogo.settings import SettingsStore
@@ -295,7 +297,51 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
             tuple(settings.quiz.extract.my_names),
         ),
         start_times=StartTimes(arguments.settings.parent / TIMES_FILE),
+        ratio_offer=_ratio_offer_maker(arguments.settings, settings, parts.history),
+        answer_ratio_offer=_ratio_offer_saver(arguments.settings, settings, parts.history, on_saved),
     )
+
+
+def _judged_answers(history: AnswerHistory | None) -> list[AnswerRecord]:
+    """Return the answers in the history that can be judged again, the oldest first."""
+    if history is None:
+        return []
+    records = [record for records in history.all_previous().values() for record in records]
+    return judged(sorted(records, key=lambda record: record.record_id or 0))
+
+
+def _ratio_offer_maker(
+    path: Path, started_with: AppSettings, history: AnswerHistory | None
+) -> Callable[[], RatioOffer | None]:
+    """Return the function that makes the offer to raise or lower the pass ratio, or None (see quiz.ratio_offer)."""
+
+    def offer() -> RatioOffer | None:
+        """Make the offer from the settings in the file and the latest answers."""
+        quiz = _current_settings(path, started_with).quiz
+        answers = _judged_answers(history)
+        if not may_ask(quiz.ratio_offer, len(answers), quiz.ratio_asked_at):
+            return None
+        return find_ratio_offer(answers, quiz.scoring)
+
+    return offer
+
+
+def _ratio_offer_saver(
+    path: Path, started_with: AppSettings, history: AnswerHistory | None, on_saved: Callable[[AppSettings], None]
+) -> Callable[[RatioOffer, bool], None]:
+    """Return the function that saves the answer to the offer, and uses the settings at once."""
+
+    def answer(offer: RatioOffer, yes: bool) -> None:
+        """Change the pass ratio (yes), and remember when the offer was answered (yes or no)."""
+        current = _current_settings(path, started_with)
+        quiz = replace(current.quiz, ratio_asked_at=len(_judged_answers(history)))
+        if yes:
+            quiz = replace(quiz, scoring=replace(quiz.scoring, pass_ratio=offer.proposed))
+        new_settings = replace(current, quiz=quiz)
+        save_settings(path, new_settings)
+        on_saved(new_settings)
+
+    return answer
 
 
 def _settings_opener(

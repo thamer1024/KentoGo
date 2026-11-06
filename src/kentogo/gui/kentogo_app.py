@@ -37,7 +37,7 @@ from kentogo.gui import texts, theme
 from kentogo.gui.api_screen import ApiScreen
 from kentogo.gui.batch_screen import BatchScreen
 from kentogo.gui.commentary_menu import CommentaryMenu
-from kentogo.gui.dialogs import show_message
+from kentogo.gui.dialogs import confirm, show_message
 from kentogo.gui.fonts import register_font
 from kentogo.gui.loading_dialog import LoadingDialog
 from kentogo.gui.paste_screen import PasteScreen
@@ -321,3 +321,23 @@ class KentoGoApp(App):
             self.quiz.close()
             self.quiz = None
         self.show_top()
+        self._ask_ratio_offer()
+
+    def _ask_ratio_offer(self) -> None:
+        """Ask whether to raise or lower the pass ratio, when the latest answers suggest it (see quiz.ratio_offer)."""
+        offer = self.setup.ratio_offer()
+        if offer is None:
+            return
+        question = texts.text(
+            "ratio_offer_raise" if offer.raises else "ratio_offer_lower",
+            total=offer.total,
+            average=round(100 * offer.average),
+            current=round(100 * offer.current),
+            proposed=round(100 * offer.proposed),
+        )
+        confirm(
+            question,
+            lambda: self.setup.answer_ratio_offer(offer, True),
+            lambda: self.setup.answer_ratio_offer(offer, False),
+            no_label=texts.text("ratio_offer_no"),
+        )
