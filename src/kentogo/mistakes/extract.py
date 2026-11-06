@@ -1,8 +1,10 @@
 """Make problems from a game: find the user's moves that lost many points.
 
-The points lost are read from KaTrain's comments in the SGF file, so this
-works without KataGo. When KaTrain also saved its analysis data (KT), the loss
-of each candidate move in the problem position is kept too (see katrain_kt).
+The points lost are read from the SGF file, so this works without KataGo. When KaTrain
+saved its analysis data (KT) on the move and on the node before it, the loss, the best move
+and its sequence come from that data, which does not depend on KaTrain's language or wording
+(see record.katrain_kt). Otherwise they are read from KaTrain's comments. The loss of each
+candidate move in the problem position is kept too when the node before has analysis data.
 
 Problems are made from the moves of the real game (the main line). If the
 setting include_undone_moves is on, problems are also made from the moves
@@ -30,7 +32,7 @@ from kentogo.mistakes.selection import (
 )
 from kentogo.record.ai_comment import split_ai_comment
 from kentogo.record.katrain_comment import KatrainMoveInfo, read_comment
-from kentogo.record.katrain_kt import SUPPORTED_VERSION, candidate_losses, decode_kt, root_value
+from kentogo.record.katrain_kt import SUPPORTED_VERSION, candidate_losses, decode_kt, evaluate_move, root_value
 from kentogo.record.players import detect_my_color
 
 # Reasons why no problem was made from a game.
@@ -286,6 +288,7 @@ def _make_problem_from_node(
         return None
     ai = split_ai_comment(str(node.get_property("C", "")))
     notes, info = read_comment(ai.rest)
+    info = _with_analysis_data(info, node, move, game.kt_version)
     number = len(before) + 1
     if not _is_problem(move, info, number, settings):
         return None
@@ -317,30 +320,54 @@ def _is_problem(move: Move, info: KatrainMoveInfo | None, number: int, settings:
         return info.points_lost >= settings.smallest_loss()
 
 
+def _analysis(node: GoNode | None, version: str) -> dict | None:
+    """Return KaTrain's analysis data of a node, or None if it has none.
+
+    Broken or too new data counts as none, because the problem works without it.
+    """
+    values = node.get_list_property("KT") if node is not None else None
+    if not values:
+        return None
+    try:
+        return decode_kt(values, version)
+    except ValueError:
+        return None
+
+
+def _with_analysis_data(info: KatrainMoveInfo | None, node: GoNode, move: Move, version: str) -> KatrainMoveInfo | None:
+    """Take the loss, the best move and its sequence from the analysis data of the move and of the node before it.
+
+    Without analysis data on both nodes, KaTrain's comment (info) is used as it is.
+    """
+    before, after = _analysis(node.parent, version), _analysis(node, version)
+    evaluation = evaluate_move(before, after, move.color) if before is not None and after is not None else None
+    if evaluation is None:
+        return info
+    base = info if info is not None and (info.color, info.move) == (move.color, move.gtp()) else _empty_info(move)
+    return replace(
+        base,
+        points_lost=evaluation.points_lost,
+        best_move=evaluation.best_move or base.best_move,
+        pv=evaluation.pv or base.pv,
+        pv_color=move.color if evaluation.pv else base.pv_color,
+    )
+
+
+def _empty_info(move: Move) -> KatrainMoveInfo:
+    """Return an evaluation of a move with nothing known yet (for a move with analysis data but no comment)."""
+    return KatrainMoveInfo("", 0, move.color, move.gtp(), None, None, None, (), False)
+
+
 def _position_value(parent: GoNode | None, version: str) -> tuple[float | None, float | None]:
     """Return black's winrate and score lead before a move, from the analysis data of the node before it."""
-    values = parent.get_list_property("KT") if parent is not None else None
-    if not values:
-        return None, None
-    try:
-        return root_value(decode_kt(values, version))
-    except ValueError:
-        return None, None
+    analysis = _analysis(parent, version)
+    return root_value(analysis) if analysis is not None else (None, None)
 
 
 def _candidate_losses(parent: GoNode | None, color: str, version: str) -> tuple[tuple[str, float], ...]:
-    """Return the losses of the candidate moves from the analysis data of the node before the move.
-
-    A broken or too new analysis is ignored, because the problem works without it.
-    """
-    values = parent.get_list_property("KT") if parent is not None else None
-    if not values:
-        return ()
-    try:
-        losses = candidate_losses(decode_kt(values, version), color)
-    except ValueError:
-        return ()
-    return tuple(sorted(losses.items()))
+    """Return the losses of the candidate moves from the analysis data of the node before the move."""
+    analysis = _analysis(parent, version)
+    return tuple(sorted(candidate_losses(analysis, color).items())) if analysis is not None else ()
 
 
 def _make_problem(

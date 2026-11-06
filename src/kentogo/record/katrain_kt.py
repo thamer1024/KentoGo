@@ -10,6 +10,11 @@ the score of the position, and "moves" has, for each candidate next move (by
 its GTP point), the score after it. Scores are from black's point of view, so
 the loss of a move is (root score - move score) for black and the opposite for
 white, as in KaTrain's GameNode.candidate_moves.
+
+The loss of the move that was played is the score before it (the analysis of the node before)
+minus the score after it (the analysis of its own node), as in KaTrain's GameNode.points_lost.
+This data does not depend on KaTrain's language or wording, so it is read before the comments
+(see mistakes.extract).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+from dataclasses import dataclass
 
 # The newest version of the format that this module can read (KaTrain's ANALYSIS_FORMAT_VERSION).
 SUPPORTED_VERSION = "1.0"
@@ -72,6 +78,61 @@ def candidate_losses(analysis: dict, color: str) -> dict[str, float]:
         if isinstance(values, dict) and isinstance(values.get("scoreLead"), int | float):
             losses[point.upper()] = max(0.0, sign * (root["scoreLead"] - values["scoreLead"]))
     return losses
+
+
+@dataclass(frozen=True)
+class KtEvaluation:
+    """The evaluation of a played move, from the analysis data of the node before it and of its own node.
+
+    Attributes:
+        points_lost: Points lost by the move, for its player (never below 0).
+        best_move: The best candidate move in the position before the move (GTP, such as "Q16"),
+            or None if the analysis does not rank its candidates.
+        pv: KataGo's predicted sequence from that position, starting with the best move (GTP), or ().
+    """
+
+    points_lost: float
+    best_move: str | None
+    pv: tuple[str, ...]
+
+
+def evaluate_move(before: dict, after: dict, color: str) -> KtEvaluation | None:
+    """Return the evaluation of a move from the analyses of the node before it and of its own node.
+
+    Args:
+        before: The main analysis of the node before the move (see decode_kt).
+        after: The main analysis of the node of the move.
+        color: The player of the move, "B" or "W".
+
+    Returns:
+        The evaluation, or None if either analysis has no root score.
+    """
+    lead_before, lead_after = root_value(before)[1], root_value(after)[1]
+    if lead_before is None or lead_after is None:
+        return None
+    points_lost = round(max(0.0, _SIGNS[color] * (lead_before - lead_after)), 2)
+    best = _best_candidate(before)
+    if best is None:
+        return KtEvaluation(points_lost, None, ())
+    point, values = best
+    pv = tuple(str(move).upper() for move in values.get("pv") or () if isinstance(move, str))
+    return KtEvaluation(points_lost, point.upper(), pv)
+
+
+def _best_candidate(analysis: dict) -> tuple[str, dict] | None:
+    """Return the candidate move ranked first (the smallest "order"), with its values, or None."""
+    moves = analysis.get("moves") or {}
+    if not isinstance(moves, dict):
+        return None
+    ranked = [
+        (values["order"], point, values)
+        for point, values in moves.items()
+        if isinstance(values, dict) and isinstance(values.get("order"), int)
+    ]
+    if not ranked:
+        return None
+    _, point, values = min(ranked, key=lambda item: item[0])
+    return point, values
 
 
 def root_value(analysis: dict) -> tuple[float | None, float | None]:

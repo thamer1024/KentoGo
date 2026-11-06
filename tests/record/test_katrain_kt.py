@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from kentogo.record.katrain_kt import candidate_losses, decode_kt
+from kentogo.record.katrain_kt import KtEvaluation, candidate_losses, decode_kt, evaluate_move
 
 
 def encode(analysis: dict) -> list[str]:
@@ -51,3 +51,29 @@ def test_newer_version_and_broken_data():
         decode_kt(["AAAA", "AAAA", "not base64 gzip"])
     with pytest.raises(ValueError):
         decode_kt(encode(ANALYSIS)[:2])
+
+
+AFTER_GOOD = {"root": {"scoreLead": 2.4}}  # Black played almost the best move (Q16).
+AFTER_BAD = {"root": {"scoreLead": -5.0}}  # Black lost 7 points.
+
+
+def test_evaluate_move_loss_best_move_and_sequence():
+    """The loss is the score before the move minus the score after it; the best move is ranked first."""
+    best = {**ANALYSIS["moves"]["Q16"], "pv": ["Q16", "d4", 5]}
+    before = {**ANALYSIS, "moves": {**ANALYSIS["moves"], "Q16": best}}
+    assert evaluate_move(before, AFTER_BAD, "B") == KtEvaluation(7.0, "Q16", ("Q16", "D4"))
+    assert evaluate_move(before, AFTER_GOOD, "B").points_lost == 0.0
+
+
+def test_evaluate_move_for_white_and_never_below_zero():
+    """For white, black's score going up is a loss; a score that got better counts as 0."""
+    assert evaluate_move(ANALYSIS, AFTER_BAD, "W").points_lost == 0.0
+    assert evaluate_move(ANALYSIS, {"root": {"scoreLead": 4.5}}, "W").points_lost == 2.5
+
+
+def test_evaluate_move_without_scores_or_ranks():
+    """Without a root score there is no evaluation; without ranked candidates there is no best move."""
+    assert evaluate_move({"moves": {}}, AFTER_BAD, "B") is None
+    assert evaluate_move(ANALYSIS, {"root": {}}, "B") is None
+    unranked = {"root": {"scoreLead": 2.0}, "moves": {"Q16": {"scoreLead": 2.0}}}
+    assert evaluate_move(unranked, AFTER_BAD, "B") == KtEvaluation(7.0, None, ())

@@ -8,20 +8,29 @@ default language (English) when a text is not translated. Then it writes
 the texts as a Python module.
 
 Usage:
-    python tools/gen_katrain_texts.py KATRAIN_SOURCE_DIR OUTPUT_FILE
+    python tools/gen_katrain_texts.py KATRAIN_SOURCE_DIR OUTPUT_FILE [--check]
 
-Example:
-    python tools/gen_katrain_texts.py ../vendor/katrain src/kentogo/record/katrain_texts.py
+When a new KaTrain version comes out:
 
-Run this again when a new KaTrain version changes its texts.
+1. Get its source code (it has the compiled .mo files), for example:
+   git clone --depth 1 --branch v1.21.0 https://github.com/sanderland/katrain /tmp/katrain
+2. See what changed, without writing anything (the exit code is 1 if something changed):
+   python tools/gen_katrain_texts.py /tmp/katrain src/kentogo/record/katrain_texts.py --check
+3. If something changed, run it again without --check to write the file, and run the tests.
+
+A message ID that KaTrain no longer has is reported: gettext then gives the ID itself, and
+KentoGo could not read that part of the comments. Comments matter less when KaTrain saves its
+analysis data (KT) in the SGF files, which KentoGo reads first (see mistakes.extract).
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import gettext
 import json
 import re
+import sys
 from pathlib import Path
 
 # The message IDs in KaTrain's translation files that KentoGo needs.
@@ -115,22 +124,68 @@ def build_module(table: dict[str, dict[str, str]], version: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
-    """Read the arguments, build the table, and write the output file."""
-    parser = argparse.ArgumentParser(description="Make the table of KaTrain texts.")
-    parser.add_argument("katrain_dir", type=Path, help="top folder of the KaTrain source code")
-    parser.add_argument("output", type=Path, help="Python file to write")
-    args = parser.parse_args()
+def load_table(path: Path) -> dict[str, dict[str, str]]:
+    """Read the table from a module written by build_module (an empty table if the file does not exist)."""
+    if not path.is_file():
+        return {}
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.AnnAssign | ast.Assign) and node.value is not None:
+            return ast.literal_eval(node.value)
+    return {}
 
-    locales = args.katrain_dir / "katrain" / "i18n" / "locales"
-    default_language = read_default_language(args.katrain_dir)
+
+def differences(old: dict[str, dict[str, str]], new: dict[str, dict[str, str]]) -> list[str]:
+    """Return a line for each language added or removed, and for each text that changed."""
+    lines = [f"new language: {language}" for language in sorted(new.keys() - old.keys())]
+    lines += [f"language removed: {language}" for language in sorted(old.keys() - new.keys())]
+    for language in sorted(old.keys() & new.keys()):
+        for key in KEYS:
+            before, after = old[language].get(key), new[language].get(key)
+            if before != after:
+                lines.append(f"{language} {key}: {before!r} -> {after!r}")
+    return lines
+
+
+def missing_keys(table: dict[str, dict[str, str]], default_language: str) -> list[str]:
+    """Return the message IDs that KaTrain does not have (gettext gave back the ID in the default language)."""
+    texts = table.get(default_language, {})
+    return [key for key in KEYS if texts.get(key) == key]
+
+
+def read_table(katrain_dir: Path) -> tuple[dict[str, dict[str, str]], str]:
+    """Return the texts of every language of a KaTrain source folder, and its default language."""
+    locales = katrain_dir / "katrain" / "i18n" / "locales"
+    default_language = read_default_language(katrain_dir)
     table = {
         folder.name: read_language(locales, folder.name, default_language)
         for folder in locales.iterdir()
         if folder.is_dir()
     }
+    return table, default_language
+
+
+def main() -> int:
+    """Read the arguments, build the table, and write the output file (or only compare, with --check).
+
+    Returns:
+        The exit code: 1 if --check found differences, 0 otherwise.
+    """
+    parser = argparse.ArgumentParser(description="Make the table of KaTrain texts.")
+    parser.add_argument("katrain_dir", type=Path, help="top folder of the KaTrain source code")
+    parser.add_argument("output", type=Path, help="Python file to write")
+    parser.add_argument("--check", action="store_true", help="only show what would change")
+    args = parser.parse_args()
+
+    table, default_language = read_table(args.katrain_dir)
+    for key in missing_keys(table, default_language):
+        print(f"warning: KaTrain has no text for {key!r}", file=sys.stderr)
+    changes = differences(load_table(args.output), table)
+    print("\n".join(changes) if changes else "no changes")
+    if args.check:
+        return 1 if changes else 0
     args.output.write_text(build_module(table, read_katrain_version(args.katrain_dir)), encoding="utf-8")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

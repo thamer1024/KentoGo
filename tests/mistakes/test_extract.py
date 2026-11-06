@@ -246,3 +246,40 @@ def test_loss_stages_setting():
     for wrong in ([0], [-5], "20,10"):
         with pytest.raises(ValueError):
             ExtractSettings.from_dict({"loss_stages": wrong})
+
+
+BEFORE_MOVE_3 = {  # The analysis of the node before move 3 (KaTrain's comment says 8 points and Q4).
+    "root": {"scoreLead": 3.0},
+    "moves": {"D16": {"scoreLead": 3.0, "order": 0, "pv": ["D16", "Q4"]}, "Q4": {"scoreLead": 2.5, "order": 1}},
+}
+AFTER_MOVE_3 = {"root": {"scoreLead": -9.0}}  # Black lost 12 points with A19.
+
+
+def with_analysis_of_move_3(text: str) -> str:
+    """Add the analysis data of move 3 and of the node before it to a game made by game()."""
+    text = text.replace(";W[dp]C[", f";W[dp]{kt_property(BEFORE_MOVE_3)}C[", 1)
+    return text.replace(";B[aa]C[", f";B[aa]{kt_property(AFTER_MOVE_3)}C[", 1)
+
+
+def test_analysis_data_comes_before_the_comment():
+    """With analysis data on the move and the node before it, the loss, best move and sequence come from it."""
+    problem = next(p for p in extract(with_analysis_of_move_3(game())).problems if p.move_number == 3)
+    assert problem.points_lost == 12.0
+    assert problem.best_move.gtp() == "D16"
+    assert [move.gtp() for move in problem.variations[0].moves] == ["D16", "Q4"]
+
+
+def test_analysis_data_without_a_comment():
+    """A move with analysis data but no comment from KaTrain still becomes a problem."""
+    text = f"(;SZ[19]PB[{HUMAN}]PW[{AI}];B[pd];W[dp]{kt_property(BEFORE_MOVE_3)};B[aa]{kt_property(AFTER_MOVE_3)})"
+    assert [(p.move_number, p.points_lost) for p in extract(text).problems] == [(3, 12.0)]
+
+
+def test_comment_is_used_when_the_analysis_data_cannot_be_used():
+    """Broken data on the move, or a version that is too new, falls back to KaTrain's comment (8 points)."""
+    broken = game().replace(";W[dp]C[", f";W[dp]{kt_property(BEFORE_MOVE_3)}C[", 1)
+    broken = broken.replace(";B[aa]C[", ";B[aa]KT[a][b][c]C[", 1)
+    newer = with_analysis_of_move_3(game()).replace("(;", "(;KTV[9.0]", 1)
+    for text in (broken, newer):
+        problem = next(p for p in extract(text).problems if p.move_number == 3)
+        assert (problem.points_lost, problem.best_move.gtp()) == (8.0, "Q4")

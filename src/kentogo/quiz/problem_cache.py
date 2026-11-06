@@ -22,11 +22,12 @@ from pathlib import Path
 from kentogo.mistakes.extract import ExtractResult, ExtractSettings
 from kentogo.quiz.problem_json import result_from_dict, result_to_dict
 
-CACHE_VERSION = 6  # 2: games without analysis are reported. 3: candidate losses from KT.
+CACHE_VERSION = 7  # 2: games without analysis are reported. 3: candidate losses from KT.
 # 4: the user's color is also found from the ranks and the file name.
 # 5: the AI commentary is kept apart from the user's notes.
 # (The cache key also changed with version 5: the recorded color is part of it.)
 # 6: problems in decided positions and with the same best move come last (see mistakes.selection).
+# 7: the loss, the best move and its sequence come from KaTrain's analysis data (KT) when there is some.
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS files (
