@@ -29,7 +29,9 @@ def test_list_the_moments_of_the_games_folder(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(punishment_cli, "load_settings", lambda path: load_settings(path, tmp_path / "none.json"))
     assert punishment_cli.main(["--settings", str(settings)]) == 0
     output = capsys.readouterr().out
-    assert "move   3: after W A19  lost  20.0, you played A18  lost  15.0; best Q4  problem" in output
-    assert "Done: 1 moments in 1 games." in output
+    assert (
+        "move   3 shared: after W A19  lost  20.0 (best Q4  ), you played A18  lost  15.0; best Q4  problem" in output
+    )
+    assert "Done: 1 moments in 1 games (punish 0, shared 1; decided 0)." in output
     assert punishment_cli.main(["--settings", str(settings), "--opponent-loss", "25"]) == 0
     assert "Done: 0 moments" in capsys.readouterr().out

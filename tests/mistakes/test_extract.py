@@ -8,7 +8,16 @@ import pytest
 from pysgf import GoGame
 
 from kentogo.common.types import Move
-from kentogo.mistakes.extract import REASON_UNKNOWN_COLOR, ExtractSettings, extract_problems, punishment_chances
+from kentogo.mistakes.extract import (
+    PUNISH,
+    REASON_UNKNOWN_COLOR,
+    SHARED,
+    ExtractSettings,
+    PunishmentChance,
+    extract_problems,
+    first_of_each_best_move,
+    punishment_chances,
+)
 from kentogo.record.ai_comment import AI_HEADER
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR
 
@@ -322,6 +331,7 @@ def test_punishment_chances():
     [chance] = chances(game(), 3.0, 5.0)
     assert (chance.move_number, chance.opponent_move.gtp(), chance.opponent_loss) == (3, "D4", 4.0)
     assert (chance.my_move.gtp(), chance.my_loss, chance.best_move) == ("A19", 8.0, "Q4")
+    assert (chance.opponent_best, chance.kind, chance.decided) == ("D16", PUNISH, False)
     assert chances(game(), 5.0, 5.0) == []  # The opponent's mistake was smaller.
     assert chances(game(), 3.0, 9.0) == []  # The user's move lost less.
     assert chances(game(), 0.0, 0.0)[-1].move_number == 3  # After the opponent's best moves (no loss known): none.
@@ -331,3 +341,23 @@ def test_punishment_chances_for_white_and_without_a_color():
     """The user's color decides whose mistakes are the opponent's; without it there are none."""
     assert chances(game(black=AI, white=HUMAN), 0.0, 0.0) == []  # Black's moves follow white's best moves.
     assert chances(game(black="x", white="y"), 0.0, 0.0) == []
+
+
+def test_punishment_chance_in_a_decided_position_is_marked():
+    decided = {"root": {"winrate": 0.995, "scoreLead": 30.0}, "moves": {}}
+    text = game().replace(";W[dp]C[", f";W[dp]{kt_property(decided)}C[", 1)  # The position before black's move 3.
+    assert chances(text, 3.0, 5.0)[0].decided
+
+
+def chance(number: int, best: str | None, opponent_best: str | None = "K10") -> PunishmentChance:
+    move = Move.from_gtp("A1", "B")
+    return PunishmentChance(number, Move.from_gtp("A2", "W"), 12.0, move, 8.0, best, opponent_best)
+
+
+def test_kinds_and_only_the_first_moment_of_each_best_move():
+    """Both missing the same point is "shared"; when they keep missing it, only the first moment counts."""
+    assert (chance(3, "C3").kind, chance(3, "K10").kind, chance(3, None, None).kind) == (PUNISH, SHARED, PUNISH)
+    kept = first_of_each_best_move(
+        [chance(3, "H3"), chance(5, "H3"), chance(7, "C3"), chance(9, None), chance(11, None)]
+    )
+    assert [item.move_number for item in kept] == [3, 7, 9, 11]

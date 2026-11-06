@@ -7,8 +7,11 @@ It is for checking the "punishment problems" before they are asked in the quiz:
     uv run python -m kentogo.punishment_cli --opponent-loss 15 --my-loss 5
 
 A moment counts when the opponent's move lost at least --opponent-loss points (default 10) and
-the user's next move lost at least --my-loss points (default 5). "problem" marks the moments that
-are already problems of the quiz (see mistakes.extract).
+the user's next move lost at least --my-loss points (default 5). Each moment is one of two kinds:
+"punish" (the opponent's mistake made a new chance) or "shared" (both missed the same point).
+When both keep missing the same point, only the first moment counts. "decided" marks moments in
+decided positions (--skip-decided leaves them out), and "problem" the ones that are already
+problems of the quiz (see mistakes.extract).
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ import sys
 from pathlib import Path
 
 from kentogo.common.sgf import load_game
-from kentogo.mistakes.extract import PunishmentChance, extract_problems, punishment_chances
+from kentogo.mistakes.extract import PUNISH, SHARED, PunishmentChance, extract_problems, punishment_chances
 from kentogo.settings_file import SETTINGS_PATH, load_settings
 
 OPPONENT_LOSS = 10.0
@@ -31,6 +34,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("paths", type=Path, nargs="*", help="SGF files or folders (default: the games folder)")
     parser.add_argument("--opponent-loss", type=float, default=OPPONENT_LOSS, help="the opponent's smallest loss")
     parser.add_argument("--my-loss", type=float, default=MY_LOSS, help="the smallest loss of your move")
+    parser.add_argument("--skip-decided", action="store_true", help="leave out moments in decided positions")
     parser.add_argument("--settings", type=Path, default=SETTINGS_PATH, help="the settings file")
     return parser.parse_args(argv)
 
@@ -46,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     if not games:
         print("No games: give SGF files or folders, or set the games folder.", file=sys.stderr)
         return 2
-    total = 0
+    found: list[PunishmentChance] = []
     for path in games:
         try:
             root = load_game(path)
@@ -54,13 +58,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{path.name}: cannot be read: {error}")
             continue
         chances = punishment_chances(root, str(path), settings.quiz.extract, arguments.opponent_loss, arguments.my_loss)
+        chances = [chance for chance in chances if not (arguments.skip_decided and chance.decided)]
         problems = {
             problem.move_number for problem in extract_problems(root, str(path), settings.quiz.extract).problems
         }
-        total += len(chances)
+        found += chances
         show_game(path, chances, problems)
-    print(f"Done: {total} moments in {len(games)} games.")
+    print(summary(found, len(games)))
     return 0
+
+
+def summary(chances: list[PunishmentChance], games: int) -> str:
+    """Return the last line: how many moments of each kind, and how many in decided positions."""
+    kinds = {kind: sum(1 for chance in chances if chance.kind == kind) for kind in (PUNISH, SHARED)}
+    decided = sum(1 for chance in chances if chance.decided)
+    return (
+        f"Done: {len(chances)} moments in {games} games"
+        f" (punish {kinds[PUNISH]}, shared {kinds[SHARED]}; decided {decided})."
+    )
 
 
 def find_games(paths: list[Path]) -> list[Path]:
@@ -78,11 +93,11 @@ def show_game(path: Path, chances: list[PunishmentChance], problems: set[int]) -
         return
     print(path.name)
     for chance in chances:
-        mark = "  problem" if chance.move_number in problems else ""
+        marks = ("  decided" if chance.decided else "") + ("  problem" if chance.move_number in problems else "")
         print(
-            f"  move {chance.move_number:3}: after {chance.opponent_move.color} {chance.opponent_move.gtp():4}"
-            f" lost {chance.opponent_loss:5.1f}, you played {chance.my_move.gtp():4} lost {chance.my_loss:5.1f};"
-            f" best {chance.best_move or '-'}{mark}"
+            f"  move {chance.move_number:3} {chance.kind:6}: after {chance.opponent_move.color}"
+            f" {chance.opponent_move.gtp():4} lost {chance.opponent_loss:5.1f} (best {chance.opponent_best or '-':4}),"
+            f" you played {chance.my_move.gtp():4} lost {chance.my_loss:5.1f}; best {chance.best_move or '-'}{marks}"
         )
 
 

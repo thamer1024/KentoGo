@@ -270,6 +270,10 @@ def _evaluated(node: GoNode, move: Move, game: _Game) -> KatrainMoveInfo | None:
     return info if info is not None and (info.color, info.move) == (move.color, move.gtp()) else None
 
 
+PUNISH = "punish"  # The opponent's mistake made a new chance: the user's best move is not the opponent's.
+SHARED = "shared"  # Both missed the same point: the user's best move is the one the opponent should have played.
+
+
 @dataclass(frozen=True)
 class PunishmentChance:
     """A moment when the opponent made a big mistake and the user did not punish it.
@@ -281,6 +285,8 @@ class PunishmentChance:
         my_move: The user's move.
         my_loss: The points that the user's move lost (the chance it gave back).
         best_move: The best move in the position (the move that punishes), GTP, or None if unknown.
+        opponent_best: The best move in the position before the opponent's mistake, GTP, or None if unknown.
+        decided: The position was decided (the same rule as the problems, see mistakes.selection).
     """
 
     move_number: int
@@ -289,6 +295,14 @@ class PunishmentChance:
     my_move: Move
     my_loss: float
     best_move: str | None
+    opponent_best: str | None = None
+    decided: bool = False
+
+    @property
+    def kind(self) -> str:
+        """Return SHARED when both missed the same best move, otherwise PUNISH."""
+        same = self.best_move is not None and self.best_move == self.opponent_best
+        return SHARED if same else PUNISH
 
 
 def punishment_chances(
@@ -302,8 +316,9 @@ def punishment_chances(
     """Find the opponent's big mistakes that the user did not punish, in the main line of a game.
 
     A chance is the user's move right after an opponent's move that lost at least opponent_loss points,
-    when the user's move lost at least my_loss points. All such moves count, also the ones that are
-    not problems (decided positions, or the same best move as another mistake).
+    when the user's move lost at least my_loss points. Moves that are not problems count too
+    (decided positions are marked, see PunishmentChance.decided), but a best move counts only once
+    in a game: when both players keep missing the same point, only the first moment is kept.
 
     Args:
         root: The root node of the game.
@@ -324,13 +339,26 @@ def punishment_chances(
     main_line = sgf.main_line(root)
     chances = []
     for previous, node in zip(main_line[1:], main_line[2:], strict=False):
-        chance = _chance(game, previous, node)
+        chance = _chance(game, previous, node, settings)
         if chance is not None and chance.opponent_loss >= opponent_loss and chance.my_loss >= my_loss:
             chances.append(chance)
-    return chances
+    return first_of_each_best_move(chances)
 
 
-def _chance(game: _Game, previous: GoNode, node: GoNode) -> PunishmentChance | None:
+def first_of_each_best_move(chances: list[PunishmentChance]) -> list[PunishmentChance]:
+    """Keep only the first chance of each best move (an unknown best move is always kept)."""
+    seen: set[str] = set()
+    kept = []
+    for chance in chances:
+        if chance.best_move is not None and chance.best_move in seen:
+            continue
+        if chance.best_move is not None:
+            seen.add(chance.best_move)
+        kept.append(chance)
+    return kept
+
+
+def _chance(game: _Game, previous: GoNode, node: GoNode, settings: ExtractSettings) -> PunishmentChance | None:
     """Return the opponent's move and the user's move after it with their losses, or None when not known."""
     theirs, mine = sgf.node_move(previous), sgf.node_move(node)
     if theirs is None or mine is None or mine.color != game.my_color or theirs.color == game.my_color:
@@ -338,7 +366,17 @@ def _chance(game: _Game, previous: GoNode, node: GoNode) -> PunishmentChance | N
     their_info, my_info = _evaluated(previous, theirs, game), _evaluated(node, mine, game)
     if their_info is None or my_info is None or their_info.points_lost is None or my_info.points_lost is None:
         return None
-    return PunishmentChance(node.depth, theirs, their_info.points_lost, mine, my_info.points_lost, my_info.best_move)
+    decided = Selection.from_quiz(settings).is_decided(*_position_value(previous, game.kt_version))
+    return PunishmentChance(
+        node.depth,
+        theirs,
+        their_info.points_lost,
+        mine,
+        my_info.points_lost,
+        my_info.best_move,
+        their_info.best_move,
+        decided,
+    )
 
 
 def _choose(problems: list[tuple[Problem, bool]], settings: ExtractSettings) -> tuple[Problem, ...]:
