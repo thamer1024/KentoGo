@@ -386,6 +386,7 @@
  "analysis_step_deep": "Lectura profunda {done} / {total} posiciones",
  "analysis_step_tenuki": "Lecturas de tenuki {done} / {total} posiciones",
  "analysis_step_lines": "Lectura hasta que se calme {done} / {total} secuencias",
+ "analysis_step_end": "Lectura de la última posición {done} / {total}",
  "analysis_outcome_written": "Escrita: {name}",
  "analysis_outcome_skipped": "Omitida (ya analizada): {name}",
  "analysis_outcome_failed": "Falló: {name} ({detail})",

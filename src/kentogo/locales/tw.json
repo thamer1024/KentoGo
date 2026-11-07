@@ -386,6 +386,7 @@
  "analysis_step_deep": "深入分析　{done} / {total} 局面",
  "analysis_step_tenuki": "脫先的分析　{done} / {total} 局面",
  "analysis_step_lines": "讀到告一段落　{done} / {total} 手順",
+ "analysis_step_end": "分析最後的局面　{done} / {total}",
  "analysis_outcome_written": "已寫入：{name}",
  "analysis_outcome_skipped": "已分析，略過：{name}",
  "analysis_outcome_failed": "失敗：{name}（{detail}）",

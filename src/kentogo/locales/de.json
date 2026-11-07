@@ -386,6 +386,7 @@
  "analysis_step_deep": "Tiefe Analyse {done} / {total} Stellungen",
  "analysis_step_tenuki": "Tenuki-Analysen {done} / {total} Stellungen",
  "analysis_step_lines": "Lesen bis zur Ruhe {done} / {total} Folgen",
+ "analysis_step_end": "Analyse der letzten Stellung {done} / {total}",
  "analysis_outcome_written": "Geschrieben: {name}",
  "analysis_outcome_skipped": "Übersprungen (bereits analysiert): {name}",
  "analysis_outcome_failed": "Fehlgeschlagen: {name} ({detail})",

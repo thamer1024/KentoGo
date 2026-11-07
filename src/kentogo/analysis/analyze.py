@@ -17,7 +17,8 @@ The steps (see analyze_game):
    The moves that still lose that much are the game's deep_nodes; KentoGo's own data (KGD) is written
    for them only, so the small changes of the other moves do not make the file bigger.
 5. KentoGo's own readings of the deep nodes, with the same visits (see analysis.kentogo_reading), and the
-   played move's and the best move's sequences until the place settles (see analysis.settled_lines).
+   played move's and the best move's sequences until the place settles (see analysis.settled_lines),
+   and the last position of the game (for counting problems later).
 
 A node that KataGo could not analyze is asked again (retries times). The answer for a position is
 kept in that position only. KaTrain's own way (two separate analyses for a loss, the time limit,
@@ -46,7 +47,7 @@ from kentogo.analysis.game_analysis import (
     first_nodes,
     load_saved_analyses,
 )
-from kentogo.analysis.kentogo_reading import read_tenuki
+from kentogo.analysis.kentogo_reading import read_end, read_tenuki
 from kentogo.analysis.played_moves import played_move_loss, read_played_moves
 from kentogo.analysis.query import QuerySettings
 from kentogo.analysis.settled_lines import LineSettings, read_lines
@@ -143,6 +144,7 @@ def read_deeply(
         settings.settle_radius, settings.settle_change, settings.settle_step, settings.settle_max_moves
     )
     read_lines(engine, game, targets.visits, values.wide_root_noise, REANALYSIS_PRIORITY, progress, retries, lines)
+    read_end(engine, game, targets.visits, values.wide_root_noise, REANALYSIS_PRIORITY, progress, retries)
 
 
 def deep_candidates(game: GameAnalysis, targets: DeepTargets) -> list[GoNode]:

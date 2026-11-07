@@ -386,6 +386,7 @@
  "analysis_step_deep": "Lecture approfondie {done} / {total} positions",
  "analysis_step_tenuki": "Lectures de tenuki {done} / {total} positions",
  "analysis_step_lines": "Lecture jusqu'au calme {done} / {total} séquences",
+ "analysis_step_end": "Lecture de la dernière position {done} / {total}",
  "analysis_outcome_written": "Écrite : {name}",
  "analysis_outcome_skipped": "Ignorée (déjà analysée) : {name}",
  "analysis_outcome_failed": "Échec : {name} ({detail})",

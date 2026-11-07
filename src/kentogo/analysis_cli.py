@@ -52,6 +52,7 @@ STEP_NAMES = {
     "deep": "deep reading",
     "tenuki": "tenuki readings",
     "lines": "lines until settled",
+    "end": "last position",
 }
 # A rough size of KentoGo's own data (KGD) of one move read deeply, when all its parts are written
 # (the areas and the sequences of the played move and the best move, and more); to be measured.

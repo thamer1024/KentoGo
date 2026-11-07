@@ -15,6 +15,9 @@ The readings of a move (its node, and the position before it, where the player c
   leave it (the move did not make a threat: 響かない手), and the opponent's next move shows what
   the move left behind.
 
+The last position of the game's main line is read too ("end_of_game", with its areas): the material of
+counting problems (目数計算) later, whether the game was played out or resigned.
+
 Each reading is asked with the visits of the deep reading. A reading that KataGo cannot answer is
 asked again (retries) and then left out.
 """
@@ -26,9 +29,11 @@ from collections.abc import Callable
 from pysgf import GoNode
 
 from kentogo.analysis.game_analysis import Engine, GameAnalysis, NodeStep, Progress, analyze_with_retries
-from kentogo.analysis.query import QuerySettings, query_after
+from kentogo.analysis.query import QuerySettings, node_query, query_after
 
 TENUKI_STEP = "tenuki"  # The name of these readings in the progress.
+END_STEP = "end"  # The name of the reading of the last position in the progress.
+END_OF_GAME = "end_of_game"
 PASS = "pass"
 
 
@@ -77,6 +82,32 @@ def read_tenuki(
 def _counted(progress: Progress, before: int, total: int) -> Callable[[int, int], None]:
     """Return the progress of one batch of readings, counted with the batches before it."""
     return lambda done, _batch: progress(TENUKI_STEP, min(before + done, total), total)
+
+
+def last_node(game: GameAnalysis) -> GoNode | None:
+    """Return the last node of the game's main line (the first child each time), or None for a game without moves."""
+    node = game.root
+    while node.children:
+        node = node.children[0]
+    return None if node is game.root else node
+
+
+def read_end(
+    engine: Engine,
+    game: GameAnalysis,
+    visits: int,
+    wide_root_noise: float,
+    priority: int,
+    progress: Progress,
+    retries: int,
+) -> None:
+    """Read the last position of the main line with its areas, and keep it in game.readings."""
+    node = last_node(game)
+    if node is None:
+        return
+    settings = QuerySettings(visits, wide_root_noise, priority)
+    step = NodeStep(lambda position: node_query(position, settings), _keep(END_OF_GAME))
+    analyze_with_retries(engine, game, [node], step, lambda done, total: progress(END_STEP, done, total), retries)
 
 
 def _query(game: GameAnalysis, name: str, settings: QuerySettings) -> Callable[[GoNode], dict | None]:

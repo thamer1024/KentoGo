@@ -386,6 +386,7 @@
  "analysis_step_deep": "Глубокий анализ {done} / {total} позиций",
  "analysis_step_tenuki": "Анализ тэнуки {done} / {total} позиций",
  "analysis_step_lines": "Анализ до затишья {done} / {total} вариантов",
+ "analysis_step_end": "Анализ последней позиции {done} / {total}",
  "analysis_outcome_written": "Записано: {name}",
  "analysis_outcome_skipped": "Пропущено (уже проанализировано): {name}",
  "analysis_outcome_failed": "Ошибка: {name} ({detail})",

@@ -386,6 +386,7 @@
  "analysis_step_deep": "깊은 분석 {done} / {total} 국면",
  "analysis_step_tenuki": "손빼기 분석 {done} / {total} 국면",
  "analysis_step_lines": "일단락까지의 분석 {done} / {total} 수순",
+ "analysis_step_end": "마지막 국면 분석 {done} / {total}",
  "analysis_outcome_written": "썼습니다: {name}",
  "analysis_outcome_skipped": "분석되어 있어 건너뜀: {name}",
  "analysis_outcome_failed": "실패: {name} ({detail})",

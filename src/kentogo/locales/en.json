@@ -386,6 +386,7 @@
  "analysis_step_deep": "Deep reading {done} / {total} positions",
  "analysis_step_tenuki": "Tenuki readings {done} / {total} positions",
  "analysis_step_lines": "Reading until settled {done} / {total} lines",
+ "analysis_step_end": "Reading the last position {done} / {total}",
  "analysis_outcome_written": "Written: {name}",
  "analysis_outcome_skipped": "Skipped (already analyzed): {name}",
  "analysis_outcome_failed": "Failed: {name} ({detail})",

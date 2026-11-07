@@ -251,7 +251,7 @@ def test_moves_that_can_become_problems_are_read_deeply():
     game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), targets)
     deep = [query for query in engine.queries if query["maxVisits"] == 2000]
     positions = [query for query in deep if "allowMoves" not in query and by_moves_of(query) in SCORES]
-    assert sorted(len(query["moves"]) for query in positions) == [2, 3]  # Not KentoGo's readings.
+    assert sorted(len(query["moves"]) for query in positions) == [2, 3, 3]  # And the last position of the game (A5).
     assert [query["allowMoves"][0]["moves"] for query in deep if "allowMoves" in query] == [["A5"]]
     assert [node.depth for node in game.deep_nodes] == [3] and game.deep_visits == 2000  # White gained.
     assert ("deep", 2, 2) in steps
@@ -312,6 +312,7 @@ def test_kentogo_readings_of_a_deep_move():
         "played_line",
         "best_line",
         "punish_line",  # A5 is the last move: no reply.
+        "end_of_game",
     }
     assert readings["pass_before"]["scoreLead"] == -3.0 and readings["pass_before"]["next"] == "E5"
     assert readings["pass_after_played"]["scoreLead"] == -5.0  # White can leave A5: it threatens nothing.

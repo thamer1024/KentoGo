@@ -485,6 +485,7 @@ TEXTS = {
     "analysis_step_deep": "深い読み　{done} / {total} 局面",
     "analysis_step_tenuki": "手抜きの読み　{done} / {total} 局面",
     "analysis_step_lines": "一段落までの読み　{done} / {total} 手順",
+    "analysis_step_end": "最後の局面の読み　{done} / {total} 局面",
     "analysis_outcome_written": "書き込みました：{name}",
     "analysis_outcome_skipped": "解析済みのため飛ばしました：{name}",
     "analysis_outcome_failed": "失敗しました：{name}（{detail}）",

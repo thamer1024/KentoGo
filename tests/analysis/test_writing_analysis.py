@@ -187,3 +187,17 @@ def test_problem_positions_keep_everything():
 
 def _with_utility(answer):
     return {**answer, "moveInfos": [{**info, "utility": 0.1} for info in answer.get("moveInfos", [])]}
+
+
+def test_the_last_position_is_kept_for_counting():
+    """The last node gets "end_of_game", as part of a deep move's data or as data of its own kind."""
+    root = GoGame.parse_sgf(GAME)
+    settings = AnalysisSettings()
+    game = analyze_game(
+        FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, DeepTargets({"W": 5.0}, 400)
+    )
+    write_analysis(game, WriteSettings(settings, "1.2.3"))
+    nodes = GoGame.parse_sgf(root.sgf()).nodes_in_tree
+    data = read_kgd(nodes[3])  # Black's A5 is not read deeply here (only white's moves are).
+    assert data["kind"] == "end" and data["visits"] == 400
+    assert len(data["end_of_game"]["ownership"].values) == 25 and "scoreLead" in data["end_of_game"]

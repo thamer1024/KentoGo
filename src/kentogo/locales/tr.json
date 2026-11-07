@@ -386,6 +386,7 @@
  "analysis_step_deep": "Derin okuma {done} / {total} pozisyon",
  "analysis_step_tenuki": "Tenuki okumaları {done} / {total} pozisyon",
  "analysis_step_lines": "Durulana kadar okuma {done} / {total} sıra",
+ "analysis_step_end": "Son pozisyonun okunması {done} / {total}",
  "analysis_outcome_written": "Yazıldı: {name}",
  "analysis_outcome_skipped": "Atlandı (zaten analiz edilmiş): {name}",
  "analysis_outcome_failed": "Başarısız: {name} ({detail})",

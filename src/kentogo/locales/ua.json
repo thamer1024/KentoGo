@@ -386,6 +386,7 @@
  "analysis_step_deep": "Глибокий аналіз {done} / {total} позицій",
  "analysis_step_tenuki": "Аналіз тенукі {done} / {total} позицій",
  "analysis_step_lines": "Аналіз до затишшя {done} / {total} варіантів",
+ "analysis_step_end": "Аналіз останньої позиції {done} / {total}",
  "analysis_outcome_written": "Записано: {name}",
  "analysis_outcome_skipped": "Пропущено (вже проаналізовано): {name}",
  "analysis_outcome_failed": "Помилка: {name} ({detail})",
