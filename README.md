@@ -1,3 +1,5 @@
+> [!CAUTION]
+> The source code in this repository is currently under heavy development, requires CUDA libraries, and results in a large executable build. We strongly recommend downloading the pre-compiled **[Release v0.1.0]([https://github.com/<username>/<repo>/releases/tag/v0.1.0](https://github.com/thamer1024/KentoGo/releases/tag/v0.1.0))** instead.
 <p align="center">
   <img src="src/kentogo/images/app_icon.png" width="96" alt="KentoGo">
 </p>
