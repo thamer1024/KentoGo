@@ -22,6 +22,7 @@ from kentogo.katago.estimate import Standing
 from kentogo.mistakes.extract import PUNISH, SHARED
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
+from kentogo.quiz.area_change import AREAS_BEST, AREAS_PLAYED, AreaChange
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
@@ -80,6 +81,14 @@ TEXTS = {
     "estimate_not_here": "地と形勢は、実戦以外の手順を最後の手まで進めたときに表示できます（T）。",
     "estimate_no_engine": "KataGoが使えないため、地と形勢を計算できません。",
     "estimate_failed": "地と形勢を計算できませんでした：{reason}",
+    "area_button": "地の違い (D)",
+    "area_played": "地の違い（D）：実戦の手 {move} の後の地　{lead}",
+    "area_best": "地の違い（D）：最善手 {move} の後の地　{lead}",
+    "area_change": "地の違い（D）：最善手 {best} と実戦の手 {played} で持ち主が変わる点\n{color}から見て {points}点、形勢 {gain}目",
+    "area_change_no_lead": "地の違い（D）：最善手 {best} と実戦の手 {played} で持ち主が変わる点\n{color}から見て {points}点",
+    "area_not_analyzed": "この問題には KentoGo の検討データがありません。棋譜を「KataGoで棋譜を解析」で解析すると見られます。",
+    "area_not_answered": "地の違いは、回答した後に見られます（D）。",
+    "area_failed": "地の違いを読めませんでした：{reason}",
     "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）\n実戦の同じ手数と比べて：{player} {gain:+.1f}目",
     "compare_running": "比較用モデルで解析しています…",
     "compare_no_sequence": "比較用モデルが手順を返しませんでした",
@@ -984,6 +993,25 @@ def count_check_text(check: CountCheck, komi: float) -> str:
     )
     verdict = text("count_passed" if check.passed else "count_failed")
     return "\n".join([verdict, seichi, answer])
+
+
+def area_text(change: AreaChange, mode: int) -> str:
+    """Return the line of the "地の違い" view (see quiz.area_change), for the board as it is shown."""
+    if mode == AREAS_PLAYED:
+        return text("area_played", move=change.played.gtp(), lead=_lead_or_empty(change.played_lead))
+    if mode == AREAS_BEST:
+        return text("area_best", move=change.best.gtp(), lead=_lead_or_empty(change.best_lead))
+    color = change.played.color
+    values = {"best": change.best.gtp(), "played": change.played.gtp(), "color": color_name(color)}
+    gain = change.lead_gain(color)
+    points = f"{change.gained(color):+d}"
+    if gain is None:
+        return text("area_change_no_lead", **values, points=points)
+    return text("area_change", **values, points=points, gain=f"{gain:+.1f}")
+
+
+def _lead_or_empty(lead: float | None) -> str:
+    return "" if lead is None else lead_text(round(lead, 1))
 
 
 def standing_text(standing: Standing, moves: int) -> str:
