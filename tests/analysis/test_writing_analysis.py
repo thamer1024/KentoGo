@@ -140,6 +140,7 @@ def test_kentogo_data_has_the_readings():
     assert data["played_after"]["scoreLead"] == -5.0
     assert {"pass_before", "pass_after_played", "best_after", "pass_after_best"} <= set(data)
     assert len(data["best_after"]["ownership"].values) == 25  # Kept as a grid.
+    assert data["played_line"]["moves"][0] == "A5" and len(data["played_line"]["end"]["ownership"].values) == 25
 
 
 def test_positions_that_cannot_become_problems_keep_only_what_is_used():

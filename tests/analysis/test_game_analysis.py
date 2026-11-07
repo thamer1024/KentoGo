@@ -45,7 +45,7 @@ class FakeEngine:
             point = request["allowMoves"][0]["moves"][0]
             score = SCORES[(*moves, point)] - 1.0
         else:
-            point, score = "E5", {**SCORES, **READINGS}[moves]
+            point, score = "E5", {**SCORES, **READINGS}.get(moves, 0.0)  # 0 for the lines (see settled_lines).
         candidate = {"move": point, "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": [point, "A1"]}
         callback({"id": "x", "isDuringSearch": True, "rootInfo": {}, "moveInfos": []})  # Not used.
         callback(
@@ -304,11 +304,18 @@ def test_kentogo_readings_of_a_deep_move():
         engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), DeepTargets({"B": 5}, 2000)
     )
     readings = game.readings[id(game.nodes[3])]
-    assert set(readings) == {"pass_before", "pass_after_played", "best_after", "pass_after_best"}
+    assert set(readings) == {
+        "pass_before",
+        "pass_after_played",
+        "best_after",
+        "pass_after_best",
+        "played_line",
+        "best_line",
+    }
     assert readings["pass_before"]["scoreLead"] == -3.0 and readings["pass_before"]["next"] == "E5"
     assert readings["pass_after_played"]["scoreLead"] == -5.0  # White can leave A5: it threatens nothing.
     assert readings["pass_after_best"]["scoreLead"] == 4.0  # White cannot leave E5.
     assert len(readings["best_after"]["ownership"]) == 25 and "ownership" not in readings["pass_before"]
     tenuki = [query for query in engine.queries if by_moves_of(query) in READINGS]
     assert len(tenuki) == 4 and {query["maxVisits"] for query in tenuki} == {2000}
-    assert ("tenuki", 1, 4) in steps and steps[-1] == ("tenuki", 4, 4)  # One count for all the readings.
+    assert ("tenuki", 1, 4) in steps and ("tenuki", 4, 4) in steps  # One count for all the readings.

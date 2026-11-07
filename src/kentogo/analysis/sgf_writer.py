@@ -141,8 +141,17 @@ def _kentogo_data(game: GameAnalysis, node: GoNode) -> dict:
         "played_after": {key: after[key] for key in ("scoreLead", "winrate", "visits") if key in after},
     }
     for name, values in game.readings.get(id(node), {}).items():
-        data[name] = {key: Grid(tuple(value)) if key == "ownership" else value for key, value in values.items()}
+        data[name] = _with_grids(values)
     return data
+
+
+def _with_grids(value: object) -> object:
+    """Return a reading with each "ownership" (KataGo's areas) as a Grid, so that it takes little room."""
+    if isinstance(value, dict):
+        return {key: Grid(tuple(item)) if key == "ownership" else _with_grids(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_with_grids(item) for item in value]
+    return value
 
 
 def _move_values(values: dict) -> dict:

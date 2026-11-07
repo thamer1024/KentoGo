@@ -56,6 +56,12 @@ class AnalysisSettings:
         retries: How many times a node that KataGo could not analyze is asked again.
         deep_visits: The visits of the deep reading of the moves that can become problems
             (0 means the engine's max_visits).
+        settle_radius: The place of a move read until it settles: the points within this distance of it
+            (see analysis.settled_lines).
+        settle_change: The place has settled when its areas change by less than this on average (0 to 2;
+            0 does not use it, see analysis.settled_lines).
+        settle_step: How many moves are played on between two readings of a line.
+        settle_max_moves: The longest line read until it settles, in moves.
     """
 
     games_folder: str = ""
@@ -75,6 +81,10 @@ class AnalysisSettings:
     reanalyze_threshold: float = 3.0
     retries: int = 2
     deep_visits: int = 0
+    settle_radius: int = 4
+    settle_change: float = 0.0
+    settle_step: int = 2
+    settle_max_moves: int = 20
 
     @classmethod
     def from_dict(cls, values: dict) -> AnalysisSettings:
@@ -139,6 +149,9 @@ class AnalysisSettings:
             raise ValueError(f"wrong analysis setting: {', '.join(wrong)} must not be below 0")
         if self.fast_visits < 1:
             raise ValueError("wrong analysis setting: fast_visits must be 1 or more")
+        small = [name for name in ("settle_radius", "settle_step", "settle_max_moves") if getattr(self, name) < 1]
+        if small or self.settle_change < 0:
+            raise ValueError(f"wrong analysis setting: {', '.join(small) or 'settle_change'} is too small")
 
     def to_dict(self) -> dict:
         """Return the settings as a dict, for the "analysis" part of settings.json."""
