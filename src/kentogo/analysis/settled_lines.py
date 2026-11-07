@@ -1,8 +1,15 @@
 """The sequences after a move read deeply until the place settles (段階4: 一段落までの手順).
 
-For each deep node (see analysis.analyze), two lines are read from the position before the move:
-the played move ("played_line") and KataGo's best move ("best_line"), each followed by KataGo's
-sequence. The line is played on a few moves at a time (LineSettings.step), and the position is read
+For each deep node (see analysis.analyze), four lines are read, each a first move followed by KataGo's
+sequence:
+
+- from the position before the move: the played move ("played_line") and KataGo's best move ("best_line");
+- from the position after it, for the other player: KataGo's best answer ("punish_line": how the move is
+  punished, 咎め) and the answer played in the game ("reply_line"; left out when it is KataGo's best
+  answer, or when the game ends there).
+
+So a mistake of the opponent gives the punishment problem its answer and the user's own reply, and a
+mistake of the user shows how it is punished. The line is played on a few moves at a time (LineSettings.step), and the position is read
 each time with its areas (ownership), until the place has settled:
 
 - KataGo's next move is away from that place (more than LineSettings.radius points from the first
@@ -12,8 +19,9 @@ each time with its areas (ownership), until the place has settled:
   reading (0 does not use this: KataGo's areas already expect the sequence, so in real games they
   hardly change even while the fight goes on).
 
-A line that does not settle stops at LineSettings.max_moves. The first reading of each line is the one
-already made: the deep reading of the played move's position, and the tenuki reading "best_after". Whether the place settles is not decided
+A line that does not settle stops at LineSettings.max_moves. The first reading of a line is the one
+already made when there is one: the deep reading of the played move's position, the tenuki reading
+"best_after", and the analysis of the next node (the answer played). Whether the place settles is not decided
 by the score (passing in the middle game always costs about one move's value, see kentogo_reading).
 
 What is kept of a line (see record.kentogo_data): its moves (GTP points, from the first move), whether
@@ -36,6 +44,9 @@ from kentogo.vendor.katrain_analysis import var_to_grid
 LINES_STEP = "lines"  # The name of these readings in the progress.
 PLAYED_LINE = "played_line"
 BEST_LINE = "best_line"
+PUNISH_LINE = "punish_line"
+REPLY_LINE = "reply_line"
+LINES = (PLAYED_LINE, BEST_LINE, PUNISH_LINE, REPLY_LINE)
 
 
 @dataclass(frozen=True)
@@ -59,8 +70,10 @@ class LineSettings:
 class _Line:
     """A line that is being read."""
 
-    node: GoNode
+    node: GoNode  # The deep node whose line it is.
+    position: GoNode  # The position where the first move is played.
     moves: list[tuple[str, str]]  # (player, GTP point), from the first move.
+    first_answer: dict | None = None  # The reading already made of the position after the first move.
     length: int = 1  # How many of the moves are played in the position read next.
     places: list[tuple[int, int]] = field(default_factory=list)  # The points around the first move.
     last_areas: list[float] | None = None
@@ -81,18 +94,17 @@ def read_lines(
     retries: int,
     settings: LineSettings,
 ) -> None:
-    """Read the played line and the best line of every deep node, and keep them in game.readings."""
+    """Read the lines of every deep node (see the module's docstring), and keep them in game.readings."""
     query_settings = QuerySettings(visits, wide_root_noise, priority)
     lines = {
         name: {id(node): line for node in game.deep_nodes if (line := _start(game, node, name, settings))}
-        for name in (PLAYED_LINE, BEST_LINE)
+        for name in LINES
     }
     total = sum(len(found) for found in lines.values())
-    for name, found in lines.items():
+    for found in lines.values():
         for line in found.values():
-            first = _first_answer(game, line.node, name)
-            if first is not None:
-                _next(line, first, settings)
+            if line.first_answer is not None:
+                _next(line, line.first_answer, settings)
     while any(not line.done for found in lines.values() for line in found.values()):
         for name, found in lines.items():
             step = NodeStep(_query(found, query_settings), _keep(found, settings))
@@ -111,29 +123,45 @@ def read_lines(
 
 
 def _start(game: GameAnalysis, node: GoNode, name: str, settings: LineSettings) -> _Line | None:
-    """Return a new line of a deep node: its first move and KataGo's sequence after it, or None."""
+    """Return a new line of a deep node: its first move and KataGo's sequence after it, or None when it has none."""
     player = node.move.player
+    other = "W" if player == "B" else "B"
+    after = game.analysis(node)
+    top = _top(after) if after is not None else None
+    reply = next((child for child in node.children if child.move is not None and child.move.player == other), None)
     if name == PLAYED_LINE:
-        first = node.move.gtp()
-        after = game.analysis(node)
-        top = _top(after) if after is not None else None
+        position, first, mover = node.parent, node.move.gtp(), player
         sequence = [first, *(top.get("pv", []) if top else [])]
-    else:
-        first = best_move(game, node)
+        seed = _analysis_answer(after)
+    elif name == BEST_LINE:
+        position, first, mover = node.parent, best_move(game, node), player
         if first is None or first == PASS:
             return None
-        values = game.analysis(node.parent)["moves"].get(first, {})
-        sequence = values.get("pv") or [first]
-    size = node.board_size
-    line = _Line(node, _with_players(sequence, player))
-    line.places = _places(first, size, settings.radius)
+        sequence = game.analysis(node.parent)["moves"].get(first, {}).get("pv") or [first]
+        seed = _reading_answer(game.readings.get(id(node), {}).get("best_after"))
+    elif name == PUNISH_LINE:
+        if top is None or top["move"] == PASS:
+            return None
+        position, first, mover = node, top["move"], other
+        sequence = top.get("pv") or [first]
+        child = next((child for child in node.children if child.move is not None and child.move.gtp() == first), None)
+        seed = _analysis_answer(game.analysis(child)) if child is not None else None
+    else:
+        if reply is None or reply.move.gtp() == (top or {}).get("move") or reply.move.is_pass:
+            return None
+        position, first, mover = node, reply.move.gtp(), other
+        reply_top = _top(game.analysis(reply)) if game.analysis(reply) is not None else None
+        sequence = [first, *(reply_top.get("pv", []) if reply_top else [])]
+        seed = _analysis_answer(game.analysis(reply))
+    line = _Line(node, position, _with_players(sequence, mover), seed)
+    line.places = _places(first, node.board_size, settings.radius)
     return line
 
 
 def _query(lines: dict[int, _Line], settings: QuerySettings):
     def query(node: GoNode) -> dict | None:
         line = lines[id(node)]
-        found = query_after(node.parent, settings, line.moves[: line.length])
+        found = query_after(line.position, settings, line.moves[: line.length])
         if found is None:  # KaTrain's way does not analyze this position (stones removed): the line stops.
             line.done = True
         return found
@@ -189,15 +217,16 @@ def _next(line: _Line, answer: dict, settings: LineSettings) -> None:
     line.length = wanted
 
 
-def _first_answer(game: GameAnalysis, node: GoNode, name: str) -> dict | None:
-    """Return the reading already made of the position after the first move of a line, as KataGo's answer."""
-    if name == PLAYED_LINE:
-        analysis = game.analysis(node)
-        if analysis is None or not analysis.get("ownership"):
-            return None
-        infos = sorted(analysis["moves"].values(), key=lambda values: values.get("order", 999))
-        return {"rootInfo": analysis["root"], "moveInfos": infos, "ownership": analysis["ownership"]}
-    reading = game.readings.get(id(node), {}).get("best_after")
+def _analysis_answer(analysis: dict | None) -> dict | None:
+    """Return a node's analysis as KataGo's answer (the first reading of a line), or None without its areas."""
+    if analysis is None or not analysis.get("ownership"):
+        return None
+    infos = sorted(analysis["moves"].values(), key=lambda values: values.get("order", 999))
+    return {"rootInfo": analysis["root"], "moveInfos": infos, "ownership": analysis["ownership"]}
+
+
+def _reading_answer(reading: dict | None) -> dict | None:
+    """Return a tenuki reading (see kentogo_reading) as KataGo's answer, or None without its areas."""
     if reading is None or not reading.get("ownership"):
         return None
     root = {key: reading[key] for key in ("scoreLead", "winrate", "visits") if key in reading}

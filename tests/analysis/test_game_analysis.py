@@ -311,6 +311,7 @@ def test_kentogo_readings_of_a_deep_move():
         "pass_after_best",
         "played_line",
         "best_line",
+        "punish_line",  # A5 is the last move: no reply.
     }
     assert readings["pass_before"]["scoreLead"] == -3.0 and readings["pass_before"]["next"] == "E5"
     assert readings["pass_after_played"]["scoreLead"] == -5.0  # White can leave A5: it threatens nothing.

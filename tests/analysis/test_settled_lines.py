@@ -82,3 +82,17 @@ def test_without_the_areas_a_line_goes_on_while_the_players_stay():
     """By default the areas are not used (KataGo's areas already expect the sequence)."""
     _, readings = analyzed(FakeEngine(calm_after=3), settle_max_moves=6)
     assert [step["length"] for step in readings["played_line"]["steps"]] == [1, 3, 5, 6]
+
+
+def test_the_punishment_and_the_reply_played():
+    """After black's E5, KataGo's best answer for white is F6 (the punishment); white played C7 (the reply)."""
+    engine = FakeEngine(calm_after=3)
+    root = GoGame.parse_sgf(GAME)
+    game = analyze_game(engine, root, AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"B": -100.0}, 10))
+    first = game.readings[id(game.nodes[1])]
+    assert first["punish_line"]["moves"][:2] == ["F6", "D6"]  # White's F6, then KataGo's sequence.
+    assert first["reply_line"]["moves"][0] == "C7"
+    last = game.readings[id(game.nodes[3])]
+    assert "punish_line" in last and "reply_line" not in last  # The game ends after G7.
+    reply_seed = [step["length"] for step in first["reply_line"]["steps"]]
+    assert reply_seed[0] == 1  # The position after C7 was read already (the game's own analysis).
