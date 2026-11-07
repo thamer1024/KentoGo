@@ -2,18 +2,22 @@
 
 All settings of the app are read and written together (see app_settings.AppSettings). The
 first time, the file is made with the default values, and the engine settings and the settings
-of the analysis of games are copied from KaTrain's config.json. This module does not use the screens, so the command line
+of the analysis of games are copied from KaTrain's config.json. The deep reading's visits of the
+analysis of games are set from the engine's visits then (see katago.presets.deep_visits_for), so
+that the file shows a number that suits the computer; the user changes it, or a preset sets it. This module does not use the screens, so the command line
 tools can read the same settings (see commentary_cli).
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.app_settings import AppSettings
 from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.locate import DEFAULT_KATRAIN_CONFIG, KataGoNotFoundError, read_engine_config, read_katrain_config
+from kentogo.katago.presets import deep_visits_for
 from kentogo.settings import SettingsStore
 
 # Where the settings are kept (the same style as KaTrain's ~/.katrain).
@@ -40,6 +44,7 @@ def default_settings(katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> dict[str,
         analysis = AnalysisSettings.from_katrain(read_katrain_config(katrain_config))
     except (KataGoNotFoundError, ValueError):
         analysis = AnalysisSettings()
+    analysis = replace(analysis, deep_visits=analysis.deep_visits or deep_visits_for(engine.max_visits))
     return AppSettings(engine=engine, analysis=analysis).sections()
 
 

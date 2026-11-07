@@ -383,7 +383,9 @@ class SettingsPopup(Popup):
 
     def _use_preset(self, preset: Preset) -> None:
         """Save the settings with the numbers of visits of a preset (the saved settings, not the inputs, are changed)."""
-        self._write(replace(self.settings, engine=apply_preset(self.settings.engine, preset)))
+        engine = apply_preset(self.settings.engine, preset)
+        analysis = replace(self.settings.analysis, deep_visits=preset.deep_visits)  # The analysis of games.
+        self._write(replace(self.settings, engine=engine, analysis=analysis))
 
     def edit_prompt(self) -> None:
         """Open the user's prompt file of the AI commentary (it is made from the default the first time)."""
@@ -677,7 +679,12 @@ def _choice_row(text: str, button_text: str, action: Callable[[], None]) -> BoxL
 
 def _measured_text(speed: MeasuredSpeed, preset: Preset) -> str:
     """Return the question after measuring: the speeds, and the numbers of visits that will be set."""
-    values = {"speed": round(speed.main), "main": preset.max_visits, "estimate": preset.estimate_visits}
+    values = {
+        "speed": round(speed.main),
+        "main": preset.max_visits,
+        "estimate": preset.estimate_visits,
+        "deep": preset.deep_visits,
+    }
     if speed.compare is None:
         return texts.text("preset_measured", **values)
     return texts.text(
@@ -688,7 +695,11 @@ def _measured_text(speed: MeasuredSpeed, preset: Preset) -> str:
 def _preset_text(preset: Preset) -> str:
     """Return the name of a kind of computer, examples of it, and its numbers of visits, on three lines."""
     numbers = texts.text(
-        "preset_values", main=preset.max_visits, compare=preset.compare_max_visits, estimate=preset.estimate_visits
+        "preset_values",
+        main=preset.max_visits,
+        compare=preset.compare_max_visits,
+        estimate=preset.estimate_visits,
+        deep=preset.deep_visits,
     )
     name = texts.text(f"preset_{preset.key}")
     examples = texts.text(f"preset_{preset.key}_examples")

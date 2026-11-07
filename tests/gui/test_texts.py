@@ -102,6 +102,7 @@ def test_all_texts_can_be_filled():
         "skipped": 2,
         "failed": 1,
         "games": 3,
+        "deep": 4800,
         "analyzed": 1,
         "earlier": "20+ 0.8",
         "low": "3",

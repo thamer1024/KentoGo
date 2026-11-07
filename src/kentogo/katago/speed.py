@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from kentogo.common.types import Move, Position
 from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.evaluate import AnalysisEngine
-from kentogo.katago.presets import Preset
+from kentogo.katago.presets import DEEP_SHARE, Preset
 from kentogo.katago.queries import position_query
 
 MEASURE_SECONDS = 2.0  # An analysis that is measured takes at least this long.
@@ -63,12 +63,14 @@ class MeasuredSpeed:
         """Return the numbers of visits that fit the speeds (see QUERY_SECONDS), as a preset.
 
         The territory and the standing need only a shallow reading, so they get a quarter of the
-        visits of the main model. Without a measured comparison model, its visits stay as they are.
+        visits of the main model, and the deep reading of the analysis of games DEEP_SHARE times them.
+        Without a measured comparison model, its visits stay as they are.
         """
         main = visits_for(self.main)
         compare = visits_for(self.compare) if self.compare is not None else engine.compare_max_visits
         estimate = max(LEAST_ESTIMATE_VISITS, round_visits(main / ESTIMATE_SHARE))
-        return Preset(PRESET_MEASURED, main, compare, estimate, round(self.main), round(self.compare or 0))
+        deep = round_visits(main * DEEP_SHARE)  # The deep reading of the analysis of games (see presets).
+        return Preset(PRESET_MEASURED, main, compare, estimate, round(self.main), round(self.compare or 0), deep)
 
 
 def visits_for(speed: float) -> int:

@@ -82,6 +82,8 @@ def test_load_settings_copies_the_analysis_settings_from_katrain(tmp_path):
 def test_load_settings_without_katrain(tmp_path):
     """Without KaTrain's config.json, the engine settings get their default values."""
     assert load_settings(tmp_path / "settings.json", tmp_path / "missing.json").engine == EngineSettings()
+    fresh = load_settings(tmp_path / "other.json", tmp_path / "missing.json")
+    assert fresh.analysis.deep_visits == 4 * fresh.engine.max_visits  # Set from the engine's visits the first time.
 
 
 def test_load_settings_reads_the_file(tmp_path):

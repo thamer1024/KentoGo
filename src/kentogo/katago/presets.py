@@ -24,6 +24,11 @@ the others), on the number of GPU cores (base, Pro, Max or Ultra), and on the ge
 GPU of M5 has its own parts for AI: a base M5 reads about 600 positions per second, faster than
 an M1 to M4 Max). So the Macs are named by their speed, with examples of each.
 
+The deep reading of the moves that can become problems, when games are analyzed (see
+analysis.analyze), reads DEEP_SHARE times the main model's visits: it runs once for a game, while
+nobody waits for an answer, so it can read more deeply. Its number is an analysis setting
+(deep_visits), and a preset sets it too.
+
 A preset changes only the numbers of visits. The paths of KataGo and its models stay as they are.
 When the user does not know the kind of computer, KataGo's speed is measured instead, and the
 numbers of visits are made from it (see katago.speed).
@@ -54,6 +59,7 @@ class Preset:
         max_visits: The visits of the main model, for judging answers.
         compare_max_visits: The visits of the comparison model.
         estimate_visits: The visits of the territory and the standing.
+        deep_visits: The visits of the deep reading in the analysis of games (an analysis setting).
         speed: The positions per second of the main model (an 18-block one; estimated).
         compare_speed: The positions per second of the comparison model (a heavy one; estimated).
     """
@@ -64,26 +70,36 @@ class Preset:
     estimate_visits: int
     speed: int
     compare_speed: int
+    deep_visits: int
 
 
 MIN_VISITS = 5  # The fewest visits of the main model and the comparison model in a preset.
+DEEP_SHARE = 4  # The deep reading of the analysis of games reads this many times the main model's visits.
 PC_PRESETS = (
-    Preset(PRESET_CPU_OLD, 16, 5, 4, 10, 2),
-    Preset(PRESET_CPU_NEW, 40, 8, 10, 25, 5),
-    Preset(PRESET_GPU_MIDDLE, 480, 240, 120, 300, 150),
-    Preset(PRESET_GPU_HIGH, 1600, 800, 400, 1000, 500),
+    Preset(PRESET_CPU_OLD, 16, 5, 4, 10, 2, 64),
+    Preset(PRESET_CPU_NEW, 40, 8, 10, 25, 5, 160),
+    Preset(PRESET_GPU_MIDDLE, 480, 240, 120, 300, 150, 1900),
+    Preset(PRESET_GPU_HIGH, 1600, 800, 400, 1000, 500, 6400),
 )
 MAC_PRESETS = (
-    Preset(PRESET_MAC_STANDARD, 80, 16, 20, 50, 10),
-    Preset(PRESET_MAC_FAST, 160, 32, 40, 100, 20),
-    Preset(PRESET_MAC_FASTER, 360, 70, 90, 225, 45),
-    Preset(PRESET_MAC_FASTEST, 960, 190, 240, 600, 120),
+    Preset(PRESET_MAC_STANDARD, 80, 16, 20, 50, 10, 320),
+    Preset(PRESET_MAC_FAST, 160, 32, 40, 100, 20, 640),
+    Preset(PRESET_MAC_FASTER, 360, 70, 90, 225, 45, 1400),
+    Preset(PRESET_MAC_FASTEST, 960, 190, 240, 600, 120, 3800),
 )
 PRESETS = (*PC_PRESETS, *MAC_PRESETS)  # In the order of the screen.
 
 
+def deep_visits_for(max_visits: int) -> int:
+    """Return the visits of the deep reading that go with the main model's visits (DEEP_SHARE times)."""
+    return max(1, max_visits * DEEP_SHARE)
+
+
 def apply_preset(engine: EngineSettings, preset: Preset) -> EngineSettings:
-    """Return the engine settings with the numbers of visits of a preset (the other settings are kept)."""
+    """Return the engine settings with the numbers of visits of a preset (the other settings are kept).
+
+    The deep reading's visits are an analysis setting: the caller sets them (preset.deep_visits).
+    """
     return replace(
         engine,
         max_visits=preset.max_visits,

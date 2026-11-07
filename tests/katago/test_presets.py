@@ -3,7 +3,15 @@
 import pytest
 
 from kentogo.katago.engine_settings import EngineSettings
-from kentogo.katago.presets import MAC_PRESETS, MIN_VISITS, PC_PRESETS, PRESETS, apply_preset
+from kentogo.katago.presets import (
+    DEEP_SHARE,
+    MAC_PRESETS,
+    MIN_VISITS,
+    PC_PRESETS,
+    PRESETS,
+    apply_preset,
+    deep_visits_for,
+)
 
 
 @pytest.mark.parametrize("presets", [PC_PRESETS, MAC_PRESETS], ids=["pc", "mac"])
@@ -38,3 +46,10 @@ def test_every_preset_has_its_name_and_examples():
 
     for preset in PRESETS:
         assert f"preset_{preset.key}" in TEXTS and f"preset_{preset.key}_examples" in TEXTS
+
+
+def test_every_preset_has_the_visits_of_the_deep_reading():
+    """The analysis of games reads the moves that can become problems DEEP_SHARE times as deeply (rounded)."""
+    for preset in PRESETS:
+        assert abs(preset.deep_visits - DEEP_SHARE * preset.max_visits) <= 0.05 * DEEP_SHARE * preset.max_visits
+    assert deep_visits_for(1200) == 4800
