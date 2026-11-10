@@ -15,12 +15,15 @@ and their default values are copied from KaTrain's config.json when the settings
 
 The analysis data (the KT property) is always written: KentoGo needs it, so it is not a setting.
 A position that KataGo could not analyze is asked again (retries). The moves that can become problems
-are read more deeply, with deep_visits (see analysis.analyze; which moves comes from the quiz settings).
+are read more deeply, with deep_visits (see analysis.analyze; which moves comes from the quiz settings),
+at most deep_max_moves of them in a game. The readings that are the material of later features
+(area_readings, pass_readings, settled_lines, end_reading) take long, so they are off unless the user
+turns them on.
 No number of visits or seconds is fixed in the code: a strong GPU and a processor alone need very
 different numbers, so they come from the settings (these, and the engine's max_visits).
 The visits of the engine (max_visits) are the engine settings (see katago.engine_settings).
-Old settings files may still have "katrain_compatible" and "max_time" (KaTrain's way, no longer
-used): unknown keys are ignored, and they are gone when the settings are saved again.
+Old settings files may still have "katrain_compatible" and "max_time" here (no longer used; the time
+limit is the engine's max_time now): unknown keys are ignored, and they are gone when the settings are saved again.
 """
 
 from __future__ import annotations
@@ -56,6 +59,12 @@ class AnalysisSettings:
         retries: How many times a node that KataGo could not analyze is asked again.
         deep_visits: The visits of the deep reading of the moves that can become problems
             (0 means the engine's max_visits).
+        deep_max_moves: The most moves read deeply in a game, the biggest losses first; the opponent's moves
+            take at most half of them (0 means no limit).
+        area_readings: Read the areas after the best move of the deep moves (the material of later features).
+        end_reading: Read the last position of the game with its areas (the material of counting problems).
+        pass_readings: Read the deep moves with a pass too (see analysis.kentogo_reading.PASS_READINGS).
+        settled_lines: Read the sequences of the deep moves until the place settles (see analysis.settled_lines).
         settle_radius: The place of a move read until it settles: the points within this distance of it
             (see analysis.settled_lines).
         settle_change: The place has settled when its areas change by less than this on average (0 to 2;
@@ -81,6 +90,11 @@ class AnalysisSettings:
     reanalyze_threshold: float = 3.0
     retries: int = 2
     deep_visits: int = 0
+    deep_max_moves: int = 6
+    area_readings: bool = False
+    end_reading: bool = False
+    pass_readings: bool = False
+    settled_lines: bool = False
     settle_radius: int = 4
     settle_change: float = 0.0
     settle_step: int = 2
@@ -141,6 +155,7 @@ class AnalysisSettings:
             "fast_visits": self.fast_visits,
             "reanalyze_visits": self.reanalyze_visits,
             "deep_visits": self.deep_visits,
+            "deep_max_moves": self.deep_max_moves,
             "move_from": self.move_from,
             "move_to": self.move_to,
         }

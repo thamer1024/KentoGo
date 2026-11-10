@@ -135,6 +135,18 @@ class KataGoProcess:
             self._process.stdin.flush()
         return query_id
 
+    def terminate(self, query_id: str) -> None:
+        """Ask KataGo to stop reading a query (KataGo's "terminate" action); nothing happens when it is not running.
+
+        KataGo then gives the query its final answer at once, with the visits read so far (or none).
+        """
+        if not query_id or not self.is_running:
+            return
+        try:
+            self.query({"action": "terminate", "terminateId": query_id}, lambda _answer: None)
+        except (RuntimeError, OSError):  # KataGo stopped just now: the query has its error answer anyway.
+            pass
+
     def close(self) -> None:
         """Stop KataGo. Queries that are still waiting get an error answer."""
         process = self._process

@@ -157,3 +157,14 @@ def test_program_that_does_not_exist():
     process = KataGoProcess(EngineCommand(("/not/a/katago",), False, 10))
     with pytest.raises(OSError):
         process.start()
+
+
+def test_terminate_sends_katagos_terminate_action(katago, monkeypatch):
+    """terminate asks KataGo to stop reading a query; without a running KataGo or an id, nothing is sent."""
+    sent = []
+    monkeypatch.setattr(katago, "query", lambda request, callback: sent.append(request) or "t")
+    katago.terminate("kentogo-7")
+    katago.terminate("")
+    assert sent == [{"action": "terminate", "terminateId": "kentogo-7"}]
+    stopped = KataGoProcess(EngineCommand((sys.executable, str(FAKE_KATAGO)), False, 10))
+    stopped.terminate("kentogo-1")  # Not started: nothing happens.

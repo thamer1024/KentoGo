@@ -14,10 +14,10 @@ answer, the buttons and keys that switch, play back, play forward and go to the 
 cannot be used (the buttons are drawn as disabled); going to the next problem waits until all
 calculations of the problem have arrived, so that KataGo's work does not pile up.
 Keys: Space and the right arrow play the sequence forward, Shift+Space and the left arrow play
-it back, Tab switches to the next sequence, T shows the territory and the standing, D goes
-through the "地の違い" view (the areas after the game move, after the best move, and the points
-whose owner changes; read from KentoGo's analysis data, see quiz.area_change), and Enter
-goes to the next problem. T and D do not show at the same time. The settings are changed from the top screen. The panel shows how
+it back, Tab switches to the next sequence, and Enter goes to the next problem. After the answer,
+the board shows the areas of whatever move is shown, from a shallow reading (see quiz.quick_areas),
+and at the last move of each sequence (but the game's continuation) the exact standing is told,
+with its areas on the board (see quiz.standings). The settings are changed from the top screen. The panel shows how
 many times the problem was asked before and the last result.
 """
 
@@ -52,8 +52,8 @@ from kentogo.gui.dialogs import show_message
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
 from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem
-from kentogo.quiz.area_change import AREAS_BEST, AREAS_CHANGE, AREAS_OFF, AREAS_PLAYED, AreaView
 from kentogo.quiz.judge import ScoringPolicy
+from kentogo.quiz.quick_areas import QuickAreas
 from kentogo.quiz.quiz_run import Judging, QuizRun
 from kentogo.quiz.session import ANSWERED, QuizSession
 from kentogo.quiz.standings import SequenceStandings
@@ -65,8 +65,6 @@ KEY_LEFT = 276
 KEY_RIGHT = 275
 KEY_SPACE = 32
 KEY_TAB = 9
-KEY_T = 116
-KEY_D = 100
 KEY_ENTERS = (13, 271)
 
 # The right panel gets at least this part of the screen width.
@@ -118,7 +116,7 @@ class QuizScreen(BoxLayout):
         self.on_back = on_back
         self.open_game = open_game
         self.standings: SequenceStandings | None = None
-        self.areas: AreaView | None = None  # The "地の違い" view of the problem asked now (D).
+        self.quick_areas: QuickAreas | None = None  # The shallow areas of the positions of the problem asked now.
         self._history_line: Callable[[], str] = str  # Makes the line about the earlier answers ("" if none).
         self._busy_since: float | None = None  # When KataGo started calculating for the current problem.
         self._busy_timer = None  # Shows the seconds while KataGo is calculating (see _update_buttons).
@@ -162,8 +160,6 @@ class QuizScreen(BoxLayout):
         switch_button = flat_button(texts.lazy("switch_sequence"), self.next_variation)
         switch_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
         switch_row.add_widget(switch_button)
-        switch_row.add_widget(flat_button(texts.lazy("estimate_button"), self.toggle_standing))
-        switch_row.add_widget(flat_button(texts.lazy("area_button"), self.next_areas))
         back_button = flat_button(texts.lazy("back"), self.step_back)
         forward_button = flat_button(texts.lazy("forward"), self.step_forward)
         buttons = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
@@ -202,13 +198,15 @@ class QuizScreen(BoxLayout):
 
     def started(self, session: QuizSession | None) -> None:
         """Show a new problem, or the end message (told by the quiz)."""
+        if self.quick_areas is not None:
+            self.quick_areas.stop()
         if session is None:
             self.standings = None
-            self.areas = None
+            self.quick_areas = None
             self._show_end()
             return
         self.standings = SequenceStandings(session, in_main_thread)
-        self.areas = AreaView(session.problem)
+        self.quick_areas = QuickAreas(session, in_main_thread)
         self._history_line = self._history_line_of(session.problem)
         self._show_history_error()
         color = session.shown_problem.position.next_color
@@ -269,21 +267,17 @@ class QuizScreen(BoxLayout):
             self._sequence_moved()
 
     def _sequence_moved(self) -> None:
-        """Hide the territory (it belongs to the end of a sequence) and the areas, and show the board again."""
-        self.standings.hide()
-        self.areas.hide()
+        """Show the board again after a move of the sequence."""
         self._refresh()
 
     def next_variation(self) -> None:
         """Switch to the next sequence (only after the answer, and not while KataGo is calculating)."""
         if self.run.next_variation():
-            self.standings.hide()
-            self.areas.hide()
             self._show_result(self.session)  # The comparison model's sequence has its own result.
             self._refresh()
 
-    def toggle_standing(self) -> None:
-        """Show or hide the territory and the standing at the end of the shown sequence (T, see quiz.standings)."""
+    def _prepare_standings(self) -> None:
+        """Ask KataGo for the standings of the sequences that have none yet (after the answer, see quiz.standings)."""
         session, standings = self.session, self.standings
         if session is None or standings is None:
             return
@@ -293,30 +287,10 @@ class QuizScreen(BoxLayout):
                 self._refresh()
 
         def failed(text_key: str, reason: str) -> None:
-            show_message(texts.text("mode_quiz"), texts.text(text_key, reason=reason))
+            self._show_error_once(texts.text(text_key, reason=reason))
 
-        self.areas.hide()  # The two are not shown at the same time.
-        standings.toggle(self.judging.models(), changed, failed)
-
-    def next_areas(self) -> None:
-        """Show the next picture of the "地の違い" view (D, see quiz.area_change), after the answer."""
-        session, areas = self.session, self.areas
-        if session is None or areas is None:
-            return
-        if session.phase != ANSWERED:
-            show_message(texts.text("mode_quiz"), texts.text("area_not_answered"))
-            return
-        try:
-            mode = areas.next()
-        except OSError as error:  # The SGF file cannot be read.
-            show_message(texts.text("mode_quiz"), texts.text("area_failed", reason=error))
-            return
-        if areas.missing:
-            show_message(texts.text("mode_quiz"), texts.text("area_not_analyzed"))
-            return
-        if mode != AREAS_OFF:
-            self.standings.hide()
-        self._refresh()
+        standings.prepare(self.judging.models(), changed, failed)
+        self.quick_areas.ask(self.judging.engine, self.judging.settings.wide_root_noise, changed)
 
     def _on_point(self, _widget, point: tuple[int, int]) -> None:
         """Take a click on the board as the answer."""
@@ -331,6 +305,8 @@ class QuizScreen(BoxLayout):
 
     def close(self) -> None:
         """Leave the screen: save the answers KataGo is still judging, and stop listening to the keys."""
+        if self.quick_areas is not None:
+            self.quick_areas.stop()
         self.save_unfinished()
         Window.unbind(on_key_down=self._on_key_down)
 
@@ -402,10 +378,6 @@ class QuizScreen(BoxLayout):
             self.step_forward()
         elif key == KEY_TAB:
             self.next_variation()
-        elif key == KEY_T:
-            self.toggle_standing()
-        elif key == KEY_D:
-            self.next_areas()
         elif key in KEY_ENTERS:
             self.next_problem()
         else:
@@ -414,6 +386,7 @@ class QuizScreen(BoxLayout):
 
     def _refresh(self) -> None:
         """Update the board, the information, the sequence and the notes."""
+        self._prepare_standings()
         session = self.session
         problem = session.shown_problem
         self._update_buttons()
@@ -494,22 +467,13 @@ class QuizScreen(BoxLayout):
         )
         lines = [order, shown]
         standings = self.standings
-        if standings is not None and standings.busy:
+        at_end = session.sequence_at_end() is not None
+        if standings is not None and standings.busy and at_end:
             lines.append(texts.text("estimate_running"))
-        standing = standings.shown() if standings is not None else None
+        standing = standings.at_end() if standings is not None else None
         if standing is not None:
-            lines.append(texts.standing_text(standing, session.replay_step))
-        change = self._shown_areas()
-        if change is not None:
-            lines.append(texts.area_text(change, self.areas.mode))
+            lines.append(texts.standing_text(standing, len(moves)))
         return "\n".join(lines)
-
-    def _shown_areas(self):
-        """Return the change of the areas as the board is shown, while the "地の違い" view is on (else None)."""
-        areas, session = self.areas, self.session
-        if areas is None or session is None or areas.mode == AREAS_OFF or areas.change is None:
-            return None
-        return areas.change.transformed(session.transform, session.problem.position.size)
 
     def _board_view(self) -> BoardView:
         """Make the view of the board for the current state of the session."""
@@ -528,22 +492,12 @@ class QuizScreen(BoxLayout):
                     *_compare_marks(session),
                 ]
             )
-        change = self._shown_areas()
-        if change is not None:
-            return _area_view(problem, change, self.areas.mode, marks)
         view = make_board_view(problem.position, session.shown_sequence(), marks)
-        standing = self.standings.shown() if self.standings is not None else None
-        return replace(view, ownership=standing.end.ownership) if standing is not None else view
-
-
-def _area_view(problem: Problem, change, mode: int, marks: dict) -> BoardView:
-    """Make the board of the "地の違い" view: the game move or the best move with its areas, or the changes."""
-    if mode == AREAS_PLAYED:
-        return replace(make_board_view(problem.position, (change.played,), marks), ownership=change.played_areas)
-    if mode == AREAS_BEST:
-        return replace(make_board_view(problem.position, (change.best,), marks), ownership=change.best_areas)
-    assert mode == AREAS_CHANGE
-    return replace(make_board_view(problem.position, (), marks), ownership=change.changed())
+        standing = self.standings.at_end() if self.standings is not None else None
+        if standing is not None:  # The exact areas at the last move.
+            return replace(view, ownership=standing.end.ownership)
+        areas = self.quick_areas.shown() if self.quick_areas is not None else None
+        return replace(view, ownership=areas) if areas is not None else view
 
 
 def _compare_marks(session: QuizSession) -> list[tuple[Move, str]]:

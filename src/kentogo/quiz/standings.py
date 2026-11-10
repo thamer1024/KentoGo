@@ -1,10 +1,12 @@
-"""The territory and the standing at the end of a sequence of a problem (T), as KaTrain shows them.
+"""The territory and the standing at the end of each sequence of a problem, as KaTrain shows them.
 
-The quiz keeps one SequenceStandings for the problem it shows. When a sequence that is not the
-game's continuation is shown to its last move, T asks KataGo for the territory and the standing
-there (with the model of the sequence: the comparison model for its own sequence, else the main
-model), and for the game after the same number of moves, which is read from the SGF file. The
-result is kept for the sequence, and shown until the user moves.
+After the answer, each sequence that is not the game's continuation gets its standing by itself:
+KataGo is asked about the position at the end of the sequence (with the model of the sequence: the
+comparison model for its own sequence, else the main model), and about the game after the same number
+of moves, which is read from the SGF file (see prepare). Only the ends of the sequences are read, not
+every move on the way, so it takes about one shallow reading per sequence (the visits of the territory
+and the standing). The standing of the shown sequence is told while it is shown (shown), and its
+territory is drawn on the board when the sequence is shown to its last move (at_end).
 
 The SGF file is read in the background (background), and KataGo's answers come in its own
 threads; both are passed through in_main before anything changes, as in quiz.quiz_run.
@@ -19,13 +21,11 @@ from pathlib import Path
 from kentogo.common import sgf
 from kentogo.katago.estimate import Standing, estimate_standing, played
 from kentogo.katago.evaluate import AnalysisModel, Models
-from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Variation
-from kentogo.quiz.session import QuizSession
+from kentogo.mistakes.problem import SOURCE_KATAGO_ACTUAL, SOURCE_KATAGO_COMPARE, Variation
+from kentogo.quiz.session import ANSWERED, QuizSession
 from kentogo.record.game_record import read_game_record
 
-# Why the standing is not shown: keys of screen texts.
-NOT_HERE = "estimate_not_here"  # No sequence is shown to its last move.
-NO_ENGINE = "estimate_no_engine"  # The model of the sequence is not running.
+# Why a standing is not calculated: the key of a screen text.
 FAILED = "estimate_failed"  # KataGo or the SGF file failed (with the reason).
 
 Changed = Callable[[], None]
@@ -43,8 +43,8 @@ class SequenceStandings:
     Attributes:
         session: The session of the problem.
         found: The standings calculated so far, by sequence.
-        showing: True while the standing of the shown sequence is shown.
-        busy: True while KataGo calculates one.
+        pending: The sequences whose standing KataGo is calculating.
+        failed: The sequences whose standing could not be calculated (they are not asked again).
     """
 
     def __init__(
@@ -64,65 +64,63 @@ class SequenceStandings:
         self.in_main = in_main
         self.background = background
         self.found: dict[Variation, Standing] = {}
-        self.showing = False
-        self.busy = False
+        self.pending: set[Variation] = set()
+        self.failed: set[Variation] = set()
+
+    @property
+    def busy(self) -> bool:
+        """True while KataGo calculates the standing of the shown sequence."""
+        return self.session.variation in self.pending
 
     def shown(self) -> Standing | None:
-        """Return the standing of the shown sequence as the board is shown, while it is shown (else None)."""
-        variation = self.session.sequence_at_end()
-        if not self.showing or variation is None or variation not in self.found:
+        """Return the standing at the end of the shown sequence as the board is shown, once it is known (else None)."""
+        variation = self.session.variation
+        if self.session.phase != ANSWERED or variation is None or variation not in self.found:
             return None
         return self.session.transform.standing(self.found[variation], self.session.problem.position.size)
 
-    def hide(self) -> None:
-        """Stop showing the standing (when the user moves)."""
-        self.showing = False
+    def at_end(self) -> Standing | None:
+        """Return the standing of the shown sequence while it is shown to its last move (its territory is drawn)."""
+        return self.shown() if self.session.sequence_at_end() is not None else None
 
-    def toggle(self, models: Models, on_change: Changed, on_error: Failed) -> None:
-        """Show or hide the standing of the shown sequence, calculating it the first time.
+    def prepare(self, models: Models, on_change: Changed, on_error: Failed) -> None:
+        """Ask KataGo for the standing of each sequence that has none yet (after the answer; else nothing).
 
         Args:
-            models: The main model and the comparison model (each None if it is not running).
-            on_change: Called (in the main thread) when what is shown changes.
+            models: The main model and the comparison model (each None if it is not running: then the
+                sequences of that model get no standing).
+            on_change: Called (in the main thread) when a standing has come.
             on_error: Called with the key of a message and its reason, to tell the user.
         """
-        if self.busy:
+        if self.session.phase != ANSWERED:
             return
-        if self.showing:
-            self.showing = False
-            on_change()
-            return
-        self._show_or_estimate(models, on_change, on_error)
+        for variation in self._sequences():
+            if variation in self.found or variation in self.pending or variation in self.failed:
+                continue
+            model = models.compare if variation.source == SOURCE_KATAGO_COMPARE else models.main
+            if model is not None:
+                self._estimate(variation, model, on_change, on_error)
 
-    def _show_or_estimate(self, models: Models, on_change: Changed, on_error: Failed) -> None:
-        """Show the standing of the shown sequence if it is known, else ask KataGo for it."""
-        variation = self.session.sequence_at_end()
-        if variation is None:
-            on_error(NOT_HERE, "")
-            return
-        if variation in self.found:
-            self.showing = True
-            on_change()
-            return
-        model = models.compare if variation.source == SOURCE_KATAGO_COMPARE else models.main
-        if model is None:
-            on_error(NO_ENGINE, "")
-            return
-        self._estimate(variation, model, on_change, on_error)
+    def _sequences(self) -> list[Variation]:
+        """Return the sequences that get a standing: those with moves that are not the game's continuation."""
+        return [
+            choice.variation
+            for choice in self.session.choices
+            if choice.source != SOURCE_KATAGO_ACTUAL and choice.variation is not None and choice.variation.moves
+        ]
 
     def _estimate(self, variation: Variation, model: AnalysisModel, on_change: Changed, on_error: Failed) -> None:
         """Read the game and ask KataGo, in the background."""
-        self.busy = True
-        on_change()
+        self.pending.add(variation)
 
         def done(standing: Standing) -> None:
-            self.busy = False
+            self.pending.discard(variation)
             self.found[variation] = standing
-            self.showing = self.session.sequence_at_end() == variation
             on_change()
 
         def failed(message: str) -> None:
-            self.busy = False
+            self.pending.discard(variation)
+            self.failed.add(variation)
             on_change()
             on_error(FAILED, message)
 

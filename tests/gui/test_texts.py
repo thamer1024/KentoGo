@@ -2,14 +2,13 @@
 
 from dataclasses import replace
 
-from kentogo.analysis_run import AnalysisPlan, AnalysisSummary
+from kentogo.analysis_run import AnalysisSummary, FolderGame, FolderGames
 from kentogo.common.types import Move, Position
 from kentogo.gui.texts import (
     TEXTS,
-    analysis_kentogo_question,
+    analysis_folder_problem,
     analysis_outcome_text,
-    analysis_plan_problem,
-    analysis_plan_text,
+    analysis_state_text,
     analysis_step_text,
     analysis_summary_text,
     band_names,
@@ -103,6 +102,7 @@ def test_all_texts_can_be_filled():
         "failed": 1,
         "games": 3,
         "deep": 4800,
+        "fast": 120,
         "analyzed": 1,
         "earlier": "20+ 0.8",
         "low": "3",
@@ -407,28 +407,19 @@ def test_analysis_texts():
     assert analysis_summary_text(AnalysisSummary(problem="no games")) == "解析できません：no games"
 
 
-def test_analysis_plan_texts(tmp_path):
-    """Before a run, the folder and the number of games that are overwritten are told, or why nothing is done."""
-    assert analysis_plan_problem(AnalysisPlan(None)) == "解析する棋譜のフォルダが設定されていません。"
-    assert analysis_plan_problem(AnalysisPlan(tmp_path / "x")).startswith("解析する棋譜のフォルダがありません")
-    assert analysis_plan_problem(AnalysisPlan(tmp_path)).endswith("SGFファイルがありません。")
-    assert "すべて解析済み" in analysis_plan_problem(AnalysisPlan(tmp_path, tmp_path / "b", 2, 2))
-    plan = AnalysisPlan(tmp_path, tmp_path / "b", 3, 1)
-    assert analysis_plan_problem(plan) == ""
-    lines = analysis_plan_text(plan).splitlines()
-    assert lines[0].startswith(f"{tmp_path} の 2 局をKataGoで解析")
-    assert lines[2] == "全部で 3 局のうち、解析済みの 1 局は飛ばします。" and lines[-1] == "始めますか？"
-    again = analysis_plan_text(AnalysisPlan(tmp_path, tmp_path / "b", 3, 1, reanalyze=True))
-    assert f"{tmp_path} の 3 局" in again and "1 局も解析し直します" in again
+def test_analysis_folder_problem(tmp_path):
+    """Before the list of the games to analyze, why there is none is told: no folder set, no folder, no games."""
+    assert analysis_folder_problem(FolderGames(None)) == "解析する棋譜のフォルダが設定されていません。"
+    assert analysis_folder_problem(FolderGames(tmp_path / "x")).startswith("解析する棋譜のフォルダがありません")
+    assert analysis_folder_problem(FolderGames(tmp_path)).endswith("SGFファイルがありません。")
+    games = FolderGames(tmp_path, tmp_path / "b", (FolderGame(tmp_path / "a.sgf", "kentogo"),))
+    assert analysis_folder_problem(games) == ""  # Analyzed games are listed too, when the user asks.
 
 
-def test_analysis_plan_texts_for_kentogo(tmp_path):
-    """Games analyzed in KaTrain's way are asked about in KentoGo's mode, and told with the answer."""
-    plan = AnalysisPlan(tmp_path, tmp_path / "b", 3, 3, kentogo_redo=2)
-    assert analysis_kentogo_question(plan).startswith("KataGoで解析済みです（2 局。")
-    assert analysis_plan_problem(plan, redo_kentogo=True) == ""
-    assert "すべて解析済み" in analysis_plan_problem(plan)  # The answer was no.
-    lines = analysis_plan_text(plan, redo_kentogo=True).splitlines()
-    assert lines[0].startswith(f"{tmp_path} の 2 局をKataGoで解析")
-    assert lines[2] == "全部で 3 局のうち、解析済みの 1 局は飛ばします。"
-    assert lines[3] == "KataGoで解析済みの 2 局は、KentoGo用に打った手を読み足して書き込みます。"
+def test_analysis_state_text():
+    assert [analysis_state_text(state) for state in ("new", "katrain", "kentogo", "broken")] == [
+        "未解析",
+        "解析済み（KaTrain）",
+        "解析済み（KentoGo）",
+        "読めません",
+    ]

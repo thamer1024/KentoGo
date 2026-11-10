@@ -4,11 +4,14 @@ import pytest
 
 from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.presets import (
-    DEEP_SHARE,
+    DEEP_POSITIONS,
+    GAME_POSITIONS,
+    GAME_SECONDS,
     MAC_PRESETS,
     MIN_VISITS,
     PC_PRESETS,
     PRESETS,
+    analysis_visits_for,
     apply_preset,
     deep_visits_for,
 )
@@ -48,8 +51,13 @@ def test_every_preset_has_its_name_and_examples():
         assert f"preset_{preset.key}" in TEXTS and f"preset_{preset.key}_examples" in TEXTS
 
 
-def test_every_preset_has_the_visits_of_the_deep_reading():
-    """The analysis of games reads the moves that can become problems DEEP_SHARE times as deeply (rounded)."""
+def test_every_preset_analyzes_a_game_in_about_two_minutes():
+    """With a GPU or a fast Mac, the first analysis and the deep reading of a game take about GAME_SECONDS."""
     for preset in PRESETS:
-        assert abs(preset.deep_visits - DEEP_SHARE * preset.max_visits) <= 0.05 * DEEP_SHARE * preset.max_visits
-    assert deep_visits_for(1200) == 4800
+        assert (preset.fast_visits, preset.deep_visits) == analysis_visits_for(preset.speed)
+        seconds = (preset.fast_visits * GAME_POSITIONS + preset.deep_visits * DEEP_POSITIONS) / preset.speed
+        if preset.speed >= 100:
+            assert abs(seconds - GAME_SECONDS) <= 0.1 * GAME_SECONDS, preset.key
+    assert analysis_visits_for(600) == (120, 1500)  # A base M5.
+    assert analysis_visits_for(10) == (5, 50)  # The fewest visits: a computer without a GPU takes longer.
+    assert deep_visits_for(1200) == 4800  # Before the speed is known (the first start).

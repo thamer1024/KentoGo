@@ -48,7 +48,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
-from kentogo.analysis_run import plan_analysis, run_folder_analysis
+from kentogo.analysis_run import list_games, run_analysis
 from kentogo.app_settings import AppSettings
 from kentogo.commentary.prompt_text import create_user_prompt_file
 from kentogo.commentary.workspace import CommentaryWorkspace
@@ -385,10 +385,8 @@ def _settings_opener(
                 _current_settings(arguments.settings, settings).engine, _running_engines()
             ),
             analyze=FolderAnalysis(
-                plan_analysis,
-                lambda saved, listener, stop, redo: run_folder_analysis(
-                    saved, _running_engines(), listener, stop, redo
-                ),
+                list_games,
+                lambda saved, games, listener, stop: run_analysis(saved, _running_engines(), games, listener, stop),
             ),
         ).open()
 

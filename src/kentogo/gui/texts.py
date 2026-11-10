@@ -16,13 +16,12 @@ import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from kentogo.analysis_run import AnalysisPlan, AnalysisSummary
+from kentogo.analysis_run import AnalysisSummary, FolderGames
 from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
 from kentogo.mistakes.extract import PUNISH, SHARED
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
-from kentogo.quiz.area_change import AREAS_BEST, AREAS_PLAYED, AreaChange
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
@@ -77,18 +76,11 @@ TEXTS = {
     "short_katago_actual": "実戦の手",
     "short_katago_compare": "比較用モデル",
     "estimate_button": "地と形勢 (T)",
+    "estimate_button_on": "地と形勢：表示中 (T)",
     "estimate_running": "地と形勢を計算しています…",
-    "estimate_not_here": "地と形勢は、実戦以外の手順を最後の手まで進めたときに表示できます（T）。",
     "estimate_no_engine": "KataGoが使えないため、地と形勢を計算できません。",
     "estimate_failed": "地と形勢を計算できませんでした：{reason}",
-    "area_button": "地の違い (D)",
-    "area_played": "地の違い（D）：実戦の手 {move} の後の地　{lead}",
-    "area_best": "地の違い（D）：最善手 {move} の後の地　{lead}",
-    "area_change": "地の違い（D）：最善手 {best} と実戦の手 {played} で持ち主が変わる点\n{color}から見て {points}点、形勢 {gain}目",
-    "area_change_no_lead": "地の違い（D）：最善手 {best} と実戦の手 {played} で持ち主が変わる点\n{color}から見て {points}点",
-    "area_not_analyzed": "この問題には KentoGo の検討データがありません。棋譜を「KataGoで棋譜を解析」で解析すると見られます。",
-    "area_not_answered": "地の違いは、回答した後に見られます（D）。",
-    "area_failed": "地の違いを読めませんでした：{reason}",
+    "quick_standing": "形勢（概算）：{leader} {ahead:.1f}目リード",
     "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）\n実戦の同じ手数と比べて：{player} {gain:+.1f}目",
     "compare_running": "比較用モデルで解析しています…",
     "compare_no_sequence": "比較用モデルが手順を返しませんでした",
@@ -410,6 +402,7 @@ TEXTS = {
     "field_max_visits": "分析時の最大探索手数（メインのモデル）",
     "field_compare_max_visits": "分析時の最大探索手数（比較用モデル）",
     "field_wide_root_noise": "Wide root noise (考慮する手の範囲を広げる)",
+    "field_max_time": "分析の最大時間（秒。0：制限なし）",
     "field_small_problem_threshold": "小さい問題の境目（目）",
     "field_pass_ratio": "合格ライン（取り戻した割合 0〜1）",
     "field_tolerance": "許容幅（目）",
@@ -470,6 +463,11 @@ TEXTS = {
     "field_analysis_fast": "最初は高速解析で読む",
     "field_fast_visits": "高速解析の探索数",
     "field_deep_visits": "深く検討する手の探索数（0：エンジンの探索数と同じ）",
+    "field_deep_max_moves": "深く検討する手の数（1局。損失の大きい順。咎めの相手の手は半分まで。0：すべて）",
+    "field_area_readings": "最善手の後の地も読む（今後の機能用。時間がかかる）",
+    "field_end_reading": "最後の局面の地も読む（今後の目数計算問題用。時間がかかる）",
+    "field_pass_readings": "手抜き（パス）の読みも書く（今後の機能用。時間がかかる）",
+    "field_settled_lines": "一段落までの手順も読む（今後の機能用。時間がかかる）",
     "field_settle_radius": "一段落の判定：打った手の周りの広さ（路）",
     "field_settle_change": "一段落の判定：地の色の変化がこれより小さい（0：使わない）",
     "field_settle_step": "一段落の判定：何手ずつ進めて読むか",
@@ -507,19 +505,20 @@ TEXTS = {
     "analysis_page_intro": "[b]このページは、KataGo（囲碁AIエンジン）で棋譜を読み、損失目数などの解析データとコメントをSGFファイルに書き込む設定です。[/b]Claude・ChatGPTなどの言語AIが文章で解説する設定は「AI解説」のページです。",
     "commentary_page_intro": "[b]このページは、Claude・ChatGPTなどの言語AIが問題の局面を文章で解説する設定です。[/b]KataGoで棋譜を解析してSGFファイルに書き込む設定は「KataGo棋譜解析」のページです。",
     "analysis_counting": "棋譜を数えています…",
-    "analysis_confirm": "{folder} の {count} 局をKataGoで解析し、解析データとコメントを棋譜に書き込みます（上書きします）。\n元の棋譜は先に {backup} にコピーします。",
-    "analysis_confirm_skip": "全部で {games} 局のうち、解析済みの {analyzed} 局は飛ばします。",
-    "analysis_confirm_again": "「解析し直す」がオンなので、解析済みの {analyzed} 局も解析し直します。",
-    "analysis_confirm_question": "始めますか？",
-    "analysis_start": "はい（解析を始める）",
     "analysis_no_folder_set": "解析する棋譜のフォルダが設定されていません。",
     "analysis_no_folder": "解析する棋譜のフォルダがありません：{folder}",
     "analysis_no_games": "{folder} にSGFファイルがありません。",
-    "analysis_all_analyzed": "{folder} の {games} 局はすべて解析済みです。解析し直すときは「解析し直す」をオンにしてください。",
-    "analysis_kentogo_question": "KataGoで解析済みです（{count} 局。KentoGoの方法の解析ではありません）。KentoGo用にもう一度解析しますか？\n「はい」にすると、解析済みのデータはそのまま使い、打った手をKentoGoの方法で読み足して書き込みます。",
-    "analysis_kentogo_yes": "はい（KentoGo用に解析する）",
-    "analysis_kentogo_no": "いいえ（飛ばす）",
-    "analysis_confirm_kentogo": "KataGoで解析済みの {count} 局は、KentoGo用に打った手を読み足して書き込みます。",
+    "analysis_choose_title": "解析する棋譜を選ぶ",
+    "analysis_choose_intro": "{folder} の棋譜から、KataGoで解析するものを選んでください。選んだ棋譜には解析データとコメントを書き込みます（上書きします）。元の棋譜は先に {backup} にコピーします。\n「解析済み（KaTrain）」の棋譜を選ぶと、解析済みのデータはそのまま使い、打った手をKentoGoの方法で読み足して書き込みます。",
+    "analysis_show_kentogo": "KentoGoで解析済みの棋譜も表示する（{count} 局）",
+    "analysis_select_all": "すべて選ぶ",
+    "analysis_select_none": "すべて外す",
+    "analysis_run_chosen": "選んだ {count} 局を解析",
+    "analysis_choose_empty": "まだ解析していない棋譜はありません。KentoGoで解析済みの棋譜を解析し直すときは、「KentoGoで解析済みの棋譜も表示する」をオンにしてください。",
+    "analysis_state_new": "未解析",
+    "analysis_state_katrain": "解析済み（KaTrain）",
+    "analysis_state_kentogo": "解析済み（KentoGo）",
+    "analysis_state_broken": "読めません",
     "field_problem_kind": "出題する問題",
     "problem_kind_all": "すべての問題",
     "problem_kind_punish": "咎め問題だけ",
@@ -654,10 +653,10 @@ TEXTS = {
     "preset_measure_note": "このパソコンでKataGoの速さを測って、1回の解析が約1.6秒になるように探索手数を決めます。比較用モデルも別に測ります。",
     "preset_measure_button": "測る",
     "preset_measuring": "KataGoの速さを測っています…（KataGoの起動を含めて、数十秒かかることがあります）",
-    "preset_measured": "このパソコンのKataGoは、1秒に約{speed}手読めました。\n探索手数を 判定 {main}　地と形勢 {estimate}　棋譜解析の深い読み {deep} にします。よろしいですか？",
-    "preset_measured_compare": "このパソコンのKataGoは、1秒に約{speed}手（比較用モデルは約{compare_speed}手）読めました。\n探索手数を 判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析の深い読み {deep} にします。よろしいですか？",
+    "preset_measured": "このパソコンのKataGoは、1秒に約{speed}手読めました。\n探索手数を 判定 {main}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分） にします。よろしいですか？",
+    "preset_measured_compare": "このパソコンのKataGoは、1秒に約{speed}手（比較用モデルは約{compare_speed}手）読めました。\n探索手数を 判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分） にします。よろしいですか？",
     "preset_measure_failed": "KataGoの速さを測れませんでした：{reason}",
-    "preset_values": "探索手数：判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析の深い読み {deep}",
+    "preset_values": "探索手数：判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分）",
     "preset_apply": "設定",
     "preset_question": "推奨設定で現在の設定を置き換えます。よろしいですか？",
     "loading_title": "KataGoを準備しています",
@@ -912,42 +911,20 @@ def analysis_summary_text(summary: AnalysisSummary) -> str:
     return text(key, written=counts["written"], skipped=counts["skipped"], failed=counts["failed"])
 
 
-def analysis_plan_problem(plan: AnalysisPlan, redo_kentogo: bool = False) -> str:
-    """Return why a run of the analysis has nothing to do (no folder, no games, all analyzed), or "".
-
-    Games that can be analyzed again for KentoGo (plan.kentogo_redo) are something to do until the
-    user says no to them (redo_kentogo is then False and the question has been asked).
-    """
-    if plan.folder is None:
+def analysis_folder_problem(games: FolderGames) -> str:
+    """Return why the games of the analysis's folder cannot be listed (no folder set, no folder, no games), or ""."""
+    if games.folder is None:
         return text("analysis_no_folder_set")
-    if not plan.folder.is_dir():
-        return text("analysis_no_folder", folder=plan.folder)
-    if not plan.games:
-        return text("analysis_no_games", folder=plan.folder)
-    if not plan.count(redo_kentogo):
-        return text("analysis_all_analyzed", folder=plan.folder, games=plan.games)
+    if not games.folder.is_dir():
+        return text("analysis_no_folder", folder=games.folder)
+    if not games.games:
+        return text("analysis_no_games", folder=games.folder)
     return ""
 
 
-def analysis_kentogo_question(plan: AnalysisPlan) -> str:
-    """Return the question whether the games analyzed by KaTrain are analyzed again for KentoGo."""
-    return text("analysis_kentogo_question", count=plan.kentogo_redo)
-
-
-def analysis_plan_text(plan: AnalysisPlan, redo_kentogo: bool = False) -> str:
-    """Return what a run of the analysis will do, asked before it starts: the folder and the number of
-    games that are overwritten, the backup folder, and the analyzed games that are skipped, analyzed
-    again, or analyzed again for KentoGo (redo_kentogo: the user said yes to it)."""
-    redo = plan.kentogo_redo if redo_kentogo else 0
-    lines = [text("analysis_confirm", folder=plan.folder, count=plan.count(redo_kentogo), backup=plan.backup)]
-    if plan.reanalyze and plan.analyzed:
-        lines.append(text("analysis_confirm_again", games=plan.games, analyzed=plan.analyzed))
-    elif plan.analyzed - redo:
-        lines.append(text("analysis_confirm_skip", games=plan.games, analyzed=plan.analyzed - redo))
-    if redo:
-        lines.append(text("analysis_confirm_kentogo", count=redo))
-    lines.append(text("analysis_confirm_question"))
-    return "\n".join(lines)
+def analysis_state_text(state: str) -> str:
+    """Return what a game of the list of the games to analyze is (see analysis_run.GAME_NEW and the others)."""
+    return text(f"analysis_state_{state}")
 
 
 def problem_info(problem: Problem, index: int, total: int) -> str:
@@ -995,23 +972,9 @@ def count_check_text(check: CountCheck, komi: float) -> str:
     return "\n".join([verdict, seichi, answer])
 
 
-def area_text(change: AreaChange, mode: int) -> str:
-    """Return the line of the "地の違い" view (see quiz.area_change), for the board as it is shown."""
-    if mode == AREAS_PLAYED:
-        return text("area_played", move=change.played.gtp(), lead=_lead_or_empty(change.played_lead))
-    if mode == AREAS_BEST:
-        return text("area_best", move=change.best.gtp(), lead=_lead_or_empty(change.best_lead))
-    color = change.played.color
-    values = {"best": change.best.gtp(), "played": change.played.gtp(), "color": color_name(color)}
-    gain = change.lead_gain(color)
-    points = f"{change.gained(color):+d}"
-    if gain is None:
-        return text("area_change_no_lead", **values, points=points)
-    return text("area_change", **values, points=points, gain=f"{gain:+.1f}")
-
-
-def _lead_or_empty(lead: float | None) -> str:
-    return "" if lead is None else lead_text(round(lead, 1))
+def quick_standing_text(lead: float) -> str:
+    """Return the rough standing of a position read shallowly (see katago.quick_reading)."""
+    return text("quick_standing", leader=color_name("B" if lead >= 0 else "W"), ahead=abs(lead))
 
 
 def standing_text(standing: Standing, moves: int) -> str:

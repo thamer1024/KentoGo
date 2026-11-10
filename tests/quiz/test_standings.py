@@ -7,7 +7,7 @@ from kentogo.katago.evaluate import AnalysisModel, EvaluationSettings, Models
 from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem, Variation
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import QuizSession
-from kentogo.quiz.standings import FAILED, NO_ENGINE, NOT_HERE, SequenceStandings
+from kentogo.quiz.standings import FAILED, SequenceStandings
 from kentogo.quiz.transform import BoardTransform
 
 # A 9 x 9 game: black C7, white A1, black B8, white J9. The problem is black's move 3 (B8).
@@ -63,27 +63,37 @@ def models(main=None, compare=None) -> Models:
     )
 
 
-def test_the_standing_is_calculated_once_and_shown(tmp_path):
-    """T asks the main model about the end of the sequence and the game; it is kept, and T hides and shows it."""
+def test_the_standing_is_calculated_by_itself_after_the_answer(tmp_path):
+    """After the answer, the end of the sequence and the game are asked once; the standing is told at every step."""
     session, told, engine = make_session(tmp_path), Told(), FakeEngine()
     standings = SequenceStandings(session, background=lambda work: work())
-    standings.toggle(models(engine), told.changed, told.failed)
+    standings.prepare(models(engine), told.changed, told.failed)
     assert standings.busy and len(engine.queries) == 2 and standings.shown() is None
     engine.answer_standing(0, lead=3.0, owner=1.0, size=SIZE)  # The end of the sequence.
     engine.answer_standing(1, lead=-1.0, owner=-1.0, size=SIZE)  # The game after the same number of moves.
-    assert not standings.busy and standings.showing and told.errors == []
+    assert not standings.busy and told.errors == [] and told.changes == 1
     shown = standings.shown()
-    assert (shown.end.lead, shown.game.lead) == (3.0, -1.0)
-    standings.toggle(models(engine), told.changed, told.failed)
-    assert standings.shown() is None
-    standings.toggle(models(engine), told.changed, told.failed)  # Shown again without asking KataGo.
-    assert standings.shown() is not None and len(engine.queries) == 2
+    assert (shown.end.lead, shown.game.lead) == (3.0, -1.0) and standings.at_end() is not None
+    session.step_back()
+    assert standings.shown() is not None and standings.at_end() is None  # The territory only at the last move.
+    standings.prepare(models(engine), told.changed, told.failed)
+    assert len(engine.queries) == 2  # Not asked again.
+
+
+def test_nothing_is_asked_before_the_answer(tmp_path):
+    path = tmp_path / "game.sgf"
+    path.write_text(GAME)
+    session = make_session(tmp_path)
+    fresh = QuizSession(session.problem, ScoringPolicy(), BoardTransform())
+    engine = FakeEngine()
+    SequenceStandings(fresh, background=lambda work: work()).prepare(models(engine), Told().changed, Told().failed)
+    assert engine.queries == []
 
 
 def test_the_game_is_read_from_the_file(tmp_path):
     """The game after the same number of moves (here move 4) is read from the SGF file."""
     session, engine = make_session(tmp_path), FakeEngine()
-    SequenceStandings(session, background=lambda work: work()).toggle(models(engine), Told().changed, Told().failed)
+    SequenceStandings(session, background=lambda work: work()).prepare(models(engine), Told().changed, Told().failed)
     game_moves = engine.queries[1][0]["moves"]
     assert game_moves == [["B", "C7"], ["W", "A1"], ["B", "B8"], ["W", "J9"]]
 
@@ -92,21 +102,18 @@ def test_the_standing_follows_the_board(tmp_path):
     """With the colors swapped, the shown lead is from the other side."""
     session, engine = make_session(tmp_path, BoardTransform(0, swap_colors=True)), FakeEngine()
     standings = SequenceStandings(session, background=lambda work: work())
-    standings.toggle(models(engine), Told().changed, Told().failed)
+    standings.prepare(models(engine), Told().changed, Told().failed)
     engine.answer_standing(0, lead=3.0, owner=1.0, size=SIZE)
     engine.answer_standing(1, lead=-1.0, owner=-1.0, size=SIZE)
     assert standings.shown().end.lead == -3.0
 
 
-def test_reasons_not_to_calculate(tmp_path):
-    """Before the last move of a sequence, or without the model of the sequence, the reason is told."""
+def test_without_the_model_nothing_is_asked(tmp_path):
+    """Without the model of the sequence, no standing is calculated, and nothing is told."""
     session, told = make_session(tmp_path), Told()
     standings = SequenceStandings(session, background=lambda work: work())
-    standings.toggle(models(), told.changed, told.failed)
-    assert told.errors == [(NO_ENGINE, "")]
-    session.step_back()
-    standings.toggle(models(FakeEngine()), told.changed, told.failed)
-    assert told.errors[-1] == (NOT_HERE, "")
+    standings.prepare(models(), told.changed, told.failed)
+    assert told.errors == [] and not standings.busy and standings.shown() is None
 
 
 def test_the_comparison_models_sequence_uses_its_own_model(tmp_path):
@@ -114,33 +121,27 @@ def test_the_comparison_models_sequence_uses_its_own_model(tmp_path):
     session = make_session(tmp_path)
     session.offer(SOURCE_KATAGO_COMPARE)
     session.apply_compare_evaluation(0.0, 5.0, (Move.from_gtp("E5", "B"), Move.from_gtp("D4", "W")), 0.0)
-    while session.choice.source != SOURCE_KATAGO_COMPARE:
-        session.next_variation()
-    session.step_forward()
-    session.step_forward()
     main, compare = FakeEngine(), FakeEngine()
-    SequenceStandings(session, background=lambda work: work()).toggle(
+    SequenceStandings(session, background=lambda work: work()).prepare(
         models(main, compare), Told().changed, Told().failed
     )
-    assert main.queries == [] and len(compare.queries) == 2
+    assert len(main.queries) == 2 and len(compare.queries) == 2  # The SGF's sequence, and the comparison model's.
 
 
-def test_a_failure_is_told(tmp_path):
-    """When KataGo or the file fails, the reason is told and the standings are not busy any more."""
+def test_a_failure_is_told_once(tmp_path):
+    """When KataGo or the file fails, the reason is told, and that sequence is not asked again."""
     session, told, engine = make_session(tmp_path), Told(), FakeEngine()
     standings = SequenceStandings(session, background=lambda work: work())
-    standings.toggle(models(engine), told.changed, told.failed)
+    standings.prepare(models(engine), told.changed, told.failed)
     engine.answer(0, error="KataGo stopped")
     assert not standings.busy and told.errors[0][0] == FAILED and "KataGo stopped" in told.errors[0][1]
+    standings.prepare(models(engine), told.changed, told.failed)
+    assert len(engine.queries) == 2 and len(told.errors) == 1
+
+
+def test_a_missing_file_is_told(tmp_path):
+    session, told, engine = make_session(tmp_path), Told(), FakeEngine()
     (tmp_path / "game.sgf").unlink()
-    standings.toggle(models(engine), told.changed, told.failed)
-    assert not standings.busy and told.errors[-1][0] == FAILED
-
-
-def test_nothing_is_asked_while_busy(tmp_path):
-    """While one standing is calculated, T does nothing."""
-    session, engine = make_session(tmp_path), FakeEngine()
     standings = SequenceStandings(session, background=lambda work: work())
-    standings.toggle(models(engine), Told().changed, Told().failed)
-    standings.toggle(models(engine), Told().changed, Told().failed)
-    assert len(engine.queries) == 2
+    standings.prepare(models(engine), told.changed, told.failed)
+    assert not standings.busy and told.errors[-1][0] == FAILED and engine.queries == []

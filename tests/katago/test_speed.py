@@ -114,7 +114,7 @@ def test_visits_are_made_from_the_speeds():
     """Each model gets the visits it reads in about 1.6 seconds; 地と形勢 gets a quarter of the main model's."""
     preset = MeasuredSpeed(616, 120).preset(EngineSettings(compare_max_visits=999))
     assert (preset.max_visits, preset.compare_max_visits, preset.estimate_visits) == (980, 190, 240)
-    assert preset.deep_visits == 3900  # The deep reading of the analysis of games: 4 times, rounded.
+    assert (preset.fast_visits, preset.deep_visits) == (130, 1500)  # The analysis of a game in about 2 minutes.
 
 
 def test_without_the_comparison_model_its_visits_stay():

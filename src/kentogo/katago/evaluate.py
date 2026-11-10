@@ -59,11 +59,13 @@ class EvaluationSettings:
         max_visits: How many positions KataGo reads for each analysis.
         wide_root_noise: KaTrain's "wide_root_noise" setting, or None to use KataGo's own setting.
         estimate_visits: How many positions KataGo reads for the territory and the standing (see katago.estimate).
+        max_time: The most seconds of one analysis (KaTrain's "max_time"); 0 means no limit.
     """
 
     max_visits: int = 500
     wide_root_noise: float | None = None
     estimate_visits: int = 100
+    max_time: float = 0.0
 
 
 def evaluate_moves(
@@ -92,7 +94,9 @@ def evaluate_moves(
     """
     collector = _Collector(answer.color, actual.color, on_done, on_error)
     for key, extra_moves in (("before", ()), ("answer", (answer,)), ("actual", (actual,))):
-        request = position_query(position, extra_moves, settings.max_visits, settings.wide_root_noise)
+        request = position_query(
+            position, extra_moves, settings.max_visits, settings.wide_root_noise, settings.max_time
+        )
         engine.query(request, collector.receiver(key))
 
 
@@ -128,7 +132,7 @@ def predict_after(
         else:
             on_done(moves_from_gtp(best_sequence(answer), opponent(move.color)))
 
-    request = position_query(position, (move,), settings.max_visits, settings.wide_root_noise)
+    request = position_query(position, (move,), settings.max_visits, settings.wide_root_noise, settings.max_time)
     engine.query(request, receive)
 
 
@@ -160,7 +164,9 @@ def predict_best(
         else:
             on_done(moves_from_gtp(best_sequence(answer), position.next_color))
 
-    engine.query(position_query(position, (), settings.max_visits, settings.wide_root_noise), receive)
+    engine.query(
+        position_query(position, (), settings.max_visits, settings.wide_root_noise, settings.max_time), receive
+    )
 
 
 @dataclass(frozen=True)

@@ -37,7 +37,9 @@ class FakeEngine:
 def analyzed(engine, **settings):
     root = GoGame.parse_sgf(GAME)
     targets = DeepTargets({"B": -100.0}, 10)  # Every black move is read deeply.
-    game = analyze_game(engine, root, AnalysisSettings(**settings), VALUES, lambda *_: None, targets)
+    game = analyze_game(
+        engine, root, AnalysisSettings(settled_lines=True, **settings), VALUES, lambda *_: None, targets
+    )
     return game, game.readings[id(game.nodes[3])]
 
 
@@ -88,7 +90,9 @@ def test_the_punishment_and_the_reply_played():
     """After black's E5, KataGo's best answer for white is F6 (the punishment); white played C7 (the reply)."""
     engine = FakeEngine(calm_after=3)
     root = GoGame.parse_sgf(GAME)
-    game = analyze_game(engine, root, AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"B": -100.0}, 10))
+    game = analyze_game(
+        engine, root, AnalysisSettings(settled_lines=True), VALUES, lambda *_: None, DeepTargets({"B": -100.0}, 10)
+    )
     first = game.readings[id(game.nodes[1])]
     assert first["punish_line"]["moves"][:2] == ["F6", "D6"]  # White's F6, then KataGo's sequence.
     assert first["reply_line"]["moves"][0] == "C7"

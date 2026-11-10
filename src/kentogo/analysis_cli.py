@@ -26,7 +26,7 @@ from pathlib import Path
 from pysgf import GoNode
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.analyze import deep_candidates
+from kentogo.analysis.analyze import chosen_deep_candidates
 from kentogo.analysis.game_analysis import GameAnalysis, load_saved_analyses
 from kentogo.analysis_run import (
     FAILED,
@@ -174,7 +174,7 @@ def deep_plan_text(root: GoNode, path: Path, settings: AppSettings) -> str:
     targets = deep_targets(settings, root, path)
     game = GameAnalysis(root)
     load_saved_analyses(game)
-    nodes = deep_candidates(game, targets)
+    nodes = chosen_deep_candidates(game, targets)
     limits = ", ".join(f"{color} {loss:g}+" for color, loss in sorted(targets.losses.items()))
     moves = ", ".join(f"{node.depth}{node.move.player}" for node in nodes) or "none"
     size = len(nodes) * ROUGH_KGD_BYTES // 1000

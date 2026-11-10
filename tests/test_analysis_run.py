@@ -8,12 +8,20 @@ from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis.analyze import DeepTargets
 from kentogo.analysis_run import (
     FAILED,
+    GAME_BROKEN,
+    GAME_KATRAIN,
+    GAME_KENTOGO,
+    GAME_NEW,
     SKIPPED,
     WRITTEN,
     AnalysisListener,
+    FolderGame,
+    FolderGames,
+    GameChoice,
+    analyze_chosen_games,
     analyze_games,
-    plan_analysis,
-    run_folder_analysis,
+    list_games,
+    run_analysis,
 )
 from kentogo.app_settings import AppSettings
 from kentogo.katago.engine_settings import EngineSettings
@@ -91,22 +99,22 @@ def test_a_run_stops_after_the_current_game(tmp_path):
     assert summary.stopped and [event[0] for event in recorder.events] == ["started", "finished"]
 
 
-def test_run_folder_analysis_with_a_katago_of_its_own(tmp_path, monkeypatch):
+def test_run_analysis_with_a_katago_of_its_own(tmp_path, monkeypatch):
     """Without the app's KataGo, one is started for the run and stopped after it."""
     folder = games(tmp_path)
     engine = FakeEngine()
     monkeypatch.setattr(analysis_run, "analysis_engine", lambda settings, running: (engine, True, ""))
     settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
-    summary = run_folder_analysis(settings, None, Recorder().listener())
+    summary = run_analysis(settings, None, [folder / "a.sgf"], Recorder().listener())
     assert summary.outcomes[WRITTEN] == 1 and engine.closed
 
 
-def test_run_folder_analysis_problems(tmp_path, monkeypatch):
-    assert run_folder_analysis(AppSettings(), None, Recorder().listener()).problem.startswith("no games")
+def test_run_analysis_problems(tmp_path, monkeypatch):
+    assert run_analysis(AppSettings(), None, [], Recorder().listener()).problem == "no games chosen"
     folder = games(tmp_path)
     monkeypatch.setattr(analysis_run, "analysis_engine", lambda settings, running: (None, True, "no KataGo"))
     settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
-    assert run_folder_analysis(settings, None, Recorder().listener()).problem == "no KataGo"
+    assert run_analysis(settings, None, [folder / "a.sgf"], Recorder().listener()).problem == "no KataGo"
 
 
 def test_analysis_engine_starts_one_without_the_app(monkeypatch):
@@ -115,21 +123,20 @@ def test_analysis_engine_starts_one_without_the_app(monkeypatch):
     assert engines.analysis_engine(EngineSettings(), None) == (started, True, "")
 
 
-def test_plan_analysis_counts_the_games_to_analyze(tmp_path):
+def test_list_games_tells_what_each_game_is(tmp_path):
     folder = games(tmp_path)
     settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
+    assert list_games(settings).games == (
+        FolderGame(folder / "a.sgf", GAME_NEW),
+        FolderGame(folder / "b.sgf", GAME_BROKEN),
+    )
     analyze_games(FakeEngine(), [folder / "a.sgf"], settings, Recorder().listener())  # a.sgf is analyzed now.
-    plan = plan_analysis(settings)
-    assert (plan.folder, plan.backup, plan.games, plan.analyzed, plan.count()) == (
-        folder,
-        folder / "backup",
-        2,
-        1,
-        1,
-    )  # The broken b.sgf is counted with the games to analyze.
-    again = plan_analysis(AppSettings(analysis=AnalysisSettings(games_folder=str(folder), reanalyze=True)))
-    assert again.count() == 2
-    assert plan_analysis(AppSettings(analysis=AnalysisSettings(games_folder=str(tmp_path / "x")))).games == 0
+    listed = list_games(settings)
+    assert (listed.folder, listed.backup) == (folder, folder / "backup")
+    assert [game.state for game in listed.games] == [GAME_KENTOGO, GAME_BROKEN]
+    assert listed.without_kentogo == (FolderGame(folder / "b.sgf", GAME_BROKEN),) and listed.kentogo_count == 1
+    assert list_games(AppSettings(analysis=AnalysisSettings(games_folder=str(tmp_path / "x")))).games == ()
+    assert list_games(AppSettings()).folder is None
 
 
 def test_games_analyzed_by_katrain_are_analyzed_again_for_kentogo_when_asked(tmp_path):
@@ -138,15 +145,81 @@ def test_games_analyzed_by_katrain_are_analyzed_again_for_kentogo_when_asked(tmp
     game = folder / "a.sgf"
     analyze_games(FakeEngine(), [game], settings, Recorder().listener())
     game.write_text(game.read_text(encoding="utf-8").replace("KGM[KentoGo]", ""), encoding="utf-8")  # As KaTrain.
-    plan = plan_analysis(settings)
-    assert (plan.analyzed, plan.kentogo_redo, plan.count(), plan.count(True)) == (1, 1, 1, 2)
-    again = AppSettings(analysis=AnalysisSettings(games_folder=str(folder), reanalyze=True))
-    assert plan_analysis(again).kentogo_redo == 0  # Analyzed again anyway.
+    assert analysis_run.game_state(game) == GAME_KATRAIN
     skipped = analyze_games(FakeEngine(), [game], settings, Recorder().listener())
     assert skipped.outcomes[SKIPPED] == 1
     redone = analyze_games(FakeEngine(), [game], settings, Recorder().listener(), redo_kentogo=True)
     assert redone.outcomes[WRITTEN] == 1 and "KGM[KentoGo]" in game.read_text(encoding="utf-8")
-    assert plan_analysis(settings).kentogo_redo == 0  # Analyzed by KentoGo now.
+    assert analysis_run.game_state(game) == GAME_KENTOGO  # Analyzed by KentoGo now.
+
+
+def test_chosen_games_are_analyzed_even_when_they_are_analyzed(tmp_path):
+    """A game that the user chose is never skipped; a file that cannot be read fails."""
+    folder = games(tmp_path)
+    settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
+    paths = analysis_run.find_games([folder])
+    analyze_games(FakeEngine(), paths[:1], settings, Recorder().listener())
+    summary = analyze_chosen_games(FakeEngine(), paths, settings, Recorder().listener())
+    assert summary.outcomes == {WRITTEN: 1, SKIPPED: 0, FAILED: 1}
+
+
+def test_a_chosen_run_stops_after_the_current_game(tmp_path):
+    folder = games(tmp_path)
+    stop = threading.Event()
+    recorder = Recorder(stop)
+    paths = analysis_run.find_games([folder])
+    summary = analyze_chosen_games(FakeEngine(), paths, AppSettings(), recorder.listener(), stop)
+    assert summary.stopped and [event[0] for event in recorder.events] == ["started", "finished"]
+
+
+def test_only_the_games_not_analyzed_are_checked_first():
+    """With "analyze again", the games analyzed by KaTrain are checked too; those analyzed by KentoGo never are."""
+    plain, again = AnalysisSettings(), AnalysisSettings(reanalyze=True)
+    for state, first, with_again in [
+        (GAME_NEW, True, True),
+        (GAME_BROKEN, True, True),
+        (GAME_KATRAIN, False, True),
+        (GAME_KENTOGO, False, False),
+    ]:
+        game = FolderGame(Path(f"{state}.sgf"), state)
+        assert (game.checked_first(plain), game.checked_first(again)) == (first, with_again), state
+
+
+def choice_of_four() -> tuple[GameChoice, list[FolderGame]]:
+    """A choice of four games, one of each state, the games analyzed by KentoGo hidden."""
+    four = [FolderGame(Path(f"{state}.sgf"), state) for state in (GAME_NEW, GAME_KATRAIN, GAME_KENTOGO, GAME_BROKEN)]
+    return GameChoice(FolderGames(Path("games"), Path("backup"), tuple(four)), AnalysisSettings()), four
+
+
+def test_the_games_analyzed_by_kentogo_are_listed_only_when_asked():
+    choice, (new, katrain, kentogo, broken) = choice_of_four()
+    assert choice.listed() == (new, katrain, broken)
+    assert choice.chosen() == [new.path, broken.path]
+    choice.with_kentogo = True
+    assert choice.listed() == (new, katrain, kentogo, broken)
+    assert choice.chosen() == [new.path, broken.path]  # Listed, but not checked.
+
+
+def test_the_checks_are_kept_while_the_games_are_hidden():
+    """A hidden game is not chosen, but its check is kept until it is shown again."""
+    choice, (new, katrain, kentogo, broken) = choice_of_four()
+    choice.with_kentogo = True
+    choice.set_checked(kentogo, True)
+    choice.set_checked(new, False)
+    assert choice.chosen() == [kentogo.path, broken.path]
+    choice.with_kentogo = False
+    assert choice.chosen() == [broken.path] and choice.is_checked(kentogo)
+    choice.with_kentogo = True
+    assert choice.chosen() == [kentogo.path, broken.path]
+
+
+def test_all_the_listed_games_are_checked_or_unchecked():
+    choice, (new, katrain, kentogo, broken) = choice_of_four()
+    choice.set_all_listed(True)
+    assert choice.chosen() == [new.path, katrain.path, broken.path] and not choice.is_checked(kentogo)
+    choice.with_kentogo = True
+    choice.set_all_listed(False)
+    assert choice.chosen() == []
 
 
 def test_deep_targets_come_from_the_quiz_settings():
@@ -162,10 +235,14 @@ def test_deep_targets_come_from_the_quiz_settings():
     settings = AppSettings(quiz=QuizSettings(extract=extract), engine=EngineSettings(max_visits=500))
     root = GoGame.parse_sgf("(;SZ[9]PB[hama]PW[AI];B[ee])")
     targets = analysis_run.deep_targets(settings, root, Path("game.sgf"))
-    assert (targets.losses, targets.visits) == ({"B": 5.0, "W": 15.0}, 500)  # The last stage; the engine's visits.
+    assert (targets.losses, targets.visits, targets.my_colors) == (
+        {"B": 5.0, "W": 15.0},
+        500,
+        {"B"},
+    )  # The last stage; the engine's visits.
     unknown = GoGame.parse_sgf("(;SZ[9]PB[someone]PW[other];B[ee])")
     deep = AppSettings(quiz=QuizSettings(extract=extract), analysis=AnalysisSettings(deep_visits=3000))
     assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets(
-        {"B": 5.0, "W": 5.0}, 3000
-    )  # 6 times 500.
+        {"B": 5.0, "W": 5.0}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=5.0
+    )  # 6 moves of a game at most; an opponent's move when the reply lost 5 points (the quiz's punish_my_loss).
     assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)

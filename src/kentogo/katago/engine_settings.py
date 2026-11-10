@@ -49,6 +49,8 @@ class EngineSettings:
         config: Path of KataGo's analysis settings file.
         max_visits: How many positions KataGo reads for one analysis with the main model.
         wide_root_noise: KataGo's wideRootNoise setting.
+        max_time: KaTrain's "max_time": the most seconds that KataGo reads one position (KataGo's maxTime);
+            it stops there even when it has not read all its visits. 0 means no limit.
         katrain_config: Path of KaTrain's config.json, used to copy KaTrain's settings.
         katrain_folder: The folder of the KaTrain program, for paths that start with "katrain/"
             (KaTrain's own KataGo and models, as in KaTrain's default settings on Windows).
@@ -70,6 +72,7 @@ class EngineSettings:
     config: str = ""
     max_visits: int = 500
     wide_root_noise: float = 0.04
+    max_time: float = 8.0  # KaTrain's default.
     # Written with "/" on every system (str() would give "\\" on Windows). Windows reads "/" too.
     katrain_config: str = DEFAULT_KATRAIN_CONFIG.as_posix()
     katrain_folder: str = ""
@@ -110,9 +113,12 @@ class EngineSettings:
         try:
             visits = {key: int(values.get(key, getattr(default, key))) for key in VISITS_KEYS}
             wide_root_noise = float(values.get("wide_root_noise", default.wide_root_noise))
+            max_time = float(values.get("max_time", default.max_time))
             ready_timeout = float(values.get("ready_timeout", default.ready_timeout))
         except (TypeError, ValueError) as error:
             raise ValueError(f"wrong engine setting: {error}") from error
+        if max_time < 0:
+            raise ValueError(f"wrong engine setting: max_time must not be below 0: {max_time}")
         if ready_timeout <= 0:
             raise ValueError(f"wrong engine setting: ready_timeout must be above 0: {ready_timeout}")
         for key, number in visits.items():
@@ -120,6 +126,7 @@ class EngineSettings:
                 raise ValueError(f"wrong engine setting: {key} must be 1 or more: {number}")
         return cls(
             wide_root_noise=wide_root_noise,
+            max_time=max_time,
             judge_model=judge_model,
             ready_timeout=ready_timeout,
             **visits,
@@ -142,7 +149,7 @@ class EngineSettings:
             ValueError: If a value in KaTrain's settings has a wrong type.
         """
         values = {key: engine[key] for key in ("katago", "model", "humanlike_model", "config") if key in engine}
-        for key in ("max_visits", "wide_root_noise"):
+        for key in ("max_visits", "wide_root_noise", "max_time"):
             if key in engine:
                 values[key] = engine[key]
         return cls.from_dict({**values, "katrain_config": katrain_config})
@@ -157,6 +164,7 @@ class EngineSettings:
             "config": self.config,
             "max_visits": self.max_visits,
             "wide_root_noise": self.wide_root_noise,
+            "max_time": self.max_time,
             "katrain_config": self.katrain_config,
             "katrain_folder": self.katrain_folder,
             "compare_model": self.compare_model,

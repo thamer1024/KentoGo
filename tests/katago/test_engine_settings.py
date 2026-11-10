@@ -12,6 +12,7 @@ VALUES = {
     "config": "katago/analysis.cfg",
     "max_visits": 2500,
     "wide_root_noise": 0.04,
+    "max_time": 12.0,
     "katrain_config": "settings/katrain-config.json",
     "katrain_folder": "C:/Program Files/KaTrain",
     "compare_model": "models/normal.bin.gz",
@@ -29,6 +30,7 @@ def test_defaults():
     assert settings.use_katago is True
     assert (settings.katago, settings.model, settings.max_visits) == ("", "", 500)
     assert settings.katrain_config == "~/.katrain/config.json"
+    assert settings.max_time == 8.0  # KaTrain's default time limit.
 
 
 def test_from_and_to_dict():
@@ -47,6 +49,8 @@ def test_from_and_to_dict():
         {"estimate_visits": 0},
         {"ready_timeout": 0},
         {"ready_timeout": "long"},
+        {"max_time": -1},
+        {"max_time": "long"},
     ],
 )
 def test_wrong_values(values):
@@ -66,6 +70,7 @@ def test_from_katrain():
         "max_visits": 2500,
         "fast_visits": 4,
         "wide_root_noise": 0.04,
+        "max_time": 5.0,
     }
     settings = EngineSettings.from_katrain(katrain, "~/.katrain/config.json")
     assert settings.use_katago is True
@@ -74,7 +79,7 @@ def test_from_katrain():
         "/models/human.bin.gz",
         "/katago/analysis.cfg",
     )
-    assert (settings.max_visits, settings.wide_root_noise) == (2500, 0.04)
+    assert (settings.max_visits, settings.wide_root_noise, settings.max_time) == (2500, 0.04, 5.0)
 
 
 def test_katrain_engine():

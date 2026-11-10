@@ -24,10 +24,15 @@ the others), on the number of GPU cores (base, Pro, Max or Ultra), and on the ge
 GPU of M5 has its own parts for AI: a base M5 reads about 600 positions per second, faster than
 an M1 to M4 Max). So the Macs are named by their speed, with examples of each.
 
-The deep reading of the moves that can become problems, when games are analyzed (see
-analysis.analyze), reads DEEP_SHARE times the main model's visits: it runs once for a game, while
-nobody waits for an answer, so it can read more deeply. Its number is an analysis setting
-(deep_visits), and a preset sets it too.
+The analysis of games (see analysis.analyze) should take about GAME_SECONDS for a game, a time that
+a person can wait for. The positions that can be read in that time at a computer's speed are shared:
+half for the first analysis of every move (about GAME_POSITIONS positions, with the played moves read
+again), which only finds the mistakes and is set as KaTrain's fast analysis (fast_visits), and half for
+the deep reading of the moves that can become problems (DEEP_POSITIONS positions: the analysis's
+deep_max_moves moves, four readings each), which gives their losses. These are analysis settings, and a
+preset sets them too. A user who can wait longer sets more visits on the analysis page. On a computer
+without a GPU the visits are then few, and the losses less exact; the fewest visits are MIN_FAST_VISITS
+and MIN_DEEP_VISITS, so such a computer takes longer than GAME_SECONDS.
 
 A preset changes only the numbers of visits. The paths of KataGo and its models stay as they are.
 When the user does not know the kind of computer, KataGo's speed is measured instead, and the
@@ -59,9 +64,10 @@ class Preset:
         max_visits: The visits of the main model, for judging answers.
         compare_max_visits: The visits of the comparison model.
         estimate_visits: The visits of the territory and the standing.
-        deep_visits: The visits of the deep reading in the analysis of games (an analysis setting).
         speed: The positions per second of the main model (an 18-block one; estimated).
         compare_speed: The positions per second of the comparison model (a heavy one; estimated).
+        fast_visits: The visits of the first analysis of a game (an analysis setting, see GAME_SECONDS).
+        deep_visits: The visits of the deep reading in the analysis of games (an analysis setting).
     """
 
     key: str
@@ -70,35 +76,67 @@ class Preset:
     estimate_visits: int
     speed: int
     compare_speed: int
+    fast_visits: int
     deep_visits: int
 
 
 MIN_VISITS = 5  # The fewest visits of the main model and the comparison model in a preset.
-DEEP_SHARE = 4  # The deep reading of the analysis of games reads this many times the main model's visits.
+DEEP_SHARE = 4  # Before the speed is known, the deep reading reads this many times the main model's visits.
+GAME_SECONDS = 120  # The analysis of a game should take about this long (see the module's docstring).
+GAME_POSITIONS = 290  # About 250 moves of a game analyzed first, and about 40 played moves read again.
+DEEP_POSITIONS = 24  # 6 moves read deeply (the analysis's deep_max_moves), 4 readings each.
+FIRST_SHARE = 0.5  # The share of the time of the first analysis; the rest is the deep reading.
+MIN_FAST_VISITS = 5  # The fewest visits of the first analysis (KataGo's first idea alone is not a judgement).
+MIN_DEEP_VISITS = 50  # The fewest visits of the deep reading.
+
+
+def round_visits(visits: float) -> int:
+    """Round a number of visits to two significant digits, such as 739 to 740 or 1234 to 1200."""
+    whole = int(visits)
+    if whole < 100:
+        return whole
+    digits = len(str(whole)) - 2
+    return round(whole, -digits)
+
+
+def analysis_visits_for(speed: float) -> tuple[int, int]:
+    """Return (fast_visits, deep_visits) that analyze a game in about GAME_SECONDS at a speed (positions per second)."""
+    positions = speed * GAME_SECONDS
+    fast = max(MIN_FAST_VISITS, round_visits(positions * FIRST_SHARE / GAME_POSITIONS))
+    deep = max(MIN_DEEP_VISITS, round_visits(positions * (1 - FIRST_SHARE) / DEEP_POSITIONS))
+    return fast, deep
+
+
+def _preset(key: str, max_visits: int, compare: int, estimate: int, speed: int, compare_speed: int) -> Preset:
+    """Make a preset; the visits of the analysis of games come from its speed (see analysis_visits_for)."""
+    return Preset(key, max_visits, compare, estimate, speed, compare_speed, *analysis_visits_for(speed))
+
+
 PC_PRESETS = (
-    Preset(PRESET_CPU_OLD, 16, 5, 4, 10, 2, 64),
-    Preset(PRESET_CPU_NEW, 40, 8, 10, 25, 5, 160),
-    Preset(PRESET_GPU_MIDDLE, 480, 240, 120, 300, 150, 1900),
-    Preset(PRESET_GPU_HIGH, 1600, 800, 400, 1000, 500, 6400),
+    _preset(PRESET_CPU_OLD, 16, 5, 4, 10, 2),
+    _preset(PRESET_CPU_NEW, 40, 8, 10, 25, 5),
+    _preset(PRESET_GPU_MIDDLE, 480, 240, 120, 300, 150),
+    _preset(PRESET_GPU_HIGH, 1600, 800, 400, 1000, 500),
 )
 MAC_PRESETS = (
-    Preset(PRESET_MAC_STANDARD, 80, 16, 20, 50, 10, 320),
-    Preset(PRESET_MAC_FAST, 160, 32, 40, 100, 20, 640),
-    Preset(PRESET_MAC_FASTER, 360, 70, 90, 225, 45, 1400),
-    Preset(PRESET_MAC_FASTEST, 960, 190, 240, 600, 120, 3800),
+    _preset(PRESET_MAC_STANDARD, 80, 16, 20, 50, 10),
+    _preset(PRESET_MAC_FAST, 160, 32, 40, 100, 20),
+    _preset(PRESET_MAC_FASTER, 360, 70, 90, 225, 45),
+    _preset(PRESET_MAC_FASTEST, 960, 190, 240, 600, 120),
 )
 PRESETS = (*PC_PRESETS, *MAC_PRESETS)  # In the order of the screen.
 
 
 def deep_visits_for(max_visits: int) -> int:
-    """Return the visits of the deep reading that go with the main model's visits (DEEP_SHARE times)."""
+    """Return the visits of the deep reading before the speed is known (DEEP_SHARE times the main model's visits)."""
     return max(1, max_visits * DEEP_SHARE)
 
 
 def apply_preset(engine: EngineSettings, preset: Preset) -> EngineSettings:
     """Return the engine settings with the numbers of visits of a preset (the other settings are kept).
 
-    The deep reading's visits are an analysis setting: the caller sets them (preset.deep_visits).
+    The visits of the analysis of games are analysis settings: the caller sets them (preset.fast_visits as
+    KaTrain's fast analysis, and preset.deep_visits).
     """
     return replace(
         engine,

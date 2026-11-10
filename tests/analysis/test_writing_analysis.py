@@ -131,7 +131,7 @@ def test_kentogo_data_only_for_the_moves_read_deeply():
 
 def test_kentogo_data_has_the_readings():
     root = GoGame.parse_sgf(GAME)
-    settings = AnalysisSettings()
+    settings = AnalysisSettings(area_readings=True, end_reading=True, pass_readings=True, settled_lines=True)
     game = analyze_game(
         FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, DeepTargets({"B": 5.0}, 400)
     )
@@ -192,7 +192,7 @@ def _with_utility(answer):
 def test_the_last_position_is_kept_for_counting():
     """The last node gets "end_of_game", as part of a deep move's data or as data of its own kind."""
     root = GoGame.parse_sgf(GAME)
-    settings = AnalysisSettings()
+    settings = AnalysisSettings(end_reading=True)
     game = analyze_game(
         FakeEngine(), root, settings, EngineValues(100, 0.0), lambda *_: None, DeepTargets({"W": 5.0}, 400)
     )

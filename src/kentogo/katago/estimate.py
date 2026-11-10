@@ -78,7 +78,7 @@ def estimate_standing(
         end: The position at the end of the sequence.
         game: The game position after the same number of moves.
         color: The player who played the first move of the sequence.
-        settings: How KataGo analyzes: its estimate_visits and wide_root_noise are used.
+        settings: How KataGo analyzes: its estimate_visits, wide_root_noise and max_time are used.
         on_done: Called with the standing.
         on_error: Called with an error message.
     """
@@ -103,6 +103,6 @@ def estimate_standing(
         return receive
 
     for key, position in (("end", end), ("game", game)):
-        query = position_query(position, (), settings.estimate_visits, settings.wide_root_noise)
+        query = position_query(position, (), settings.estimate_visits, settings.wide_root_noise, settings.max_time)
         query = with_ownership(query)
         engine.query(query, receiver(key, position.size))

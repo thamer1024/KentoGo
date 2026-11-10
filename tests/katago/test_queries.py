@@ -26,6 +26,13 @@ def test_query_of_a_position():
     }
 
 
+def test_query_with_a_time_limit():
+    """A time limit is sent as KataGo's maxTime, as KaTrain sends its "max_time"; 0 sends none."""
+    position = Position(19, 6.5, "cn", (), (), "B")
+    assert position_query(position, max_time=8.0)["overrideSettings"]["maxTime"] == 8.0
+    assert "maxTime" not in position_query(position, max_time=0.0)["overrideSettings"]
+
+
 def test_query_with_handicap_and_no_moves():
     """With handicap stones and no moves, the first player is the player to move (white)."""
     position = Position(19, 0.5, "japanese", HANDICAP, (), "W")

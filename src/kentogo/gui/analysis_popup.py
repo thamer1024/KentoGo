@@ -10,13 +10,14 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 
-from kentogo.analysis_run import AnalysisListener, AnalysisPlan, AnalysisSummary
+from kentogo.analysis_run import AnalysisListener, AnalysisSummary, FolderGames
 from kentogo.app_settings import AppSettings
 from kentogo.gui import texts, theme
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread
@@ -33,14 +34,12 @@ class FolderAnalysis:
     """What the settings screen needs to analyze the games of the analysis's folder.
 
     Attributes:
-        plan: Returns what a run with the settings would do (the folder and the numbers of games).
-        run: Analyzes the games with the settings, telling the listener; stops when the event is set.
-            The last argument is True when the games analyzed by KaTrain are analyzed again for
-            KentoGo (see analysis_run.needs_kentogo_analysis).
+        games: Returns the games of the folder with the settings, and what each one is (see analysis_run.list_games).
+        run: Analyzes the chosen games with the settings, telling the listener; stops when the event is set.
     """
 
-    plan: Callable[[AppSettings], AnalysisPlan]
-    run: Callable[[AppSettings, AnalysisListener, threading.Event, bool], AnalysisSummary]
+    games: Callable[[AppSettings], FolderGames]
+    run: Callable[[AppSettings, list[Path], AnalysisListener, threading.Event], AnalysisSummary]
 
 
 class AnalysisPopup(Popup):

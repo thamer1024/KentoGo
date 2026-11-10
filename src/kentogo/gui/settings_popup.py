@@ -18,8 +18,8 @@ menu (see settings_form.PAGES):
   API key, and a button that opens the user's prompt file.
 - KataGo棋譜解析: the analysis of games with KataGo (see analysis.analysis_settings): the folders, the first analysis, analyzing again, and the comments.
   The "KataGoで棋譜を解析" button is at the bottom, in its own color: it saves the inputs as
-  "設定を更新" does, tells which folder and how many games will be overwritten, and starts the
-  analysis when the user says yes (see gui.analysis_popup).
+  "設定を更新" does, lists the games of the folder to choose the ones to analyze (see
+  gui.analysis_chooser), and starts the analysis of the chosen games (see gui.analysis_popup).
 
 The two pages of the AI commentary and of the analysis with KataGo start with a text that says
 what the page is for and where the other one is, so that they are not mistaken for each other.
@@ -53,9 +53,10 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from kentogo.analysis_run import AnalysisListener, AnalysisPlan, AnalysisSummary
+from kentogo.analysis_run import AnalysisListener, AnalysisSummary, FolderGames
 from kentogo.app_settings import AppSettings
 from kentogo.gui import texts, theme
+from kentogo.gui.analysis_chooser import AnalysisChooser
 from kentogo.gui.analysis_popup import AnalysisPopup, FolderAnalysis
 from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
@@ -122,7 +123,6 @@ PRESET_ROW_HEIGHT = 48  # dp. The lowest row of the recommended settings (a kind
 INPUT_COLOR = (0.12, 0.16, 0.21, 1)
 WRONG_INPUT_COLOR = (0.45, 0.16, 0.16, 1)  # An input whose value cannot be used.
 MISSING_PATH_COLOR = (1.0, 0.54, 0.5, 1)  # The text "ファイルがありません", and a missing folder.
-CONFIRM_ANALYSIS_HEIGHT = 340  # dp. The question before the analysis has a folder and several lines.
 RUN_BUTTON_COLOR = (0.2, 0.45, 0.32, 1)  # A button that runs something (the analysis), not one that saves.
 
 
@@ -253,69 +253,43 @@ class SettingsPopup(Popup):
         body.add_widget(hint)
 
     def analyze_games(self) -> None:
-        """Save the inputs as "設定を更新" does (wrong inputs stop here), then count the games and ask."""
+        """Save the inputs as "設定を更新" does (wrong inputs stop here), then list the games to choose from."""
         settings = self._form_settings()
         if settings is not None:
-            self._save_then(settings, lambda: self._plan_analysis(settings))
+            self._save_then(settings, lambda: self._list_games(settings))
 
-    def _plan_analysis(self, settings: AppSettings) -> None:
-        """Count the games in a background thread (reading many games can take long), then ask."""
+    def _list_games(self, settings: AppSettings) -> None:
+        """Read the games in a background thread (reading many games can take long), then show the list."""
         self.message_label.text = texts.text("analysis_counting")
         analysis = self._analyze
 
         def work() -> None:
             try:
-                plan = analysis.plan(settings)
+                games = analysis.games(settings)
             except Exception as error:  # The settings screen must stay usable.
                 in_main_thread(self._show_error)(texts.text("action_failed", reason=error))
                 return
-            in_main_thread(self._ask_analysis)(settings, plan)
+            in_main_thread(self._choose_games)(settings, games)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _ask_analysis(self, settings: AppSettings, plan: AnalysisPlan) -> None:
-        """Ask about the games analyzed by KaTrain, then confirm the run.
-
-        When there is nothing to analyze, only tell why.
-        """
+    def _choose_games(self, settings: AppSettings, games: FolderGames) -> None:
+        """Show the list of the games to choose the ones to analyze, or only tell why there is none."""
         self.message_label.text = ""
-        problem = texts.analysis_plan_problem(plan, redo_kentogo=True)
+        problem = texts.analysis_folder_problem(games)
         if problem:
             show_message(texts.text("analysis_title"), problem)
             return
-        if not plan.kentogo_redo:
-            self._confirm_analysis(settings, plan, False)
-            return
-        confirm(
-            texts.analysis_kentogo_question(plan),
-            lambda: self._confirm_analysis(settings, plan, True),
-            lambda: self._confirm_analysis(settings, plan, False),
-            texts.text("analysis_kentogo_yes"),
-            texts.text("analysis_kentogo_no"),
-            height=CONFIRM_ANALYSIS_HEIGHT,
-        )
+        AnalysisChooser(games, settings.analysis, lambda chosen: self._start_analysis(settings, chosen)).open()
 
-    def _confirm_analysis(self, settings: AppSettings, plan: AnalysisPlan, redo_kentogo: bool) -> None:
-        """Tell which folder and how many games will be overwritten, and start when the user says yes.
-
-        redo_kentogo: True if the user said yes to analyzing again for KentoGo the games analyzed by KaTrain.
-        """
-        problem = texts.analysis_plan_problem(plan, redo_kentogo)
-        if problem:  # The user said no, and every game is analyzed.
-            show_message(texts.text("analysis_title"), problem)
-            return
+    def _start_analysis(self, settings: AppSettings, chosen: list[Path]) -> None:
+        """Analyze the chosen games, showing the progress."""
         analysis = self._analyze
 
         def run(listener: AnalysisListener, stop: threading.Event) -> AnalysisSummary:
-            return analysis.run(settings, listener, stop, redo_kentogo)
+            return analysis.run(settings, chosen, listener, stop)
 
-        confirm(
-            texts.analysis_plan_text(plan, redo_kentogo),
-            lambda: AnalysisPopup(run).start(),
-            lambda: None,
-            texts.text("analysis_start"),
-            height=CONFIRM_ANALYSIS_HEIGHT,
-        )
+        AnalysisPopup(run).start()
 
     def _add_commentary_page(self, body: GridLayout) -> None:
         """Add the widgets of the AI commentary page: what the page is for, the settings, examples of values,
@@ -384,7 +358,9 @@ class SettingsPopup(Popup):
     def _use_preset(self, preset: Preset) -> None:
         """Save the settings with the numbers of visits of a preset (the saved settings, not the inputs, are changed)."""
         engine = apply_preset(self.settings.engine, preset)
-        analysis = replace(self.settings.analysis, deep_visits=preset.deep_visits)  # The analysis of games.
+        analysis = replace(  # The analysis of games: KaTrain's fast analysis first, then the deep reading.
+            self.settings.analysis, fast=True, fast_visits=preset.fast_visits, deep_visits=preset.deep_visits
+        )
         self._write(replace(self.settings, engine=engine, analysis=analysis))
 
     def edit_prompt(self) -> None:
@@ -683,6 +659,7 @@ def _measured_text(speed: MeasuredSpeed, preset: Preset) -> str:
         "speed": round(speed.main),
         "main": preset.max_visits,
         "estimate": preset.estimate_visits,
+        "fast": preset.fast_visits,
         "deep": preset.deep_visits,
     }
     if speed.compare is None:
@@ -699,6 +676,7 @@ def _preset_text(preset: Preset) -> str:
         main=preset.max_visits,
         compare=preset.compare_max_visits,
         estimate=preset.estimate_visits,
+        fast=preset.fast_visits,
         deep=preset.deep_visits,
     )
     name = texts.text(f"preset_{preset.key}")

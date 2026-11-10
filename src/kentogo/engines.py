@@ -3,8 +3,8 @@
 KataGo is started with the app, as in KaTrain (the main model first, then the comparison
 model when the main one is ready, see katago.on_demand), and closed when the app closes. It is
 started again only when the settings change its command line (see engines_for): new numbers of
-visits use the running processes. The two KataGo processes get one query at a time between them
-(see katago.one_at_a_time), so that they do not share the GPU.
+visits use the running processes. Each query is sent to KataGo at once, as KaTrain does, with
+KaTrain's time limit (see katago.timed_queries).
 
 The screens get the processes as Engines; they never start KataGo themselves.
 """
@@ -19,11 +19,11 @@ from kentogo.katago.engine_settings import JUDGE_COMPARE, EngineSettings
 from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings, Models
 from kentogo.katago.locate import EngineCommand, KataGoNotFoundError, engine_command, fixed_settings, katrain_package
 from kentogo.katago.on_demand import OnDemandEngine, start_after_ready
-from kentogo.katago.one_at_a_time import OneAtATime, QueryLine
 from kentogo.katago.process import KataGoProcess
 from kentogo.katago.queries import FORCED_SETTINGS
 from kentogo.katago.speed import MeasuredSpeed, measure_speed, wait_for_answer
 from kentogo.katago.startup import LoadingStage
+from kentogo.katago.timed_queries import RunningQueries, TimedEngine
 from kentogo.notice import Notice
 from kentogo.quiz.quiz_run import Judging
 
@@ -34,7 +34,9 @@ COMPARE_CACHE = {"nnCacheSizePowerOfTwo": 18}
 
 def evaluation_settings(engine_settings: EngineSettings, max_visits: int) -> EvaluationSettings:
     """Return how a model analyzes: its own number of visits, and the noise and the visits of 地と形勢 of the settings."""
-    return EvaluationSettings(max_visits, engine_settings.wide_root_noise, engine_settings.estimate_visits)
+    return EvaluationSettings(
+        max_visits, engine_settings.wide_root_noise, engine_settings.estimate_visits, engine_settings.max_time
+    )
 
 
 def make_command(
@@ -156,10 +158,10 @@ class Engines:
     numbers of visits uses the running processes (see engines_for).
 
     Attributes:
-        engine: KataGo (one query at a time), or None if it is not available.
+        engine: KataGo (see katago.timed_queries), or None if it is not available.
         evaluation: How KataGo analyzes the positions.
         engine_problem: Why KataGo is not available ("" if it is available).
-        compare_engine: KataGo with the comparison model (one query at a time), or None.
+        compare_engine: KataGo with the comparison model (see katago.timed_queries), or None.
         judge_with_compare: True to calculate the losses with the comparison model.
         compare_evaluation: How the comparison model analyzes the positions (its own number of visits).
         notices: Problems found when they were started, to show the user.
@@ -238,7 +240,7 @@ def _compare_stage(compare: OnDemandEngine, starting: threading.Thread | None) -
 def open_engines(engine_settings: EngineSettings, turned_off: bool) -> Engines:
     """Start KataGo for the app (see start_engines). Problems are told in the notices.
 
-    Both KataGo processes get one query at a time, so that they do not share the GPU (see one_at_a_time).
+    Each query is sent to KataGo at once, and the time of its answer is written (see timed_queries).
     The comparison model's KataGo is started when the main one is ready, so that the two do not
     load at the same time (see on_demand.start_after_ready).
     """
@@ -250,12 +252,12 @@ def open_engines(engine_settings: EngineSettings, turned_off: bool) -> Engines:
         if engine is not None and compare is not None
         else None
     )
-    line = QueryLine()
+    running = RunningQueries()
     return Engines(
-        OneAtATime(engine, line) if engine is not None else None,
+        TimedEngine(engine, running) if engine is not None else None,
         evaluation,
         problem,
-        OneAtATime(compare, line) if compare is not None else None,
+        TimedEngine(compare, running) if compare is not None else None,
         engine_settings.judge_model == JUDGE_COMPARE,
         evaluation_settings(engine_settings, engine_settings.compare_max_visits),
         tuple(notices),

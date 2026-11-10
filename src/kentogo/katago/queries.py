@@ -23,6 +23,7 @@ def position_query(
     extra_moves: tuple[Move, ...] = (),
     max_visits: int = 500,
     wide_root_noise: float | None = None,
+    max_time: float = 0.0,
 ) -> dict:
     """Make a query that analyzes a position, after playing some more moves on it.
 
@@ -31,6 +32,7 @@ def position_query(
         extra_moves: Moves to play after the position (for example, the answer).
         max_visits: How many positions KataGo reads.
         wide_root_noise: KaTrain's "wide_root_noise" setting, or None to use KataGo's own setting.
+        max_time: The most seconds of the analysis (KataGo's maxTime, as KaTrain's "max_time"); 0 means no limit.
 
     Returns:
         The query, without "id" (KataGoProcess.query adds it).
@@ -40,6 +42,8 @@ def position_query(
     settings = dict(FORCED_SETTINGS)
     if wide_root_noise is not None:
         settings["wideRootNoise"] = wide_root_noise
+    if max_time > 0:
+        settings["maxTime"] = max_time
     return {
         "rules": normalize_rules(position.rules),
         "komi": position.komi,

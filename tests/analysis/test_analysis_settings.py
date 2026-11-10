@@ -65,3 +65,19 @@ def test_deep_visits_are_a_number_of_their_own():
     assert AnalysisSettings.from_dict({"deep_visits": 4800}).deep_visits == 4800
     with pytest.raises(ValueError):
         AnalysisSettings.from_dict({"deep_visits": -1})
+
+
+def test_the_most_moves_read_deeply():
+    """6 moves of a game are read deeply by default; 0 means no limit, and a number below 0 is wrong."""
+    assert AnalysisSettings().deep_max_moves == 6
+    assert AnalysisSettings.from_dict({"deep_max_moves": 0}).deep_max_moves == 0
+    with pytest.raises(ValueError):
+        AnalysisSettings.from_dict({"deep_max_moves": -1})
+
+
+def test_the_readings_for_later_features_are_off_by_default():
+    """The readings with a pass and the sequences until the place settles take long: they are off at first."""
+    settings = AnalysisSettings()
+    assert (settings.pass_readings, settings.settled_lines) == (False, False)
+    on = AnalysisSettings.from_dict({"pass_readings": True, "settled_lines": True})
+    assert (on.pass_readings, on.settled_lines) == (True, True)

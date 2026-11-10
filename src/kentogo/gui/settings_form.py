@@ -103,6 +103,7 @@ FIELDS = (
     FieldSpec("use_katago", "engine", KIND_BOOL, GROUP_ENGINE),
     FieldSpec("max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("wide_root_noise", "engine", KIND_FLOAT, GROUP_ENGINE),
+    FieldSpec("max_time", "engine", KIND_FLOAT, GROUP_ENGINE),
     FieldSpec("use_compare", "engine", KIND_BOOL, GROUP_ENGINE),
     FieldSpec("compare_max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("estimate_visits", "engine", KIND_INT, GROUP_ENGINE),
@@ -131,6 +132,11 @@ FIELDS = (
     FieldSpec("fast", "analysis", KIND_BOOL, GROUP_ANALYSIS, name="analysis_fast"),
     FieldSpec("fast_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
     FieldSpec("deep_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
+    FieldSpec("deep_max_moves", "analysis", KIND_INT, GROUP_ANALYSIS),
+    FieldSpec("area_readings", "analysis", KIND_BOOL, GROUP_ANALYSIS),
+    FieldSpec("end_reading", "analysis", KIND_BOOL, GROUP_ANALYSIS),
+    FieldSpec("pass_readings", "analysis", KIND_BOOL, GROUP_ANALYSIS),
+    FieldSpec("settled_lines", "analysis", KIND_BOOL, GROUP_ANALYSIS),
     FieldSpec("settle_radius", "analysis", KIND_INT, GROUP_ANALYSIS),
     FieldSpec("settle_change", "analysis", KIND_FLOAT, GROUP_ANALYSIS),
     FieldSpec("settle_step", "analysis", KIND_INT, GROUP_ANALYSIS),
@@ -180,6 +186,7 @@ KATRAIN_ENGINE_KEYS = (
     "config",
     "max_visits",
     "wide_root_noise",
+    "max_time",
 )
 
 
@@ -248,7 +255,7 @@ def settings_from_form(values: dict[str, str | bool], settings: AppSettings) -> 
 def values_from_katrain(settings: AppSettings) -> dict[str, str | bool]:
     """Return the values of the engine inputs, copied from KaTrain's config.json.
 
-    The paths, the number of visits and the noise are copied (KATRAIN_ENGINE_KEYS).
+    The paths, the number of visits, the noise and the time limit are copied (KATRAIN_ENGINE_KEYS).
     The other engine inputs are not in KaTrain, so they keep their values.
 
     Args:

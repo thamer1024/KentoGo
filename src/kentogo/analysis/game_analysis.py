@@ -40,10 +40,12 @@ class EngineValues:
     Attributes:
         max_visits: KaTrain's "max_visits".
         wide_root_noise: KaTrain's "wide_root_noise".
+        max_time: KaTrain's "max_time": the time limit of the first analysis of a game, in seconds (0: none).
     """
 
     max_visits: int
     wide_root_noise: float
+    max_time: float = 0.0
 
 
 @dataclass

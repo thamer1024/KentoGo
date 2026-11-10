@@ -69,7 +69,11 @@ def read_played_moves(
     retries: int,
     nodes: list[GoNode] | None = None,
 ) -> None:
-    """Read played moves, each with the visits of the position before it.
+    """Read played moves, each with the visits of the position before it, but at most values.max_visits.
+
+    The first reading of the played moves (see analysis.analyze) is given the visits of the first analysis,
+    so that a position that KaTrain read deeply does not make it slow; the deep reading gives its own visits.
+    Each reading has the time limit of values (max_time).
 
     Args:
         nodes: The nodes whose moves are read, or None for those that need it (see needs_reading).
@@ -79,7 +83,8 @@ def read_played_moves(
 
     def query(node: GoNode) -> dict | None:
         visits = max(game.visits.get(id(node.parent), 0), game.analysis(node.parent)["root"].get("visits", 0))
-        settings = QuerySettings(visits or values.max_visits, values.wide_root_noise, GAME_PRIORITY)
+        visits = min(visits, values.max_visits) if visits else values.max_visits
+        settings = QuerySettings(visits, values.wide_root_noise, GAME_PRIORITY, max_time=values.max_time)
         return played_move_query(node, settings)
 
     def keep(game: GameAnalysis, node: GoNode, answer: dict) -> None:

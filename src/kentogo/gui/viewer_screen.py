@@ -16,9 +16,13 @@ off. Space / Shift+Space and ← → move one move through the game, or through 
 while one is shown. Esc returns to the game at that move. The other keys and the slider
 return to the game first. Two buttons do the same as Tab and Esc.
 
-When a sequence is shown to its last move, T (or a button) shows the territory and the
-standing there, as KaTrain does, and how much better it is than the game after the same
-number of moves (see katago.estimate); T again hides them, and so does moving.
+T (or its button) turns the territory and the standing on, and T again turns them off; they stay on
+when the user moves or goes to the next sequence, and the button tells whether they are on. While
+they are on, every position shown (of the game or of a sequence) gets its areas on the board and a
+rough standing, from a shallow reading with the main model (see katago.quick_reading). At the last
+move of a sequence, the exact territory and standing are shown instead, as KaTrain does, with how
+much better the sequence is than the game after the same number of moves (see katago.estimate):
+they are calculated the first time with the model of the sequence and kept.
 
 When the comparison model can be used, Tab after the last sequence analyzes the position
 before the move with it: its best sequence then comes last at that move, with its own mark
@@ -42,15 +46,16 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.slider import Slider
 
 from kentogo.common import sgf
+from kentogo.common.types import Position
 from kentogo.gui import texts, theme, viewer_model
 from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.dialogs import show_long_message, show_message
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.game_chooser import GameChooser
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
-from kentogo.katago.estimate import Standing
+from kentogo.katago.estimate import Standing, played
 from kentogo.katago.evaluate import Models
-from kentogo.mistakes.problem import Variation
+from kentogo.katago.quick_reading import QuickReading, QuickReadings
 from kentogo.record.game_record import (
     GameRecord,
     next_ai_position,
@@ -58,7 +63,7 @@ from kentogo.record.game_record import (
     read_game_record,
     review_text,
 )
-from kentogo.viewer.analyses import GameAnalyses
+from kentogo.viewer.analyses import ESTIMATE_FAILED, NO_ENGINE, GameAnalyses
 
 KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_END = 276, 275, 273, 274, 278, 279
 KEY_SPACE, KEY_TAB, KEY_ESCAPE, KEY_T = 32, 9, 27, 116
@@ -91,7 +96,11 @@ class ViewerScreen(BoxLayout):
         self.record: GameRecord | None = None
         self.browse = viewer_model.Browse()
         self.analyses = GameAnalyses(models, self, in_main_thread)  # KataGo's sequences and standings of the game.
-        self.showing_standing = False  # True while the territory and the standing are shown (T).
+        self.standing_on = False  # True while the territory and the standing are turned on (T).
+        self.standing_button = None  # The button of T, which tells whether they are on.
+        self._estimating: viewer_model.Browse | None = None  # The end of a sequence whose standing is calculated.
+        self._standing_failed: set[viewer_model.Browse] = set()  # Ends whose standing could not be calculated.
+        self.quick = QuickReadings(in_main_thread)  # The shallow areas of the positions shown (while on).
         self._folder = folder
         self._on_back = on_back
         self._back_label = back_label
@@ -136,14 +145,12 @@ class ViewerScreen(BoxLayout):
         if self.record is None or position is None:
             return
         self.browse = viewer_model.go_to(self.record, position)
-        self.showing_standing = False
         self._show()
 
     def _move(self, change: Callable[[GameRecord, viewer_model.Browse], viewer_model.Browse]) -> None:
         """Change where the screen is with a function of viewer_model, and show it."""
         if self.record is not None:
             self.browse = change(self.record, self.browse)
-            self.showing_standing = False
             self._show()
 
     def next_variation(self) -> None:
@@ -179,48 +186,78 @@ class ViewerScreen(BoxLayout):
 
     def estimated(self, key: viewer_model.Browse) -> None:
         """Show the territory and the standing, if the screen still shows that end of a sequence."""
-        self.showing_standing = self.browse == key
+        self._estimating = None
         self._show()
 
     def failed(self, text_key: str, reason: str) -> None:
-        """Tell that KataGo could not calculate something (see viewer.analyses)."""
+        """Tell that KataGo could not calculate something (see viewer.analyses).
+
+        A standing that cannot be calculated is not asked again; without KataGo, the standings are turned off.
+        """
+        if text_key == ESTIMATE_FAILED and self._estimating is not None:
+            self._standing_failed.add(self._estimating)
+        if text_key == NO_ENGINE:
+            self._set_standing_on(False)
+        self._estimating = None
         show_message(texts.text("error_title"), texts.text(text_key, reason=reason))
         self._show()
 
     def toggle_standing(self) -> None:
-        """Show or hide the territory and the standing at the end of the shown sequence (T).
+        """Turn the territory and the standing on or off (T); while on, they are shown at the end of every sequence."""
+        self._set_standing_on(not self.standing_on)
+        if not self.standing_on:
+            self.quick.stop()
+        self._show()
 
-        They can be shown only when a sequence is shown to its last move. They are calculated
-        with the model of the sequence (the comparison model for its own sequence, else the
-        main model) the first time, and kept.
+    def _set_standing_on(self, on: bool) -> None:
+        """Keep whether the territory and the standing are on, and tell it on the button."""
+        self.standing_on = on
+        if self.standing_button is not None:
+            set_text(self.standing_button, texts.lazy("estimate_button_on" if on else "estimate_button"))
+
+    def _ensure_standing(self, record: GameRecord, browse: viewer_model.Browse) -> None:
+        """While on, ask KataGo for what is not known yet: the exact standing at the last move of a sequence,
+        and the shallow areas of any other position shown.
+
+        Only one exact standing is calculated at a time; when it has come, the screen is shown again,
+        which asks for the next.
         """
-        record = self.record
-        if record is None or self.analyses.busy:
+        if not self.standing_on:
+            self.quick.stop()
             return
-        if self.showing_standing:
-            self.showing_standing = False
-            self._show()
-            return
-        variation = viewer_model.sequence_at_end(record, self.browse, self.analyses.lines)
+        variation = viewer_model.sequence_at_end(record, browse, self.analyses.lines)
         if variation is None:
-            show_message(texts.text("mode_viewer"), texts.text("estimate_not_here"))
-        elif self.browse in self.analyses.standings:
-            self.showing_standing = True
-            self._show()
-        else:
-            self._estimate(variation)
-
-    def _estimate(self, variation: Variation) -> None:
-        """Ask KataGo for the territory and the standing at the end of the shown sequence."""
+            self._ask_quick(record, browse)
+            return
+        known = browse in self.analyses.standings or browse in self._standing_failed
+        if self.analyses.busy or known:
+            return
+        self._estimating = browse
         set_text(self.variation_label, texts.lazy("estimate_running"))
-        self.analyses.estimate(self.browse, self.position, variation)
+        self.analyses.estimate(browse, self.position, variation)
+
+    def _ask_quick(self, record: GameRecord, browse: viewer_model.Browse) -> None:
+        """Ask the main model for the shallow areas of the shown position (see katago.quick_reading)."""
+        main = self.analyses.models.main
+        if main is None:
+            return
+        position = self._position_of(record, browse)
+        self.quick.ask(main.engine, browse, position, main.settings.wide_root_noise, self._show)
+
+    def _position_of(self, record: GameRecord, browse: viewer_model.Browse) -> Position:
+        """Return the position that the board shows: the game after the move, or the sequence played so far."""
+        if browse.variation is None:
+            return record.position_after(browse.position)
+        variation = viewer_model.variations_at(record, browse.position, self.analyses.lines)[browse.variation]
+        return played(record.position_before(browse.position), variation.moves[: browse.step])
 
     def main_line(self) -> None:
         """Return from a sequence to the game."""
         self.go(self.position)
 
     def close(self) -> None:
-        """Stop taking the keys. Call this before the screen is removed."""
+        """Stop taking the keys and the shallow reading. Call this before the screen is removed."""
+        self.quick.stop()
         Window.unbind(on_key_down=self._on_key_down)
 
     def _panel(self) -> BoxLayout:
@@ -278,7 +315,10 @@ class ViewerScreen(BoxLayout):
         for buttons in rows:
             box = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
             for key, action in buttons:
-                box.add_widget(flat_button(texts.lazy(key), action))
+                button = flat_button(texts.lazy(key), action)
+                if key == "estimate_button":
+                    self.standing_button = button
+                box.add_widget(button)
             boxes.append(box)
         return boxes
 
@@ -287,6 +327,10 @@ class ViewerScreen(BoxLayout):
         self.record = record
         self.browse = viewer_model.Browse()
         self.analyses.open(record)
+        self._estimating = None
+        self._standing_failed = set()
+        self.quick.stop()
+        self.quick = QuickReadings(in_main_thread)
         self.slider.max = max(record.last_position, 1)
         self.go(position if position is not None else 0)
 
@@ -307,22 +351,36 @@ class ViewerScreen(BoxLayout):
         browse = self.browse
         position = browse.position
         added = dict(self.analyses.lines)
-        standing = self.analyses.standings.get(browse) if self.showing_standing else None
+        at_end = viewer_model.sequence_at_end(record, browse, self.analyses.lines) is not None
+        standing = self.analyses.standings.get(browse) if self.standing_on and at_end else None
+        quick = self.quick.get(browse) if self.standing_on and standing is None else None
         view = viewer_model.browse_view(record, browse, added)
-        self.board.show(replace(view, ownership=standing.end.ownership) if standing is not None else view)
+        areas = standing.end.ownership if standing is not None else quick.ownership if quick is not None else None
+        self.board.show(replace(view, ownership=areas) if areas is not None else view)
         set_text(self.position_label, lambda: viewer_model.position_text(record, position))
         set_text(self.loss_label, lambda: viewer_model.loss_text(record, position))
-        set_text(self.variation_label, lambda: self._variation_text(record, browse, added, standing))
+        set_text(self.variation_label, lambda: self._variation_text(record, browse, added, standing, quick))
         set_text(self.comment_label, lambda: viewer_model.browse_comment_text(record, browse, added))
         self._moving_slider = True
         self.slider.value = position
         self._moving_slider = False
+        self._ensure_standing(record, browse)
 
     @staticmethod
-    def _variation_text(record: GameRecord, browse: viewer_model.Browse, added: dict, standing: Standing | None) -> str:
-        """Return the text about the shown sequence, with the standing at its end when it is shown."""
+    def _variation_text(
+        record: GameRecord,
+        browse: viewer_model.Browse,
+        added: dict,
+        standing: Standing | None,
+        quick: QuickReading | None,
+    ) -> str:
+        """Return the text about the shown sequence, with the exact standing at its end or the rough one."""
         text = viewer_model.variation_text(record, browse, added)
-        return f"{text}\n{texts.standing_text(standing, browse.step)}" if standing is not None else text
+        if standing is not None:
+            return f"{text}\n{texts.standing_text(standing, browse.step)}".strip("\n")
+        if quick is not None:
+            return f"{text}\n{texts.quick_standing_text(quick.lead)}".strip("\n")
+        return text
 
     def _step(self, step: int) -> None:
         """Move some moves forward (or back, if step is negative) through the game, or through the shown sequence."""

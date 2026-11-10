@@ -32,6 +32,9 @@ Thumbs.db
 games/*
 !games/README.md
 
+# A copy of the author's games for trying the analysis and the problems: nothing in it is added.
+analysis_test/
+
 # Databases (the history of answers is personal). KentoGo keeps them in ~/.kentogo, not here.
 *.sqlite3
 

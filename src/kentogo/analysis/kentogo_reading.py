@@ -35,6 +35,11 @@ TENUKI_STEP = "tenuki"  # The name of these readings in the progress.
 END_STEP = "end"  # The name of the reading of the last position in the progress.
 END_OF_GAME = "end_of_game"
 PASS = "pass"
+# The areas after the best move, the material of features that come later; read only when the setting
+# area_readings is on.
+BEST_READINGS = ("best_after",)
+# The readings with a pass, the material of features that come later; read only when the setting pass_readings is on.
+PASS_READINGS = ("pass_before", "pass_after_played", "pass_after_best")
 
 
 def best_move(game: GameAnalysis, node: GoNode) -> str | None:
@@ -66,10 +71,14 @@ def read_tenuki(
     priority: int,
     progress: Progress,
     retries: int,
+    names: tuple[str, ...] = BEST_READINGS + PASS_READINGS,
 ) -> None:
-    """Ask KataGo the readings of every deep node (see the module's docstring) and keep them in game.readings."""
+    """Ask KataGo the readings of every deep node (see the module's docstring) and keep them in game.readings.
+
+    Args:
+        names: Which readings are asked (BEST_READINGS, PASS_READINGS or both).
+    """
     settings = QuerySettings(visits, wide_root_noise, priority)
-    names = ("pass_before", "pass_after_played", "best_after", "pass_after_best")
     batches = [(name, [node for node in game.deep_nodes if name in readings_of(game, node)]) for name in names]
     total = sum(len(nodes) for _, nodes in batches)
     before = 0  # The readings of the batches already done, so that the progress counts all of them together.

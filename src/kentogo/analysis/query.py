@@ -4,8 +4,8 @@ Written for KentoGo with the same contents as KaTrain 1.20.0's KataGoEngine.requ
 (katrain/core/engine.py), which is a method of KaTrain's engine class and cannot be copied
 unchanged: the moves and the placed stones from the start of the game to the node, the rules,
 komi and board size, the visits, the ownership and the policy, and KaTrain's settings
-(scores from black's side and wide root noise). KentoGo sets no time limit, so every position is
-read with all its visits.
+(scores from black's side and wide root noise), and KaTrain's time limit (maxTime) when it is set:
+KaTrain sets it for the first analysis of a game, but not for its re-analysis.
 KaTrain's own key for continuous analysis ("_kt_continuous") is not sent to KataGo, so it is not here.
 """
 
@@ -29,12 +29,14 @@ class QuerySettings:
         wide_root_noise: KaTrain's engine setting "wide_root_noise".
         priority: KataGo's priority of the query (KaTrain: -100 for a game, -1000000 for re-analysis).
         ownership: Ask for the ownership (KaTrain's engine setting "_enable_ownership", on by default).
+        max_time: The most seconds of the analysis (KataGo's maxTime, KaTrain's "max_time"); 0 means no limit.
     """
 
     visits: int
     wide_root_noise: float
     priority: int
     ownership: bool = True
+    max_time: float = 0.0
 
 
 def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
@@ -83,6 +85,8 @@ def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
     moves = [move for item in nodes for move in item.moves]
     stones = [move for item in nodes for move in item.placements]
     override = {**FORCED_SETTINGS, "wideRootNoise": settings.wide_root_noise}
+    if settings.max_time > 0:
+        override["maxTime"] = settings.max_time
     size_x, size_y = node.board_size
     return {
         "rules": normalize_rules(node.ruleset),
