@@ -9,7 +9,9 @@ It is for checking the "punishment problems" before they are asked in the quiz:
 A moment counts when the opponent's move lost at least --opponent-loss points and the user's next
 move lost at least --my-loss points (by default the settings punish_opponent_loss and punish_my_loss). Each moment is one of two kinds:
 "punish" (the opponent's mistake made a new chance) or "shared" (both missed the same point).
-When both keep missing the same point, only the first moment counts. "decided" marks moments in
+When both keep missing the same point, only the first moment counts, and a moment does not count
+when the opponent's best move was already its best move at its turn before (it only left the same
+point again). "decided" marks moments in
 decided positions (--skip-decided leaves them out), and "problem" the ones that are already
 problems of the quiz (see mistakes.extract).
 """

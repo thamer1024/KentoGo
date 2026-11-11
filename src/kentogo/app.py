@@ -34,6 +34,9 @@ KataGo is started with the app, as in KaTrain (the main model first, then the
 comparison model), and closed when the app closes; it is started again only when the
 settings change its command line (see engines_for). The territory counting practice
 does not use KataGo.
+
+With --test-quiz loss or --test-quiz punish, the app asks every problem of that kind of the games
+analyzed by KentoGo, to try them out; the answers are not saved (see quiz_trial).
 """
 
 from __future__ import annotations
@@ -58,9 +61,11 @@ from kentogo.gui.commentary_texts import commentary_language
 from kentogo.katago.startup import TIMES_FILE, StartTimes
 from kentogo.notice import Notice
 from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_with_angle
+from kentogo.opponent_rank import problem_ranks
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
 from kentogo.quiz.transform import BoardTransform, random_transform
+from kentogo.quiz_trial import TRIAL_KINDS, trial_loader
 from kentogo.report import load_report, load_today_summary
 from kentogo.review.history import AnswerHistory
 from kentogo.review.record import AnswerRecord
@@ -101,6 +106,11 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--settings", type=Path, default=SETTINGS_PATH, help="the settings file to use")
     parser.add_argument("--no-katago", action="store_true", help="do not start KataGo, for this start only")
+    parser.add_argument(
+        "--test-quiz",
+        choices=TRIAL_KINDS,
+        help="ask every problem of this kind of the games analyzed by KentoGo, without saving the answers",
+    )
     return parser.parse_args(argv)
 
 
@@ -233,7 +243,8 @@ def main(argv: list[str] | None = None) -> None:
     texts.set_language(language)  # Before any text is made, so that the notices are in this language too.
     settings = _settings_or_defaults(arguments.settings, notices)
     rng = random.Random()
-    history = open_history(arguments.settings, notices)  # Used by the quiz screen to save the answers.
+    # Used by the quiz screen to save the answers (not in a trial: see quiz_trial).
+    history = None if arguments.test_quiz else open_history(arguments.settings, notices)
     seichi = _SeichiHistoryOpener(arguments.settings)
 
     def make_setup(current: AppSettings, shown: list[Notice]) -> ScreenSetup:
@@ -272,16 +283,12 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
     """
     arguments, settings, rng = parts.arguments, parts.settings, parts.rng
 
-    def load(progress: Progress) -> TodayProblems:
-        """Make today's problems (in the background thread of the start screen)."""
-        return load_today(arguments.settings, arguments.folder, settings, rng, progress)
-
     def choose_transform() -> BoardTransform:
         """Choose how to change the next problem, as allowed by the settings."""
         return random_transform(rng, rotate=settings.quiz.rotate, swap_colors=settings.quiz.swap_colors)
 
     return ScreenSetup(
-        load,
+        _problem_loader(arguments, settings, rng),
         settings.quiz.scoring,
         choose_transform,
         lambda running: engines_for(running, settings.engine, arguments.no_katago),
@@ -308,7 +315,20 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         today_summary=lambda: load_today_summary(
             arguments.settings, arguments.folder, _current_settings(arguments.settings, settings), date.today()
         ),
+        player_ranks=lambda problem: problem_ranks(arguments.settings, problem),
     )
+
+
+def _problem_loader(
+    arguments: argparse.Namespace, settings: AppSettings, rng: random.Random
+) -> Callable[[Progress], TodayProblems]:
+    """Return the function that makes the problems in the background thread of the start screen.
+
+    They are today's problems, or the problems of the trial with --test-quiz (see quiz_trial).
+    """
+    if arguments.test_quiz:
+        return trial_loader(arguments.settings, arguments.folder, settings, arguments.test_quiz)
+    return lambda progress: load_today(arguments.settings, arguments.folder, settings, rng, progress)
 
 
 def _judged_answers(history: AnswerHistory | None) -> list[AnswerRecord]:

@@ -241,7 +241,8 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
     The user's moves that lost at least the smallest loss of a problem, and the opponent's moves that lost
     at least the loss of a punishment chance when the user's reply did not punish them (it lost at least
     the quiz's punish_my_loss), but not in a position where the game was already decided (the quiz's
-    decided winrate and lead); at most the analysis's deep_max_moves of them, the opponent's moves at
+    decided winrate and lead; in a game with handicap stones, the lead gained since the start, see
+    common.handicap); at most the analysis's deep_max_moves of them, the opponent's moves at
     most half of them (see analysis.analyze.chosen_deep_candidates). When the user's color is not found
     from the names, the moves of both colors are taken as the user's.
     """
@@ -258,7 +259,10 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
     visits = settings.analysis.deep_visits or settings.engine.max_visits
     mine = frozenset({"B", "W"} if color is None else {color})
     decided = Selection.from_quiz(extract).is_decided
-    return DeepTargets(losses, visits, decided, settings.analysis.deep_max_moves, mine, extract.punish_my_loss)
+    handicap = bool(root.get_list_property("AB", []) or root.get_list_property("AW", []))
+    return DeepTargets(
+        losses, visits, decided, settings.analysis.deep_max_moves, mine, extract.punish_my_loss, handicap
+    )
 
 
 def write_settings(analysis: AnalysisSettings) -> WriteSettings:

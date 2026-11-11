@@ -168,3 +168,12 @@ def test_terminate_sends_katagos_terminate_action(katago, monkeypatch):
     assert sent == [{"action": "terminate", "terminateId": "kentogo-7"}]
     stopped = KataGoProcess(EngineCommand((sys.executable, str(FAKE_KATAGO)), False, 10))
     stopped.terminate("kentogo-1")  # Not started: nothing happens.
+
+
+def test_terminate_all_sends_katagos_terminate_all_action(katago, monkeypatch):
+    """terminate_all asks KataGo to stop reading all queries; without a running KataGo, nothing is sent."""
+    sent = []
+    monkeypatch.setattr(katago, "query", lambda request, callback: sent.append(request) or "t")
+    katago.terminate_all()
+    assert sent == [{"action": "terminate_all"}]
+    KataGoProcess(EngineCommand((sys.executable, str(FAKE_KATAGO)), False, 10)).terminate_all()  # Not started.

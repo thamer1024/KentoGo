@@ -161,7 +161,7 @@ def sources(quiz: QuizSession) -> list[tuple[str, str]]:
 
 
 def test_katago_sequences_are_in_a_fixed_order():
-    """Tab order: after the answer, the SGF file's sequences, after the game move, and last the comparison model."""
+    """Tab order: after the answer, the SGF file's sequences, the comparison model, and last after the game move."""
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
@@ -171,15 +171,15 @@ def test_katago_sequences_are_in_a_fixed_order():
         ("katago", WAITING),
         ("katrain", ""),
         ("katago", ""),  # The SGF file's own second sequence.
-        (SOURCE_KATAGO_ACTUAL, WAITING),
         (SOURCE_KATAGO_COMPARE, WAITING),
+        (SOURCE_KATAGO_ACTUAL, WAITING),
     ]
     # The sequence after the answer is shown first, while KataGo is still calculating it.
     assert quiz.variation_index == 0 and quiz.variation is None and quiz.shown_sequence() == ()
     quiz.apply_evaluation(1.0, 9.0, (gtp("C3", "W"), gtp("D3")), actual_sequence=(gtp("B18", "W"),))
     assert quiz.variation == Variation((gtp("R4"), gtp("C3", "W"), gtp("D3")), "katago")
-    assert quiz.choices[3].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
-    assert quiz.choices[4].status == WAITING  # The comparison model is still calculating.
+    assert quiz.choices[4].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
+    assert quiz.choices[3].status == WAITING  # The comparison model is still calculating.
     assert quiz.replay_step == 0
 
 

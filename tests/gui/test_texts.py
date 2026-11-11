@@ -16,6 +16,7 @@ from kentogo.gui.texts import (
     fill_step_text,
     game_averages_text,
     history_text,
+    kind_title,
     notes_text,
     problem_info,
     result_text,
@@ -24,8 +25,10 @@ from kentogo.gui.texts import (
     sequence_text,
     skipped_games_text,
     skipped_text,
+    tactics_text,
     text,
 )
+from kentogo.katago.move_value import MoveValue
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import compare_with_actual
@@ -52,6 +55,7 @@ def test_all_texts_can_be_filled():
         "color": "黒",
         "index": 1,
         "total": 2,
+        "files": 2,
         "actual": 1.0,
         "answer": 0.5,
         "improvement": 0.5,
@@ -289,6 +293,14 @@ def test_sequence_order_text():
     assert "比較用モデル(選ぶと計算)" in sequence_order_text([("katago_compare", "offered")], 0)
 
 
+def test_the_comparison_models_seconds_are_shown_only_while_its_sequence_is_shown():
+    """After Tab switches from the comparison model's sequence being calculated, only its name is shown."""
+    choices = [("katago", ""), ("katago_compare", "waiting")]
+    assert "比較用モデル(考え中 30秒)" in sequence_order_text(choices, 1, 30)
+    hidden = sequence_order_text(choices, 0, 30)
+    assert "比較用モデル" in hidden and "考え中" not in hidden
+
+
 def test_sequence_text_while_waiting():
     """While KataGo is calculating, the text says so instead of the move count."""
     shown = sequence_text("katago_compare", index=1, count=2, step=0, total=0, status="waiting")
@@ -371,10 +383,19 @@ def test_result_text_without_the_verdict():
     assert "判定待ち" not in result_text(PROBLEM, waiting, text("evaluating"), show_verdict=False)
 
 
-def test_problem_info_is_two_lines():
-    """The game is on the first line; the move, the player and the count on the second."""
+def test_problem_info_is_three_lines():
+    """The kind is on the first line, the game on the second; the move, the player and the count on the third."""
     info = problem_info(PROBLEM, 3, 29)
-    assert info.count("\n") == 1 and info.splitlines()[1] == "169手目　黒番　問題 3 / 29"
+    assert info.count("\n") == 2 and info.splitlines()[2] == "169手目　黒番　問題 3 / 29"
+
+
+def test_the_kind_of_a_problem_is_big_and_colored():
+    """A mistake, a punishment problem and a point both missed have their own titles and colors."""
+    titles = [kind_title(replace(PROBLEM, punishment=kind)) for kind in ("", "punish", "shared")]
+    assert ["失敗した手の練習" in titles[0], "咎める手の演習" in titles[1], "見落とした" in titles[2]] == [True] * 3
+    assert len({title.split("]")[2] for title in titles}) == 3  # Three colors.
+    assert all(title.startswith("[size=20sp][b]") for title in titles)
+    assert problem_info(PROBLEM, 3, 29).splitlines()[0] == titles[0]
 
 
 def test_band_names_and_the_averages_of_each_band():
@@ -389,7 +410,7 @@ def test_problem_info_of_punishment_problems():
     """A punishment problem says so after the count, with the opponent's loss; a shared one says both missed it."""
     punish = replace(PROBLEM, punishment="punish", opponent_loss=18.25)
     assert (
-        problem_info(punish, 3, 29).splitlines()[1]
+        problem_info(punish, 3, 29).splitlines()[2]
         == "169手目　黒番　問題 3 / 29　咎め問題：直前の相手の手は 18.2目の損"
     )
     assert problem_info(replace(PROBLEM, punishment="shared"), 3, 29).endswith("相手も見落とした大きな場所があります")
@@ -423,3 +444,32 @@ def test_analysis_state_text():
         "解析済み（KentoGo）",
         "読めません",
     ]
+
+
+def test_tactics_text():
+    """The sure ones are named; a guess gets a question mark; nothing known gives no line."""
+    best = Move.from_gtp("Q4", "B")
+    assert tactics_text(best, ("atari", "ladder", "hane")) == "最善 Q4：アタリ、シチョウ、ハネ？"
+    assert tactics_text(best, ()) == "" and tactics_text(None, ("atari",)) == ""
+
+
+def test_what_the_best_move_does_is_shown_after_the_answer_is_judged():
+    """The line comes after the moves, once the answer is judged (right or wrong), not while it waits."""
+    judged = AnswerResult(Move.from_gtp("Q14", "B"), 0.0, compare_with_actual(7.5, 0.0), False)
+    lines = result_text(PROBLEM, judged, tactics=("capture",)).splitlines()
+    assert lines[lines.index("打った手 Q14　実戦 H1　最善 Q14") + 1] == "最善 Q14：取り"
+    waiting = AnswerResult(Move.from_gtp("Q14", "B"), None, None, None)
+    assert "取り" not in result_text(PROBLEM, waiting, "判定中", tactics=("capture",))
+
+
+def test_katagos_findings_about_the_best_move():
+    """The stones killed or saved, and whether the move is urgent or big (a guess) with its size, come last."""
+    best = Move.from_gtp("Q4", "B")
+    urgent = tactics_text(best, ("atari",), MoveValue(12.34, 3, 0, 0.8))
+    assert urgent == "最善 Q4：アタリ、相手の石3子を取る（死活）、急場？（手抜きすると12.3目損）"
+    assert (
+        tactics_text(best, (), MoveValue(6.0, 0, 2, 0.1))
+        == "最善 Q4：自分の石2子を助ける（死活）、急場？（手抜きすると6.0目損）"
+    )
+    assert tactics_text(best, (), MoveValue(6.0, 0, 0, 0.1)) == "最善 Q4：大場？（手抜きすると6.0目損）"
+    assert tactics_text(best, (), MoveValue(0.5, 0, 0, 0.1)) == ""  # Too small to tell.

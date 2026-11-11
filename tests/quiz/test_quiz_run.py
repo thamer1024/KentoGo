@@ -14,6 +14,8 @@ from kentogo.mistakes.problem import (
     Problem,
     Variation,
 )
+from kentogo.quiz import quiz_run
+from kentogo.quiz.human_line import PlayerRanks
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quiz_run import REASON_EVALUATING, REASON_FAILED, REASON_NO_ENGINE, Judging, QuizRun
 from kentogo.quiz.session import ANSWERED, FAILED, OFFERED, WAITING
@@ -147,7 +149,7 @@ def test_other_answers_are_judged_by_katago():
     session = run.session
     assert run.busy and run.calculating and not run.can_play()
     assert run.waiting_reason(session) == (REASON_EVALUATING, {})
-    assert not run.next_problem() and not run.next_variation()
+    assert not run.next_variation()
     assert saved.answers == []
     judge(run.judging.engine, 0, answer_score=1.5)  # The answer loses 0.5 points.
     assert not run.busy and run.can_play() and run.waiting_reason(session) is None
@@ -194,8 +196,9 @@ def test_a_wrong_answer_is_not_asked_again_the_same_day():
     assert [p.problem_id for p in run.problems] == ["p1"]
 
 
-def test_the_comparison_models_sequence_is_asked_when_chosen():
+def test_the_comparison_models_sequence_is_asked_when_chosen(monkeypatch):
     """The comparison model's sequence is offered after the answer, and calculated when the user switches to it."""
+    monkeypatch.setattr(quiz_run, "COMPARE_LINE_SECONDS", -1.0)  # Not made longer than its own sequence.
     main, compare = FakeEngine(), FakeEngine()
     run, listener, _ = make_run(judging=Judging(main, MAIN, "", compare, COMPARE))
     run.answer(point("Q4"))
@@ -281,3 +284,177 @@ def test_sgf_losses_are_used_only_with_the_main_model(judge_with_compare):
     run, _, _ = make_run(judging=judging)
     run.answer(point("Q4"))
     assert (run.session.result.correct is None) == judge_with_compare
+
+
+def human_policy_answer(engine: FakeEngine, index: int, x: int, y: int) -> None:
+    """Answer a query for the human-like policy of a 19x19 board: the point (x, y) has the biggest chance."""
+    policy = [0.001] * (19 * 19 + 1)
+    policy[(18 - y) * 19 + x] = 0.9
+    engine.queries[index][1]({"id": "x", "isDuringSearch": False, "humanPolicy": policy})
+
+
+def answered_with_rank(rank: str, mine: str = ""):
+    """Answer R4 (KataGo judges it); KataGo's own sequences are R4 D16 (the answer) and A19 R17 (the game move)."""
+    main = FakeEngine()
+    ranks = PlayerRanks(mine, rank)
+    run, listener, _ = make_run(judging=Judging(main, MAIN, player_ranks=lambda _problem: ranks))
+    run.answer(point("R4"))
+    judge(main, 0, answer_score=1.5)
+    return main, run.session, listener
+
+
+def shown_moves(session, source: str) -> tuple[str, ...]:
+    """The moves of the sequence of a source."""
+    [choice] = [choice for choice in session.choices if choice.source == source]
+    return tuple(move.gtp() for move in choice.variation.moves) if choice.variation else ()
+
+
+def human_queries(engine: FakeEngine) -> list[int]:
+    """The indexes of the queries for the human-like policy."""
+    return [index for index, (request, _) in enumerate(engine.queries) if request.get("includePolicy")]
+
+
+def test_the_sequences_after_the_answer_and_the_game_move_have_human_like_replies():
+    """With the opponent's rank, the opponent's replies are the human-like ones; the comparison model is not used."""
+    main, session, listener = answered_with_rank("10k")
+    statuses = {choice.source: choice.status for choice in session.choices}
+    assert statuses[SOURCE_KATAGO_ANSWER] == WAITING and statuses[SOURCE_KATAGO_ACTUAL] == WAITING
+    first, second = human_queries(main)
+    assert main.queries[first][0]["overrideSettings"]["humanSLProfile"] == "rank_10k"
+    human_policy_answer(main, first, 2, 15)  # C16 after the answer.
+    human_policy_answer(main, second, 3, 3)  # D4 after the game move.
+    assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "C16")
+    assert shown_moves(session, SOURCE_KATAGO_ACTUAL) == ("A19", "D4")
+    assert listener.changes[-1] is session
+
+
+def test_without_a_rank_katagos_own_sequences_are_shown():
+    """Without the opponent's rank, KataGo's own sequences are shown at once."""
+    main, session, _ = answered_with_rank("")
+    assert human_queries(main) == []
+    assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "D16")
+    assert shown_moves(session, SOURCE_KATAGO_ACTUAL) == ("A19", "R17")
+
+
+def test_without_the_human_like_model_katagos_own_sequences_are_shown():
+    """When KataGo gives no human-like policy, its own sequence is shown, and why is told."""
+    main, session, listener = answered_with_rank("10k")
+    first, _ = human_queries(main)
+    main.queries[first][1]({"id": "x", "isDuringSearch": False, "rootInfo": {"scoreLead": 0.0}})
+    assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "D16")
+    assert listener.failures[-1][0] == "notice_human_line_failed"
+
+
+def compare_with_rank(rank: str, monkeypatch):
+    """Answer Q4 (from the file), switch to the comparison model's sequence (its own: Q4 D16 R17) with a rank.
+
+    The sequence is not made longer than its own one (the time limit has passed at once).
+    """
+    monkeypatch.setattr(quiz_run, "COMPARE_LINE_SECONDS", -1.0)
+    main, compare = FakeEngine(), FakeEngine()
+    judging = Judging(main, MAIN, "", compare, COMPARE, player_ranks=lambda _problem: PlayerRanks(rank, rank))
+    run, listener, _ = make_run(judging=judging)
+    run.answer(point("Q4"))
+    session = run.session
+    while session.choice.source != SOURCE_KATAGO_COMPARE:
+        run.next_variation()
+    compare.answer(0, score=2.0, pv=("Q4", "D16", "R17"))
+    compare.answer(1, score=2.0, pv=("D16",))
+    compare.answer(2, score=-6.0, pv=("R17",))
+    return main, compare, session, listener
+
+
+def test_the_comparison_model_plays_its_best_moves_against_human_like_replies(monkeypatch):
+    """The opponent's replies are human-like (main KataGo); the user's moves are the comparison model's best."""
+    main, compare, session, _ = compare_with_rank("10k", monkeypatch)
+    [index] = human_queries(main)
+    human_policy_answer(main, index, 2, 15)  # C16
+    assert compare.queries[3][0]["maxVisits"] == COMPARE.estimate_visits
+    compare.answer(3, score=1.0, pv=("R16",))
+    assert shown_moves(session, SOURCE_KATAGO_COMPARE) == ("Q4", "C16", "R16")
+
+
+def test_without_a_rank_the_comparison_model_plays_its_own_sequence(monkeypatch):
+    """Without the opponent's rank (nor the user's), the comparison model's own sequence is shown."""
+    main, _, session, _ = compare_with_rank("", monkeypatch)
+    assert human_queries(main) == []
+    assert shown_moves(session, SOURCE_KATAGO_COMPARE) == ("Q4", "D16", "R17")
+
+
+def test_the_comparison_models_sequence_is_made_as_long_as_katrains(monkeypatch):
+    """Its own sequence (Q4) is made as long as the SGF file's longest one: here the minimum, with both sides its."""
+    monkeypatch.setattr(quiz_run, "MIN_COMPARE_LINE", 3)
+    main, compare = FakeEngine(), FakeEngine()
+    run, _, _ = make_run(judging=Judging(main, MAIN, "", compare, COMPARE))
+    run.answer(point("Q4"))
+    session = run.session
+    while session.choice.source != SOURCE_KATAGO_COMPARE:
+        run.next_variation()
+    compare.answer(0, score=2.0, pv=("Q4",))
+    compare.answer(1, score=2.0, pv=("D16",))
+    compare.answer(2, score=-6.0, pv=("R17",))
+    compare.answer(3, score=1.0, pv=("D16",))  # The opponent: the comparison model's best move (no rank).
+    compare.answer(4, score=1.0, pv=("R16",))
+    assert shown_moves(session, SOURCE_KATAGO_COMPARE) == ("Q4", "D16", "R16")
+
+
+def test_the_users_moves_are_human_like_when_the_users_rank_is_known():
+    """With the user's rank, the user's moves after the answer are human-like too (the comparison model's are not)."""
+    main = FakeEngine()
+    ranks = PlayerRanks("15k", "10k")
+    run, _, _ = make_run(judging=Judging(main, MAIN, player_ranks=lambda _problem: ranks))
+    run.answer(point("R4"))
+    main.answer(0, score=2.0, pv=("Q4",))
+    main.answer(1, score=1.5, pv=("D16", "Q16"))
+    main.answer(2, score=-6.0, pv=("R17",))
+    first, second = human_queries(main)
+    human_policy_answer(main, first, 2, 15)  # The opponent's C16 after the answer.
+    [_, _, mine] = human_queries(main)
+    assert main.queries[mine][0]["overrideSettings"]["humanSLProfile"] == "rank_15k"
+    human_policy_answer(main, mine, 16, 15)  # The user's R16.
+    assert shown_moves(run.session, SOURCE_KATAGO_ANSWER) == ("R4", "C16", "R16")
+
+
+def test_without_the_users_rank_the_users_moves_are_human_like_of_the_opponents_rank():
+    """When only the opponent's rank is known, the user's moves are human-like of that rank."""
+    main = FakeEngine()
+    ranks = PlayerRanks("", "10k")
+    run, _, _ = make_run(judging=Judging(main, MAIN, player_ranks=lambda _problem: ranks))
+    run.answer(point("R4"))
+    main.answer(0, score=2.0, pv=("Q4",))
+    main.answer(1, score=1.5, pv=("D16", "Q16"))
+    main.answer(2, score=-6.0, pv=("R17",))
+    first, _ = human_queries(main)
+    human_policy_answer(main, first, 2, 15)
+    [_, _, mine] = human_queries(main)
+    assert main.queries[mine][0]["overrideSettings"]["humanSLProfile"] == "rank_10k"
+
+
+class StoppingEngine(FakeEngine):
+    """A fake KataGo that can stop reading all queries."""
+
+    def __init__(self):
+        super().__init__()
+        self.stopped = 0
+
+    def terminate_all(self):
+        self.stopped += 1
+
+
+def test_the_next_problem_at_once_while_katago_judges():
+    """The next problem is asked at once: the answer is saved without losses, and both KataGo stop reading."""
+    main, compare = StoppingEngine(), StoppingEngine()
+    run, listener, saved = make_run([problem("p1"), problem("p2")], Judging(main, MAIN, "", compare, COMPARE))
+    run.answer(point("R4"))
+    first = run.session
+    assert run.calculating and run.next_problem()
+    assert saved.answers == [("p1", None, None, False)] and (main.stopped, compare.stopped) == (1, 1)
+    assert run.session is not first and run.session.problem.problem_id == "p2"
+    judge(main, 0, answer_score=1.5)  # A late answer for the problem left is not used.
+    assert first.result.correct is None and saved.answers == [("p1", None, None, False)]
+
+
+def test_the_next_problem_without_calculations_does_not_stop_katago():
+    main = StoppingEngine()
+    run, _, _ = make_run([problem("p1"), problem("p2")], Judging(main, MAIN))
+    assert run.next_problem() and main.stopped == 0

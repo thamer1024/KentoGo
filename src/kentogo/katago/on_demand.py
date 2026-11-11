@@ -87,6 +87,13 @@ class OnDemandEngine:
         if process is not None:
             process.terminate(query_id)
 
+    def terminate_all(self) -> None:
+        """Ask the running KataGo to stop reading all queries (see KataGoProcess.terminate_all)."""
+        with self._lock:
+            process = self._process
+        if process is not None:
+            process.terminate_all()
+
     def wait_until_ready(self, timeout: float) -> bool:
         """Wait until the started KataGo is ready to answer; False if it was not started or did not get ready."""
         with self._lock:

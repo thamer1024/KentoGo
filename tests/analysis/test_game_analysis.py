@@ -352,6 +352,16 @@ def test_no_deep_reading_without_targets_or_for_a_color_not_given():
     assert [node.move.player for node in game.deep_nodes] == []  # White's B4 gained 1.5 points (a loss below 0).
 
 
+def test_a_handicap_game_is_decided_without_the_winrate():
+    """In a handicap game, the rule gets no winrate, and the lead gained since the start (here the same lead)."""
+    by_winrate = {"decided": lambda winrate, lead: winrate is not None}
+    even = DeepTargets({"B": 5.0}, 2000, **by_winrate)
+    handicap = DeepTargets({"B": 5.0}, 2000, handicap=True, **by_winrate)
+    assert analyze_game(FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, even).deep_nodes == []
+    game = analyze_game(FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, handicap)
+    assert [node.depth for node in game.deep_nodes] == [3]
+
+
 def test_a_move_in_a_decided_position_is_not_read_deeply():
     """The quiz does not ask moves of a decided game first, so they are not read deeply either."""
     decided = DeepTargets({"B": 5.0}, 2000, lambda winrate, lead: lead is not None and lead > 0.4)
@@ -398,3 +408,42 @@ def test_kentogo_readings_of_a_deep_move():
     tenuki = [query for query in engine.queries if by_moves_of(query) in READINGS]
     assert len(tenuki) == 4 and {query["maxVisits"] for query in tenuki} == {2000}
     assert ("tenuki", 1, 4) in steps and ("tenuki", 4, 4) in steps  # One count for all the readings.
+
+
+class LeftAgainEngine(FakeEngine):
+    """Black (the opponent) plays C3 and A5, white (the user) B4 and D4; D4 does not punish A5 (it loses 4 points).
+
+    The best move before A5 is E5; the best move before C3 (black's move before) is first_best.
+    """
+
+    SCORES = {(): 0.0, ("C3",): 0.0, ("C3", "B4"): 0.0, ("C3", "B4", "A5"): -5.0, ("C3", "B4", "A5", "D4"): -1.0}
+
+    def __init__(self, first_best: str):
+        super().__init__()
+        self.first_best = first_best
+
+    def query(self, request, callback):
+        self.queries.append(request)
+        moves = tuple(point for _, point in request["moves"])
+        if "allowMoves" in request:
+            point = request["allowMoves"][0]["moves"][0]
+            score = self.SCORES.get((*moves, point), 0.0)
+        else:
+            point, score = (self.first_best if moves == () else "E5"), self.SCORES.get(moves, 0.0)
+        candidate = {"move": point, "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": [point]}
+        root_info = {"scoreLead": score, "winrate": 0.5, "visits": request["maxVisits"]}
+        callback({"id": "x", "rootInfo": root_info, "moveInfos": [candidate], "ownership": [0.0] * 25})
+        return "x"
+
+
+def test_an_opponents_move_that_only_left_the_same_point_again_is_not_read_deeply():
+    """Black's A5 is read deeply only when E5, its best move, was not already black's best move before C3."""
+    game_text = "(;SZ[5]KM[0.5]RU[Chinese];B[cc];W[bb];B[aa];W[db])"
+    found = {}
+    for first_best in ("E1", "E5"):
+        engine = LeftAgainEngine(first_best)
+        targets = DeepTargets({"B": 3.0, "W": 100.0}, 2000, my_colors=frozenset({"W"}), reply_loss=2.0)
+        analyze_game(engine, GoGame.parse_sgf(game_text), AnalysisSettings(), VALUES, lambda *_: None, targets)
+        found[first_best] = allowed(engine, 2000)
+    assert ["A5"] in found["E1"]
+    assert found["E5"] == []

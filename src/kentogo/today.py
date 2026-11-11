@@ -25,10 +25,10 @@ from kentogo.commentary.history import CommentaryHistory
 from kentogo.commentary.history import history_path as commentary_history_path
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
-from kentogo.quiz.collect import SkippedGame, collect_problems
+from kentogo.quiz.collect import SkippedGame, collect_games
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
-from kentogo.quiz.problem_kinds import KIND_ALL, other_kinds
+from kentogo.quiz.problem_kinds import KIND_ALL, other_kinds, problems_of_kind
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.stages import NO_STAGES, StageStatus, current_stage, held_back
 from kentogo.repetition.daily import answered_on, left_today
@@ -294,7 +294,8 @@ def prepare_problems(
     if folder is None:
         print(f"no games folder: {folder_problem.values}", file=sys.stderr)
         return TodayProblems([], folder_problem)
-    problems, skipped = collect_problems(folder, settings.quiz.extract, cache, progress, recorded_colors)
+    games, skipped = collect_games(folder, settings.quiz.extract, cache, progress, recorded_colors)
+    problems = problems_of_kind((result for _path, result in games), settings.quiz.problem_kind)
     for game in skipped:
         print(game.message(), file=sys.stderr)
     skipped_counts = dict(Counter(game.reason for game in skipped))
@@ -395,9 +396,8 @@ def exclude_all_problems(settings_path: Path, folder_argument: Path | None, sett
         raise NoGamesFolderError(folder_problem)
     cache = open_cache(settings_path)
     try:
-        problems, _ = collect_problems(
-            folder, settings.extract, cache, recorded_colors=read_recorded_colors(settings_path)
-        )
+        games, _ = collect_games(folder, settings.extract, cache, recorded_colors=read_recorded_colors(settings_path))
+        problems = problems_of_kind((result for _path, result in games), settings.problem_kind)
     finally:
         if cache is not None:
             cache.close()

@@ -96,6 +96,12 @@ class TimedEngine:
         if terminate is not None:
             terminate(query_id)
 
+    def terminate_all(self) -> None:
+        """Ask KataGo to stop reading all queries, when the engine can (see process.KataGoProcess.terminate_all)."""
+        terminate_all = getattr(self.engine, "terminate_all", None)
+        if terminate_all is not None:
+            terminate_all()
+
     def stop(self) -> None:
         """Stop the engine when it can be stopped and started again (see on_demand.OnDemandEngine)."""
         stop = getattr(self.engine, "stop", None)

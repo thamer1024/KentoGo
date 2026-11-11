@@ -147,6 +147,15 @@ class KataGoProcess:
         except (RuntimeError, OSError):  # KataGo stopped just now: the query has its error answer anyway.
             pass
 
+    def terminate_all(self) -> None:
+        """Ask KataGo to stop reading all queries (KataGo's "terminate_all" action); nothing happens without KataGo."""
+        if not self.is_running:
+            return
+        try:
+            self.query({"action": "terminate_all"}, lambda _answer: None)
+        except (RuntimeError, OSError):  # KataGo stopped just now: the queries have their error answers anyway.
+            pass
+
     def close(self) -> None:
         """Stop KataGo. Queries that are still waiting get an error answer."""
         process = self._process

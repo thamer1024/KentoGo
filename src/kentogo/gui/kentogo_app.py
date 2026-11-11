@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import sys
 import threading
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -286,7 +287,7 @@ class KentoGoApp(App):
             today.problems,
             setup.policy,
             setup.choose_transform,
-            engines.judging(),
+            replace(engines.judging(), player_ranks=setup.player_ranks),
             texts.notice_text(today.message),
             setup.history,
             on_back=self._leave_quiz,

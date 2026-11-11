@@ -1,9 +1,11 @@
 """The texts shown on the screens, in the chosen language, and functions that build them.
 
 TEXTS holds the Japanese texts, which are the source of the translations. The
-other languages are in kentogo/locales/<language>.json, with the same keys and
-the same {values} (see LANGUAGES; the codes are KaTrain's). English is used until
-another language is chosen; a text missing from a language is shown in English.
+other languages are in kentogo/locales/<language>.json, with the same {values}
+(see LANGUAGES; the codes are KaTrain's). English has every text; a new text is
+written in Japanese and English only, and the other languages get it when they
+are translated. English is used until another language is chosen; a text missing
+from a language is shown in English.
 
 The texts use Kivy markup, such as [b]...[/b] and [color=...]...[/color].
 Colored texts use light colors, so that they are easy to read on the dark
@@ -17,10 +19,12 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from kentogo.analysis_run import AnalysisSummary, FolderGames
+from kentogo.common.tactics import SURE
 from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
+from kentogo.katago.move_value import URGENT, MoveValue, kind_of
 from kentogo.mistakes.extract import PUNISH, SHARED
-from kentogo.mistakes.problem import Problem
+from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import Comparison, compare_with_actual
@@ -43,6 +47,9 @@ TEXTS = {
     "white": "白",
     "problem_info": "[b]{game}[/b]\n{move_number}手目　{color}番　問題 {index} / {total}",
     "punish_hint": "咎め問題：直前の相手の手は {loss}目の損",
+    "kind_mistake": "失敗した手の練習",
+    "kind_punish": "咎める手の演習",
+    "kind_shared": "お互いに見落とした場所の練習",
     "shared_hint": "相手も見落とした大きな場所があります",
     "asking": "{color}番です。打つ点をクリックしてください。",
     "correct": "[color=5be37d][b]正解[/b][/color]",
@@ -54,6 +61,25 @@ TEXTS = {
     "comparison": "実戦 {actual:.1f}目損 → 打った手 {move} {answer:.1f}目損（{improvement:+.1f}目）\n取り戻した割合 {ratio:.0%}",
     "comparison_unknown": "実戦 {actual:.1f}目損 → 打った手 {move}（損失はわかりません）",
     "moves": "打った手 {answer}　実戦 {actual}　最善 {best}",
+    "tactic_capture": "取り",
+    "tactic_ko": "コウ取り",
+    "tactic_atari": "アタリ",
+    "tactic_double_atari": "両アタリ",
+    "tactic_connect": "ツギ",
+    "tactic_escape": "逃げ出し",
+    "tactic_ladder": "シチョウ",
+    "tactic_cut": "切り",
+    "tactic_tsuke": "ツケ",
+    "tactic_hane": "ハネ",
+    "tactic_nobi": "ノビ",
+    "tactic_kosumi": "コスミ",
+    "tactic_far": "離れた場所",
+    "tactic_guess": "{name}？",
+    "best_move_tactics": "最善 {move}：{names}",
+    "value_kill": "相手の石{count}子を取る（死活）",
+    "value_save": "自分の石{count}子を助ける（死活）",
+    "value_urgent": "急場？（手抜きすると{points}目損）",
+    "value_big": "大場？（手抜きすると{points}目損）",
     # The marks have their own colors and shapes, so they can be told apart without the colors.
     "legend": "[color=6cc0ff]○打った手[/color]　[color=ff8a80]△実戦[/color]　[color=5be37d]□最善[/color]",
     "legend_compare": "　[color=d070f0]☆比較用モデル[/color]",
@@ -92,6 +118,9 @@ TEXTS = {
     "sequence_failed": "KataGoが計算できませんでした。",
     "sequence_offered": "選ぶと計算を始めます。",
     "notice_compare_line_failed": "比較用モデルの手順を計算できませんでした。\n\n理由：{reason}",
+    "notice_human_line_failed": (
+        "手順の中の相手の応手を、人間風モデルで打てませんでした。KataGoの読み筋をそのまま出します。\n\n理由：{reason}"
+    ),
     "no_sequence": "推奨手順はありません",
     "ai_commentary": "【AI解説】",
     "illegal_move": "そこには打てません：{reason}",
@@ -175,6 +204,18 @@ TEXTS = {
     "notice_history_failed": (
         "解答の記録（履歴）を開けません。今回の解答は記録されず、復習も出題されません。\n\n"
         "ファイル：{path}\n理由：{reason}"
+    ),
+    "notice_trial_loss": (
+        "テスト出題です。KentoGoで解析した棋譜から、損失目数の問題（咎め問題以外）を{count}問すべて出します。"
+        "答えは履歴に保存しません。"
+    ),
+    "notice_trial_punish": (
+        "テスト出題です。KentoGoで解析した棋譜から、咎め問題を{count}問すべて出します。答えは履歴に保存しません。"
+    ),
+    "trial_no_problems": (
+        "テスト出題の問題はありません。\n棋譜フォルダ：{folder}\n棋譜 {files} 局のうち、KentoGoで解析した棋譜は {games} 局で、"
+        "その中にこの種類の問題はありませんでした。\n"
+        "解析は設定画面の「KataGoで棋譜を解析」でできます。別のフォルダは、起動するときに指定できます。"
     ),
     "notice_cache_failed": (
         "問題のキャッシュを使えないため、毎回すべての棋譜を読み込みます（時間がかかります）。\n\n"
@@ -800,6 +841,9 @@ def sequence_name(source: str) -> str:
 def sequence_order_text(choices: list[tuple[str, str]], selected: int, seconds: int = 0) -> str:
     """Return the line that shows the order of the sequences for Tab, with the shown one marked.
 
+    The comparison model's sequence that is still calculated is told so (with the seconds) only while it is
+    shown: after Tab switches to another sequence, only its name is shown, as it takes long.
+
     Args:
         choices: (source, status) of each sequence in order. status is "" when the sequence
             is ready, "waiting" while KataGo is calculating it, or "failed".
@@ -810,10 +854,15 @@ def sequence_order_text(choices: list[tuple[str, str]], selected: int, seconds: 
     for index, (source, status) in enumerate(choices):
         key = f"short_{source}"
         name = text(key) if key in TEXTS else source
-        if status:
+        if status and not _quiet_while_hidden(source, status, index == selected):
             name = text(f"short_{status}", name=name, seconds=seconds)
         names.append(f"[color=f2c94c][b]▶{name}[/b][/color]" if index == selected else name)
     return text("sequence_order", names=" → ".join(names))
+
+
+def _quiet_while_hidden(source: str, status: str, shown: bool) -> bool:
+    """True if a sequence's status is not told: the comparison model's sequence being calculated, not shown."""
+    return source == SOURCE_KATAGO_COMPARE and status == "waiting" and not shown
 
 
 def sequence_text(source: str, index: int, count: int, step: int, total: int, status: str = "") -> str:
@@ -927,8 +976,13 @@ def analysis_state_text(state: str) -> str:
     return text(f"analysis_state_{state}")
 
 
+# The kinds of problems: their texts and colors (light colors, easy to read on the dark panel).
+KIND_TITLES = {"": ("kind_mistake", "6cc0ff"), PUNISH: ("kind_punish", "ffb74d"), SHARED: ("kind_shared", "80deea")}
+KIND_TITLE_SIZE = "20sp"
+
+
 def problem_info(problem: Problem, index: int, total: int) -> str:
-    """Return the text about the problem: the game, the move number, the player, and the count.
+    """Return the text about the problem: its kind (big and colored), the game, the move, the player, the count.
 
     Args:
         problem: The problem as it is shown.
@@ -944,7 +998,14 @@ def problem_info(problem: Problem, index: int, total: int) -> str:
         total=total,
     )
     hint = punishment_hint(problem)
-    return f"{info}{gap()}{hint}" if hint else info
+    info = f"{info}{gap()}{hint}" if hint else info
+    return f"{kind_title(problem)}\n{info}"
+
+
+def kind_title(problem: Problem) -> str:
+    """Return the kind of a problem in big colored letters, such as 失敗した手の練習 or 咎める手の演習."""
+    key, color = KIND_TITLES.get(problem.punishment, KIND_TITLES[""])
+    return f"[size={KIND_TITLE_SIZE}][b][color={color}]{text(key)}[/color][/b][/size]"
 
 
 def punishment_hint(problem: Problem) -> str:
@@ -1016,6 +1077,8 @@ def result_text(
     compare_best_loss: float | None = None,
     sequence: tuple[Move, float | None] | None = None,
     show_verdict: bool = True,
+    tactics: tuple[str, ...] = (),
+    value: MoveValue | None = None,
 ) -> str:
     """Return the text about the result of an answer.
 
@@ -1032,9 +1095,11 @@ def result_text(
             not the answer: the line of the losses then tells about that move (see QuizSession.sequence_loss).
         show_verdict: False to leave out whether the answer is correct (or why it is not judged yet),
             while another sequence than the answer's is shown.
+        tactics: What the best move does on the board (see common.tactics), shown once the answer is judged.
+        value: What KataGo found that the best move does (see katago.move_value), or None (not read yet).
 
     Returns:
-        Whether the answer is correct, the losses, the moves, and the legend of the marks.
+        Whether the answer is correct, the losses, the moves, what the best move does, and the legend of the marks.
     """
     best = problem.best_move.gtp() if problem.best_move else text("unknown_move")
     shown_move, shown_loss = sequence if sequence is not None else (result.answer, None)
@@ -1052,7 +1117,35 @@ def result_text(
     else:
         losses = _comparison_line(comparison, shown_move, sequence is not None, shown_loss)
     verdict = [text("correct") if result.correct else text("wrong")] if show_verdict else []
-    return "\n".join([*verdict, losses, moves, legend])
+    what = tactics_text(problem.best_move, tactics, value)
+    return "\n".join([*verdict, losses, moves, *([what] if what else []), legend])
+
+
+def tactics_text(best_move: Move | None, names: tuple[str, ...], value: MoveValue | None = None) -> str:
+    """Return what the best move does, such as "最善 Q4：アタリ、シチョウ、ハネ？、急場？（…）" ("" if nothing is known).
+
+    The guesses (see common.tactics.GUESSED) are marked with a question mark; KataGo's findings (value)
+    come after the others.
+    """
+    words = [text(f"tactic_{name}") for name in names]
+    words = [word if name in SURE else text("tactic_guess", name=word) for name, word in zip(names, words, strict=True)]
+    words += value_words(value) if value is not None else []
+    if best_move is None or not words:
+        return ""
+    return text("best_move_tactics", move=best_move.gtp(), names=list_text(words))
+
+
+MIN_VALUE_POINTS = 1.0  # The size of a move (urgent or big) is told when leaving it loses at least this.
+
+
+def value_words(value: MoveValue) -> list[str]:
+    """Return the words of KataGo's findings: the stones killed or saved, and whether the move is urgent or big."""
+    words = [text("value_kill", count=value.killed)] if value.killed else []
+    words += [text("value_save", count=value.saved)] if value.saved else []
+    if value.points >= MIN_VALUE_POINTS:
+        key = "value_urgent" if kind_of(value) == URGENT else "value_big"
+        words.append(text(key, points=f"{value.points:.1f}"))
+    return words
 
 
 def _compare_line(actual_loss: float, compare_best: Move, compare_best_loss: float) -> str:

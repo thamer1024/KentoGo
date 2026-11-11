@@ -20,7 +20,8 @@ The steps (see analyze_game):
 4. The moves that can become problems (DeepTargets: the user's moves that lost at least the smallest
    loss of a problem, the opponent's moves that lost at least the loss of a punishment chance, not in
    a position where the game was already decided, by the quiz's rule; an opponent's move only when the
-   user's reply did not punish it, see DeepTargets.reply_loss) are read deeply: the positions before and
+   user's reply did not punish it, see DeepTargets.reply_loss, and not when it only left the same point
+   again, see mistakes.extract) are read deeply: the positions before and
    after them with the deep visits, and the played move again.
    At most max_moves of them are read in a game, the biggest losses first, but the opponent's moves
    take at most half of them: the user's mistakes come first.
@@ -60,10 +61,11 @@ from kentogo.analysis.game_analysis import (
     first_nodes,
     load_saved_analyses,
 )
-from kentogo.analysis.kentogo_reading import BEST_READINGS, PASS_READINGS, read_end, read_tenuki
+from kentogo.analysis.kentogo_reading import BEST_READINGS, PASS_READINGS, best_move, read_end, read_tenuki
 from kentogo.analysis.played_moves import needs_reading, played_move_loss, read_played_moves
 from kentogo.analysis.query import QuerySettings
 from kentogo.analysis.settled_lines import LineSettings, read_lines
+from kentogo.common.handicap import from_start
 
 FIRST_STEP = "first"  # The analysis of the nodes without saved data.
 REANALYSIS_STEP = "again"  # The analysis again (KaTrain's "Re-analyze game").
@@ -89,6 +91,8 @@ class DeepTargets:
         my_colors: The colors of the user's moves ("B" and "W" when the user's color is not known).
         reply_loss: An opponent's move is read deeply only when the user's reply (its first child) lost at
             least this many points: the user did not punish it (the quiz's punish_my_loss).
+        handicap: True for a game with handicap stones: then decided is given the lead gained since the start
+            and no winrate (see common.handicap).
     """
 
     losses: dict[str, float]
@@ -97,6 +101,7 @@ class DeepTargets:
     max_moves: int = 0
     my_colors: frozenset[str] = frozenset({"B", "W"})
     reply_loss: float = 0.0
+    handicap: bool = False
 
 
 def analyze_game(
@@ -233,17 +238,27 @@ def _is_mine(node: GoNode, targets: DeepTargets) -> bool:
 
 def _is_candidate(game: GameAnalysis, node: GoNode, targets: DeepTargets) -> bool:
     """True if a node's move lost at least the smallest loss of its color, in a position that was not decided,
-    and, for an opponent's move, the user's reply did not punish it."""
+    and, for an opponent's move, the user's reply did not punish it and the opponent did not only leave the
+    same point again (see _left_again)."""
     move = node.move
     before = game.analysis(node.parent) if node.parent is not None else None
     if move is None or before is None:
         return False
-    if targets.decided(before["root"].get("winrate"), before["root"].get("scoreLead")):
+    if _is_decided(game, node, before, targets):
         return False
     loss = played_move_loss(game, node)
     if loss is None or loss < targets.losses.get(move.player, math.inf):
         return False
-    return _is_mine(node, targets) or _not_punished(game, node, targets)
+    return _is_mine(node, targets) or (_not_punished(game, node, targets) and not _left_again(game, node))
+
+
+def _is_decided(game: GameAnalysis, node: GoNode, before: dict, targets: DeepTargets) -> bool:
+    """True if the game was decided before a node's move (before: the analysis of the position before it)."""
+    values = before["root"].get("winrate"), before["root"].get("scoreLead")
+    if targets.handicap:
+        start = game.analysis(node.root)
+        values = from_start(*values, start["root"].get("scoreLead") if start is not None else None)
+    return targets.decided(*values)
 
 
 def _not_punished(game: GameAnalysis, node: GoNode, targets: DeepTargets) -> bool:
@@ -253,6 +268,19 @@ def _not_punished(game: GameAnalysis, node: GoNode, targets: DeepTargets) -> boo
         return False
     loss = played_move_loss(game, reply)
     return loss is not None and loss >= targets.reply_loss
+
+
+def _left_again(game: GameAnalysis, node: GoNode) -> bool:
+    """True if the best move before a node's move was already the best move before the same player's move before.
+
+    The player then only left the same point again: the loss of the move was not made by it, so it is no
+    punishment chance (the same rule as mistakes.extract). The best moves are those of the analysis so far.
+    """
+    before = node.parent.parent if node.parent is not None else None
+    if before is None or before.move is None or before.move.player != node.move.player:
+        return False
+    best = best_move(game, node)
+    return best is not None and best == best_move(game, before)
 
 
 def reanalysis_visits(game: GameAnalysis, max_visits: int) -> int:

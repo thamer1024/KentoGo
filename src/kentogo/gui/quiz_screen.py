@@ -10,9 +10,9 @@ are shown for that board. Tab (or the switch button) goes through the sequences 
 KataGo's sequence after the answer (shown first), the sequences in the SGF file, the comparison
 model's sequence, and KataGo's sequence after the game move. A line shows this order with the
 shown one marked, and which sequences KataGo is still calculating. While KataGo is judging the
-answer, the buttons and keys that switch, play back, play forward and go to the next problem
-cannot be used (the buttons are drawn as disabled); going to the next problem waits until all
-calculations of the problem have arrived, so that KataGo's work does not pile up.
+answer, the buttons and keys that switch, play back and play forward cannot be used (the buttons
+are drawn as disabled). The next problem can always be asked, also when the answer is slow or the
+user does not want to wait: KataGo then stops reading for this problem (see QuizRun.next_problem).
 Keys: Space and the right arrow play the sequence forward, Shift+Space and the left arrow play
 it back, Tab switches to the next sequence, and Enter goes to the next problem. After the answer,
 the board shows the areas of whatever move is shown, from a shallow reading (see quiz.quick_areas),
@@ -36,6 +36,8 @@ from kivy.uix.modalview import ModalView
 from kivy.uix.scrollview import ScrollView
 
 from kentogo.answers import save_answer
+from kentogo.common.board import Board, IllegalMoveError
+from kentogo.common.tactics import tactics
 from kentogo.common.types import Move
 from kentogo.gui import texts, theme
 from kentogo.gui.board_view import (
@@ -52,6 +54,7 @@ from kentogo.gui.dialogs import show_message
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
 from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem
+from kentogo.quiz.best_move_value import BestMoveValue
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quick_areas import QuickAreas
 from kentogo.quiz.quiz_run import Judging, QuizRun
@@ -69,8 +72,9 @@ KEY_ENTERS = (13, 271)
 
 # The right panel gets at least this part of the screen width.
 MIN_PANEL_RATIO = 0.3
-# The lowest height of the information (dp): the game and the problem on two lines, and one empty line.
-INFO_HEIGHT = 58
+# The lowest height of the information (dp): the kind of the problem in big letters, the game and the problem
+# on two lines, and one empty line.
+INFO_HEIGHT = 86
 
 
 class QuizScreen(BoxLayout):
@@ -117,6 +121,7 @@ class QuizScreen(BoxLayout):
         self.open_game = open_game
         self.standings: SequenceStandings | None = None
         self.quick_areas: QuickAreas | None = None  # The shallow areas of the positions of the problem asked now.
+        self.best_value: BestMoveValue | None = None  # What KataGo found that the best move does, after the answer.
         self._history_line: Callable[[], str] = str  # Makes the line about the earlier answers ("" if none).
         self._busy_since: float | None = None  # When KataGo started calculating for the current problem.
         self._busy_timer = None  # Shows the seconds while KataGo is calculating (see _update_buttons).
@@ -168,7 +173,7 @@ class QuizScreen(BoxLayout):
         next_button = flat_button(texts.lazy("next_problem"), self.next_problem, size_hint_y=None, height=dp(44))
         # These cannot be used while KataGo is calculating (see _update_buttons).
         self._busy_buttons = (switch_button, back_button, forward_button)
-        self._next_button = next_button  # It cannot be used until all calculations have finished.
+        self._next_button = next_button  # It can always be used: it stops what KataGo is calculating.
 
         self.file_row = FileNameRow()
         for widget in (self.file_row, texts_scroll, switch_row, buttons, next_button):
@@ -200,13 +205,16 @@ class QuizScreen(BoxLayout):
         """Show a new problem, or the end message (told by the quiz)."""
         if self.quick_areas is not None:
             self.quick_areas.stop()
+        if self.best_value is not None:
+            self.best_value.stop()
         if session is None:
             self.standings = None
-            self.quick_areas = None
+            self.quick_areas = self.best_value = None
             self._show_end()
             return
         self.standings = SequenceStandings(session, in_main_thread)
         self.quick_areas = QuickAreas(session, in_main_thread)
+        self.best_value = BestMoveValue(session, in_main_thread)
         self._history_line = self._history_line_of(session.problem)
         self._show_history_error()
         color = session.shown_problem.position.next_color
@@ -251,7 +259,7 @@ class QuizScreen(BoxLayout):
         return self.run.calculating
 
     def next_problem(self) -> None:
-        """Go to the next problem (not while KataGo is calculating for this one)."""
+        """Go to the next problem at once (what KataGo is still calculating for this one is stopped)."""
         self.run.next_problem()
 
     def step_back(self) -> None:
@@ -287,10 +295,17 @@ class QuizScreen(BoxLayout):
                 self._refresh()
 
         def failed(text_key: str, reason: str) -> None:
-            self._show_error_once(texts.text(text_key, reason=reason))
+            if session is self.session:  # Not for a problem left while KataGo was reading.
+                self._show_error_once(texts.text(text_key, reason=reason))
 
         standings.prepare(self.judging.models(), changed, failed)
         self.quick_areas.ask(self.judging.engine, self.judging.settings.wide_root_noise, changed)
+        self.best_value.ask(self.judging.engine, self.judging.settings, lambda: self._value_came(session))
+
+    def _value_came(self, session: QuizSession) -> None:
+        """Show the result again with KataGo's findings about the best move, if the problem is still shown."""
+        if session is self.session:
+            self._show_result(session)
 
     def _on_point(self, _widget, point: tuple[int, int]) -> None:
         """Take a click on the board as the answer."""
@@ -307,6 +322,8 @@ class QuizScreen(BoxLayout):
         """Leave the screen: save the answers KataGo is still judging, and stop listening to the keys."""
         if self.quick_areas is not None:
             self.quick_areas.stop()
+        if self.best_value is not None:
+            self.best_value.stop()
         self.save_unfinished()
         Window.unbind(on_key_down=self._on_key_down)
 
@@ -348,6 +365,7 @@ class QuizScreen(BoxLayout):
         by_compare, compare_loss = session.showing_compare, session.compare_best_loss
         found = session.sequence_loss()
         sequence = (session.shown_move(found[0]), found[1]) if found is not None else None
+        tactics = _best_move_tactics(session)
         set_text(
             self.result_label,
             lambda: texts.result_text(
@@ -359,6 +377,8 @@ class QuizScreen(BoxLayout):
                 compare_best_loss=compare_loss,
                 sequence=sequence,
                 show_verdict=session.shows_verdict,
+                tactics=tactics,
+                value=self.best_value.value if self.best_value is not None else None,
             ),
         )
 
@@ -409,7 +429,7 @@ class QuizScreen(BoxLayout):
     def _update_buttons(self) -> None:
         """Make the buttons unusable while KataGo judges the answer, and usable again when the result is shown.
 
-        The next problem button waits until all calculations of this problem have finished.
+        The next problem button can always be used (until the quiz has ended).
 
         While KataGo is calculating (the result or a sequence), a timer shows the seconds every
         second, and checks again whether it has finished, so that the buttons come back even if
@@ -423,7 +443,7 @@ class QuizScreen(BoxLayout):
             # Only after the answer: the game shows the move that was played and the best move.
             self._open_game_button.disabled = ended or self.session.phase != ANSWERED
         calculating = self.calculating
-        self._next_button.disabled = calculating or ended
+        self._next_button.disabled = ended
         if calculating and self._busy_timer is None:
             self._busy_since = time.monotonic()
             self._busy_timer = Clock.schedule_interval(self._on_busy_timer, 1)
@@ -507,6 +527,19 @@ def _compare_marks(session: QuizSession) -> list[tuple[Move, str]]:
     if choice is None or choice.source != SOURCE_KATAGO_COMPARE or not shown:
         return []
     return [(shown[0], MARK_COMPARE), (shown[-1], MARK_COMPARE)]
+
+
+def _best_move_tactics(session: QuizSession) -> tuple[str, ...]:
+    """Return what the best move of the problem does on the board (see common.tactics; () if not known)."""
+    problem = session.problem
+    if problem.best_move is None:
+        return ()
+    try:
+        board = Board.from_position(problem.position)
+    except IllegalMoveError:
+        return ()
+    last = problem.position.moves[-1] if problem.position.moves else None
+    return tactics(board, problem.best_move, last)
 
 
 def _on_one_line(first: str, second: str) -> str:

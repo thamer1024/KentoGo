@@ -103,6 +103,7 @@ def result_to_dict(result: ExtractResult) -> dict:
         "problems": [problem_to_dict(problem) for problem in result.problems],
         "reason": result.reason,
         "move_losses": list(result.move_losses),
+        "punishments": [problem_to_dict(problem) for problem in result.punishments],
     }
 
 
@@ -110,4 +111,5 @@ def result_from_dict(values: dict) -> ExtractResult:
     """Make the result of one game from a dict made by result_to_dict."""
     problems = tuple(problem_from_dict(problem) for problem in values["problems"])
     losses = tuple(float(loss) for loss in values.get("move_losses", ()))
-    return ExtractResult(values["my_color"], problems, values["reason"], losses)
+    punishments = tuple(problem_from_dict(problem) for problem in values.get("punishments", ()))
+    return ExtractResult(values["my_color"], problems, values["reason"], losses, punishments)

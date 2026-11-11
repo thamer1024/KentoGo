@@ -384,16 +384,16 @@ class QuizSession:
     def choices(self) -> tuple[SequenceChoice, ...]:
         """All sequences to show after the answer, in the order that Tab goes through them.
 
-        KataGo's sequence after the answer, the sequences in the SGF file, KataGo's sequence
-        after the game move, and last the comparison model's sequence (another AI). KataGo's
-        sequences are there only when they are added, expected or offered.
+        KataGo's sequence after the answer, the sequences in the SGF file, the comparison model's
+        sequence (another AI), and last KataGo's sequence after the game move. KataGo's sequences
+        are there only when they are added, expected or offered.
         """
         sgf = tuple(SequenceChoice(variation.source, variation) for variation in self.problem.variations)
         return (
             *self._katago_choice(SOURCE_KATAGO_ANSWER),
             *sgf,
-            *self._katago_choice(SOURCE_KATAGO_ACTUAL),
             *self._katago_choice(SOURCE_KATAGO_COMPARE),
+            *self._katago_choice(SOURCE_KATAGO_ACTUAL),
         )
 
     def _katago_choice(self, source: str) -> tuple[SequenceChoice, ...]:

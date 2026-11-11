@@ -346,9 +346,28 @@ def test_punishment_chances_for_white_and_without_a_color():
 
 
 def test_punishment_chance_in_a_decided_position_is_marked():
+    """The position before the opponent's mistake tells whether the game was decided, not the one after it."""
     decided = {"root": {"winrate": 0.995, "scoreLead": 30.0}, "moves": {}}
-    text = game().replace(";W[dp]C[", f";W[dp]{kt_property(decided)}C[", 1)  # The position before black's move 3.
+    text = game().replace(";B[pd]C[", f";B[pd]{kt_property(decided)}C[", 1)  # The position before white's move 2.
     assert chances(text, 3.0, 5.0)[0].decided
+    after = game().replace(";W[dp]C[", f";W[dp]{kt_property(decided)}C[", 1)  # After white's mistake.
+    assert not chances(after, 3.0, 5.0)[0].decided
+
+
+def handicap_game(start_lead: float, lead: float) -> str:
+    """The small game with a handicap stone: black leads by start_lead at the start and by lead before move 7."""
+    start = {"root": {"winrate": 0.9, "scoreLead": start_lead}, "moves": {}}
+    before = {"root": {"winrate": 0.995, "scoreLead": lead}, "moves": {}}
+    text = game().replace(";W[pp]C[", f";W[pp]{kt_property(before)}C[", 1)
+    return text.replace("RU[japanese]", f"RU[japanese]AB[jj]{kt_property(start)}", 1)
+
+
+def test_a_handicap_game_is_decided_by_the_lead_gained_since_the_start():
+    """With handicap stones, the winrate is not used, and the lead counts from the lead at the start."""
+    open_game = extract(handicap_game(18.0, 45.0), problems_per_game=1)  # 27 points gained: not decided.
+    assert [p.move_number for p in open_game.problems] == [7]
+    decided = extract(handicap_game(0.0, 45.0), problems_per_game=1)  # 45 points gained: decided.
+    assert [p.move_number for p in decided.problems] == [3]
 
 
 def chance(number: int, best: str | None, opponent_best: str | None = "K10") -> PunishmentChance:
@@ -373,3 +392,29 @@ def test_problems_know_the_opponent_move_before_them():
     assert low.punishment == PUNISH
     first = next(p for p in extract(game()).problems if p.move_number == 7)  # After white's best move (no loss).
     assert (first.opponent_loss, first.punishment) == (None, "")
+
+
+def test_punishment_problems_beyond_the_problems_of_a_game_are_kept_apart():
+    """With one problem a game, move 7 (12 points) is the problem; the punishment problem 3 is kept apart."""
+    result = extract(game(), problems_per_game=1, punish_opponent_loss=4.0)
+    assert [p.move_number for p in result.problems] == [7]
+    assert [(p.move_number, p.punishment) for p in result.punishments] == [(3, PUNISH)]
+    assert extract(game(), punish_opponent_loss=4.0).punishments == ()  # Move 3 is a problem already.
+
+
+def left_again() -> str:
+    """The game, but white's move 4 is D17 (5 points lost, best D16): the same best move as at its move 2."""
+    text = game().replace(";W[dd]C[", ";W[dc]C[", 1)
+    return text.replace(
+        katrain_comment(4, "W", "D16", None, "D16", "WD16"), katrain_comment(4, "W", "D17", 5.0, "D16", "WD16")
+    )
+
+
+def test_the_same_point_left_again_is_no_punishment():
+    """Black's move 5 follows white's D17, but white's best move D16 was already its best at move 2."""
+    low = {"punish_opponent_loss": 3.0, "punish_my_loss": 1.0, "min_points_lost": 1.0}
+    problem = next(p for p in extract(left_again(), **low).problems if p.move_number == 5)
+    assert (problem.opponent_loss, problem.opponent_best, problem.punishment) == (5.0, "D16", "")
+    first = next(p for p in extract(left_again(), **low).problems if p.move_number == 3)
+    assert first.punishment == PUNISH  # The first time white left D16 counts.
+    assert [c.move_number for c in chances(left_again(), 3.0, 1.0)] == [3]

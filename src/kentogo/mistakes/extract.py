@@ -12,6 +12,16 @@ Problems are made from the moves of the real game (the main line). If the
 setting include_undone_moves is on, problems are also made from the moves
 that KaTrain took back automatically in a teaching game. These moves stay in
 the file as short branches next to the main line.
+
+A problem right after the opponent's big mistake is a punishment problem (see PunishmentChance),
+unless the opponent only left the same point again: when the opponent's best move was already its
+best move at its turn before, the loss was not made by this move. The punishment problems that are
+not among the problems of a game (it has only problems_per_game of them) are kept apart
+(ExtractResult.punishments), for the quiz that asks only punishment problems (see quiz.problem_kinds).
+
+Whether the game was already decided is read from the analysis data of the position before the move
+(before the opponent's mistake for a punishment problem). In a game with handicap stones, only the lead
+gained since the start counts, not the winrate (see common.handicap).
 """
 
 from __future__ import annotations
@@ -22,6 +32,7 @@ from dataclasses import dataclass, replace
 from pysgf import GoNode
 
 from kentogo.common import sgf
+from kentogo.common.handicap import from_start
 from kentogo.common.types import Move, Position, moves_from_gtp
 from kentogo.mistakes.problem import Problem, Variation, problem_id_of
 from kentogo.mistakes.selection import (
@@ -180,12 +191,15 @@ class ExtractResult:
         move_losses: The points lost by each of the user's moves of the main line whose loss is
             known, in the order played (also the moves that are not problems: they are counted
             in the report, see kentogo.report).
+        punishments: The punishment problems (PUNISH) that are not among the problems, in open positions,
+            in the order played: the quiz of punishment problems asks them too.
     """
 
     my_color: str | None
     problems: tuple[Problem, ...] = ()
     reason: str = ""
     move_losses: tuple[float, ...] = ()
+    punishments: tuple[Problem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -199,14 +213,16 @@ class _Game:
     # How a move and the candidates are evaluated from the analysis data: KaTrain's way, or KentoGo's (KGM).
     evaluate: Callable[[dict, dict, str, str], KtEvaluation | None] = evaluate_katrain_move
     candidate_losses: Callable[[dict, str], dict[str, float]] = candidate_losses
+    start_lead: float | None = None  # Black's score lead before the first move (for handicap games).
 
 
 def _game(root: GoNode, sgf_path: str, start: Position, my_color: str) -> _Game:
     """Return the information about the game, with the evaluation of the mode that analyzed it."""
     version = str(root.get_property("KTV", SUPPORTED_VERSION))
+    start_lead = _position_value(root, version)[1]
     if root.get_property(KENTOGO_MODE_PROPERTY, "") == KENTOGO_MODE:
-        return _Game(sgf_path, start, my_color, version, evaluate_played_move, relative_candidate_losses)
-    return _Game(sgf_path, start, my_color, version)
+        return _Game(sgf_path, start, my_color, version, evaluate_played_move, relative_candidate_losses, start_lead)
+    return _Game(sgf_path, start, my_color, version, start_lead=start_lead)
 
 
 def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, recorded_color: str = "") -> ExtractResult:
@@ -244,7 +260,19 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
             if made is not None and made[0].problem_id not in problems:
                 problems[made[0].problem_id] = made
     losses = _move_losses(main_line, game)
-    return ExtractResult(my_color, _choose(list(problems.values()), settings), move_losses=losses)
+    chosen = _choose(list(problems.values()), settings)
+    return ExtractResult(my_color, chosen, move_losses=losses, punishments=_other_punishments(problems, chosen))
+
+
+def _other_punishments(problems: dict[str, tuple[Problem, bool]], chosen: tuple[Problem, ...]) -> tuple[Problem, ...]:
+    """Return the punishment problems in open positions that were not chosen, in the order played."""
+    taken = {problem.problem_id for problem in chosen}
+    others = [
+        problem
+        for problem, decided in problems.values()
+        if problem.punishment == PUNISH and not decided and problem.problem_id not in taken
+    ]
+    return tuple(sorted(others, key=lambda problem: problem.move_number))
 
 
 def _my_color(root: GoNode, sgf_path: str, settings: ExtractSettings, recorded_color: str) -> str | None:
@@ -295,7 +323,8 @@ class PunishmentChance:
         my_loss: The points that the user's move lost (the chance it gave back).
         best_move: The best move in the position (the move that punishes), GTP, or None if unknown.
         opponent_best: The best move in the position before the opponent's mistake, GTP, or None if unknown.
-        decided: The position was decided (the same rule as the problems, see mistakes.selection).
+        decided: The position before the opponent's mistake was decided (the same rule as the problems, see
+            mistakes.selection; the mistake itself makes the lead bigger, so the position after it is not used).
     """
 
     move_number: int
@@ -374,7 +403,9 @@ def _chance(game: _Game, previous: GoNode, node: GoNode, settings: ExtractSettin
     their_info, my_info = _evaluated(previous, theirs, game), _evaluated(node, mine, game)
     if their_info is None or my_info is None or their_info.points_lost is None or my_info.points_lost is None:
         return None
-    decided = Selection.from_quiz(settings).is_decided(*_position_value(previous, game.kt_version))
+    if _left_again(previous, their_info.best_move, game):
+        return None
+    decided = _is_decided(previous.parent, game, settings)  # Before the opponent's mistake.
     return PunishmentChance(
         node.depth,
         theirs,
@@ -467,10 +498,12 @@ def _make_problem_from_node(
     position = Position(start.size, start.komi, start.rules, start.setup, before, move.color)
     problem = _make_problem(position, game.sgf_path, number, move, info, notes)
     losses = _candidate_losses(node.parent, move.color, game)
-    winrate, lead = _position_value(node.parent, game.kt_version)
-    decided = Selection.from_quiz(settings).is_decided(winrate, lead)
     problem = replace(problem, candidate_losses=losses, ai_comment=ai.move_text)
-    return _with_opponent_move(problem, node, game, settings), decided
+    problem = _with_opponent_move(problem, node, game, settings)
+    # A punishment problem is decided by the position before the opponent's mistake, as the mistake itself
+    # makes the lead much bigger.
+    before = node.parent.parent if problem.punishment and node.parent is not None else node.parent
+    return problem, _is_decided(before, game, settings)
 
 
 def _with_opponent_move(problem: Problem, node: GoNode, game: _Game, settings: ExtractSettings) -> Problem:
@@ -484,8 +517,23 @@ def _with_opponent_move(problem: Problem, node: GoNode, game: _Game, settings: E
         return problem
     best = problem.best_move.gtp() if problem.best_move is not None else None
     big = info.points_lost >= settings.punish_opponent_loss and problem.points_lost >= settings.punish_my_loss
-    kind = punishment_kind(best, info.best_move) if big else ""
+    kind = punishment_kind(best, info.best_move) if big and not _left_again(previous, info.best_move, game) else ""
     return replace(problem, opponent_loss=info.points_lost, opponent_best=info.best_move, punishment=kind)
+
+
+def _left_again(node: GoNode, best_move: str | None, game: _Game) -> bool:
+    """True if the opponent's best move before its move at a node was already its best move at its turn before.
+
+    The opponent then only left the same point again: the loss of its move was not made by that move.
+    """
+    if best_move is None or node.parent is None or node.parent.parent is None:
+        return False
+    before = node.parent.parent
+    move = sgf.node_move(before)
+    if move is None or move.color == game.my_color:
+        return False
+    info = _evaluated(before, move, game)
+    return info is not None and info.best_move == best_move
 
 
 def punishment_kind(best_move: str | None, opponent_best: str | None) -> str:
@@ -549,6 +597,17 @@ def _with_analysis_data(info: KatrainMoveInfo | None, node: GoNode, move: Move, 
 def _empty_info(move: Move) -> KatrainMoveInfo:
     """Return an evaluation of a move with nothing known yet (for a move with analysis data but no comment)."""
     return KatrainMoveInfo("", 0, move.color, move.gtp(), None, None, None, (), False)
+
+
+def _is_decided(parent: GoNode | None, game: _Game, settings: ExtractSettings) -> bool:
+    """True if the game was already decided before a move (from the analysis data of the node before it).
+
+    In a game with handicap stones, only the lead gained since the start counts (see common.handicap).
+    """
+    winrate, lead = _position_value(parent, game.kt_version)
+    if game.start.setup:
+        winrate, lead = from_start(winrate, lead, game.start_lead)
+    return Selection.from_quiz(settings).is_decided(winrate, lead)
 
 
 def _position_value(parent: GoNode | None, version: str) -> tuple[float | None, float | None]:

@@ -86,3 +86,18 @@ def test_a_query_is_terminated_by_the_engine_that_can():
     TimedEngine(engine, running).terminate("main1")
     TimedEngine(StoppedEngine(), running).terminate("x")
     assert engine.terminated == ["main1"]
+
+
+def test_all_queries_are_terminated_by_the_engine_that_can():
+    """terminate_all goes to KataGo; an engine without it does nothing."""
+
+    class Stopping(HeldEngine):
+        stopped = 0
+
+        def terminate_all(self):
+            self.stopped += 1
+
+    engine = Stopping("main", [])
+    TimedEngine(engine, RunningQueries()).terminate_all()
+    TimedEngine(StoppedEngine(), RunningQueries()).terminate_all()
+    assert engine.stopped == 1

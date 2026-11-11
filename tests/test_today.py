@@ -395,3 +395,16 @@ def test_the_stage_counts_only_the_problems_of_the_kind(tmp_path):
         games, AppSettings(quiz=QuizSettings(extract=stages, problem_kind="punish")), history, random.Random(0)
     )
     assert (every.stage.left, only.stage.left) == (2, 1)
+
+
+def test_punishment_problems_beyond_the_problems_of_a_game_are_asked_only_in_their_kind(tmp_path):
+    """With no problems a game, the punishment problem is asked only when only punishment problems are asked."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_after_white_mistake(20.0), encoding="utf-8")
+    history = open_history(tmp_path / "settings.json")
+    none = ExtractSettings(problems_per_game=0)
+    every = prepare_problems(games, AppSettings(quiz=QuizSettings(extract=none)), history, random.Random(0))
+    settings = AppSettings(quiz=QuizSettings(extract=none, problem_kind="punish"))
+    only = prepare_problems(games, settings, history, random.Random(0))
+    assert every.problems == [] and [problem.punishment for problem in only.problems] == ["punish"]

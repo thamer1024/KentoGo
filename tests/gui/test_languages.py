@@ -25,6 +25,7 @@ from kentogo.gui.theme import flag_image
 
 MARKUP = re.compile(r"\[/?[a-z]+(?:=[^\]]*)?\]")
 TRANSLATED = [code for code in LANGUAGES if code != SOURCE_LANGUAGE]
+OTHERS = [code for code in TRANSLATED if code != DEFAULT_LANGUAGE]  # Translated only when asked.
 
 
 @pytest.fixture(autouse=True)
@@ -44,13 +45,28 @@ def _placeholders(value: str) -> list[str]:
 
 @pytest.mark.parametrize("code", TRANSLATED)
 def test_every_language_file_matches_the_japanese_texts(code):
-    """Each file has the same keys as TEXTS, every text is filled, and has the same {values} and markup."""
+    """Each text of a file is a key of TEXTS, is filled, and has the same {values} and markup."""
     own = json.loads((LOCALES_FOLDER / f"{code}.json").read_text(encoding="utf-8"))
-    assert set(own) == set(TEXTS)
+    assert set(own) <= set(TEXTS)
     for key, value in own.items():
         assert value, f"{code}: {key} is empty"
         assert _placeholders(value) == _placeholders(TEXTS[key]), f"{code}: {key}"
         assert sorted(MARKUP.findall(value)) == sorted(MARKUP.findall(TEXTS[key])), f"{code}: {key}"
+
+
+def test_english_has_every_text():
+    """English has every text of TEXTS (a new text is written in Japanese and English)."""
+    english = json.loads((LOCALES_FOLDER / "en.json").read_text(encoding="utf-8"))
+    assert set(english) == set(TEXTS)
+
+
+@pytest.mark.parametrize("code", OTHERS)
+def test_a_text_not_translated_yet_is_shown_in_english(code):
+    """A text that a language does not have yet is the English one."""
+    english = json.loads((LOCALES_FOLDER / "en.json").read_text(encoding="utf-8"))
+    own = json.loads((LOCALES_FOLDER / f"{code}.json").read_text(encoding="utf-8"))
+    loaded = load_texts(code)
+    assert all(loaded[key] == english[key] for key in set(TEXTS) - set(own))
 
 
 def test_english_is_used_until_another_language_is_chosen():

@@ -6,7 +6,8 @@ as the quiz makes problems from one game (see Selection):
 1. Moves that lost at least the smallest loss of the quiz, played while the game was still
    open: not when, before the move, one side's winrate was at least the decided winrate, or
    the score lead was more than the decided lead (settings of the quiz; from KaTrain's
-   analysis data, and a move without it counts as open). Of the moves with the same best move, only the one that lost the most
+   analysis data, and a move without it counts as open; in a game with handicap stones, the
+   lead gained since the start, see common.handicap). Of the moves with the same best move, only the one that lost the most
    is chosen, so that the AI does not explain the same point again and again. The biggest
    losses first.
 2. If there are not enough, the other moves (in decided positions, with a best move already

@@ -48,6 +48,7 @@ def test_result_comes_back_the_same_through_json():
         ExtractResult("W", (PROBLEM,)),
         ExtractResult(None, (), "unknown_color"),
         ExtractResult("B", (PROBLEM,), move_losses=(12.5, 3.0, 0.4)),
+        ExtractResult("W", (), punishments=(replace(PROBLEM, punishment="punish"),)),
     )
     for result in results:
         text = json.dumps(result_to_dict(result), ensure_ascii=False)

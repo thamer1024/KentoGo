@@ -22,7 +22,7 @@ from pathlib import Path
 from kentogo.mistakes.extract import ExtractResult, ExtractSettings
 from kentogo.quiz.problem_json import result_from_dict, result_to_dict
 
-CACHE_VERSION = 9  # 2: games without analysis are reported. 3: candidate losses from KT.
+CACHE_VERSION = 11  # 2: games without analysis are reported. 3: candidate losses from KT.
 # 4: the user's color is also found from the ranks and the file name.
 # 5: the AI commentary is kept apart from the user's notes.
 # (The cache key also changed with version 5: the recorded color is part of it.)
@@ -30,6 +30,8 @@ CACHE_VERSION = 9  # 2: games without analysis are reported. 3: candidate losses
 # 7: the loss, the best move and its sequence come from KaTrain's analysis data (KT) when there is some.
 # 8: the loss of each of the user's moves is kept too (for the report).
 # 9: the opponent's move before each problem and the kind of punishment problem are kept.
+# 10: the punishment problems beyond the problems of a game are kept; the same point left again is no punishment.
+# 11: a handicap game is decided by the lead gained since the start; a punishment problem by the position before.
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS files (
