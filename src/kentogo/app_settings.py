@@ -14,7 +14,7 @@ settings of the AI commentary, and the "analysis" part holds the settings of the
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.commentary.commentary_settings import CommentarySettings
@@ -70,3 +70,12 @@ class AppSettings:
             CommentarySettings.from_dict(sections.get("commentary", {})),
             AnalysisSettings.from_dict(sections.get("analysis", {})),
         )
+
+
+def without_offer_answers(settings: AppSettings) -> AppSettings:
+    """Return the settings as if no offer had been answered (see QuizSettings.ratio_asked_at and limit_asked_at).
+
+    Used when the history is cleared: the answers are counted again from 0, so the offers come again after
+    offer_window new answers. The pass ratio and the limit that the user chose are kept.
+    """
+    return replace(settings, quiz=replace(settings.quiz, ratio_asked_at=0, limit_asked_at=0))

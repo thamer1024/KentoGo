@@ -150,6 +150,10 @@ them KentoGo analyzed.
 The settings, the history of answers and the results of the counting practice are kept in
 `~/.kentogo` (on Windows, `C:\Users\<name>\.kentogo`). The programs have no console: their
 messages are written to `~/.kentogo/kentogo.log`.
+The button "Clear the learning history" on the review settings screen clears the history of answers
+after copying it to `~/.kentogo/backups/history-<date>-<time>.sqlite3` (put it back in place of
+`~/.kentogo/history.sqlite3` to undo). When the territory counting practice is on, a second button clears its
+results in the same way (`seichi_history.sqlite3`). The history of the AI commentary is kept.
 How long the analysis of each game took, step by step, is written as one line of JSON per game to
 `~/.kentogo/analysis_timing.jsonl`, and to the console after `KENTOGO_ANALYSIS_TIMING `.
 

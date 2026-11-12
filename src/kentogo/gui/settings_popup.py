@@ -51,7 +51,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from kentogo.app_settings import AppSettings
+from kentogo.app_settings import AppSettings, without_offer_answers
 from kentogo.gui import texts, theme
 from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
@@ -132,6 +132,8 @@ class SettingsPopup(Popup):
         save: Callable[[AppSettings], None],
         exclude_all: Callable[[QuizSettings], int] | None = None,
         include_all: Callable[[], None] | None = None,
+        clear_answers: Callable[[], Path] | None = None,
+        clear_seichi: Callable[[], Path] | None = None,
         page: str = PAGE_GENERAL,
         edit_prompt: Callable[[], Path] | None = None,
         measure: Callable[[], MeasuredSpeed] | None = None,
@@ -147,6 +149,12 @@ class SettingsPopup(Popup):
                 It runs in a background thread. If None, there is no button for it.
             include_all: Starts all problems again. It runs in a background thread.
                 If None, there is no button for it.
+            clear_answers: Clears the history of answers after a backup, forgets when the offers were answered
+                (in the settings file), and returns the path of the backup. It runs in a background thread.
+                If None, there is no button for it.
+            clear_seichi: Clears the results of the territory counting practice after a backup, and returns the
+                path of the backup. It runs in a background thread. Its button is shown only when the practice
+                is on the top screen (SeichiSettings.use_seichi); if None, there is none.
             page: Which settings to show, one of settings_form.PAGES.
             edit_prompt: Makes the user's prompt file of the AI commentary if needed, opens it,
                 and returns its path. It may raise OSError. If None, there is no button for it.
@@ -167,6 +175,8 @@ class SettingsPopup(Popup):
         self._save = save
         self._exclude_all = exclude_all
         self._include_all = include_all
+        self._clear_answers = clear_answers
+        self._clear_seichi = clear_seichi
         self._edit_prompt = edit_prompt
         self._measure = measure
         self.inputs: dict[str, object] = {}
@@ -200,6 +210,7 @@ class SettingsPopup(Popup):
             body.add_widget(self._settings_box(GROUP_REVIEW))
             if self._exclude_all is not None and self._include_all is not None:
                 body.add_widget(self._review_actions())
+            body.add_widget(self._clear_row())
         scroll = ScrollView()
         scroll.add_widget(body)
 
@@ -247,13 +258,17 @@ class SettingsPopup(Popup):
             )
 
     def _add_presets_page(self, body: GridLayout) -> None:
-        """Add the widgets of the recommended settings: an explanation, then a row for each kind of computer."""
+        """Add the widgets of the recommended settings: an explanation, a row for each kind of computer, and a note
+        on the models for a Mac (measured on a base M5)."""
         body.add_widget(_header(texts.text("page_presets"), halign="left"))
         hint = fitting_label(dp(60))
         hint.text = texts.text("presets_hint")
         body.add_widget(hint)
         for preset in PRESETS:
             body.add_widget(_choice_row(_preset_text(preset), texts.text("preset_apply"), self._asker(preset)))
+        mac_note = fitting_label(dp(40))  # Under the Macs, which come last: the models that suit a Mac.
+        mac_note.text = texts.text("presets_mac_note")
+        body.add_widget(mac_note)
         if self._measure is not None:
             measure = f"[b]{texts.text('preset_measure')}[/b]\n{texts.text('preset_measure_note')}"
             body.add_widget(_choice_row(measure, texts.text("preset_measure_button"), self.measure_speed))
@@ -501,6 +516,41 @@ class SettingsPopup(Popup):
 
         question = texts.text("include_question")
         confirm(question, lambda: self._run_in_background(run), self._cancelled, texts.text("yes_run"))
+
+    def _clear_row(self) -> BoxLayout:
+        """Make the row with the buttons that clear the histories (the practice's only when it is on the top screen)."""
+        row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(SPACING))
+        if self._clear_answers is not None:
+            row.add_widget(flat_button(texts.text("clear_history"), self.clear_answers))
+        if self._clear_seichi is not None and self.settings.seichi.use_seichi:
+            row.add_widget(flat_button(texts.text("clear_seichi"), self.clear_seichi))
+        return row
+
+    def clear_answers(self) -> None:
+        """After asking, clear the history of answers (a dated backup is kept, see kentogo.clear_history)."""
+
+        def run() -> str:
+            """Clear it, and return the message that tells where the backup is."""
+            backup = self._clear_answers()
+            # The offers were forgotten in the file; saving this screen later must not bring them back.
+            self.settings = without_offer_answers(self.settings)
+            return texts.text("cleared_done", path=backup)
+
+        self._ask_to_clear(texts.text("clear_question"), run)
+
+    def clear_seichi(self) -> None:
+        """After asking, clear the results of the territory counting practice (a dated backup is kept)."""
+
+        def run() -> str:
+            """Clear them, and return the message that tells where the backup is."""
+            return texts.text("cleared_seichi_done", path=self._clear_seichi())
+
+        self._ask_to_clear(texts.text("clear_seichi_question"), run)
+
+    def _ask_to_clear(self, question: str, clear: Callable[[], str]) -> None:
+        """Ask with the buttons "yes" and "no", and on yes run clear in the background (its message is shown)."""
+        no = texts.text("no_cancel")
+        confirm(question, lambda: self._run_in_background(clear), self._cancelled, texts.text("yes"), no)
 
     def _run_in_background(self, action: Callable[[], str]) -> None:
         """Run an action that may take long in a background thread, and show its message when it is done.

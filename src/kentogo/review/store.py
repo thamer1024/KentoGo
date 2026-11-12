@@ -15,6 +15,9 @@ The database has these tables:
   Version 2 added exclusions and resets, and version 3 added problems; an older
   file gets the new tables when it is opened.
 
+The whole history can be copied to a backup file and then cleared (see
+kentogo.clear_history).
+
 An answer is saved once, when its result is known: at once when its loss is in
 the SGF file, or when KataGo has calculated it, or when it cannot be judged.
 Each answer is written to the file at once (committed), so it is kept even if
@@ -58,6 +61,9 @@ CREATE TABLE IF NOT EXISTS exclusions (problem_id TEXT PRIMARY KEY, excluded_at 
 CREATE TABLE IF NOT EXISTS resets (reset_at TEXT NOT NULL, last_record_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS problems (problem_id TEXT PRIMARY KEY, data TEXT NOT NULL);
 """
+
+# The tables emptied when the history is cleared (see ReviewStore.clear); schema_version is kept.
+_CLEARED_TABLES = ("answers", "exclusions", "resets", "problems")
 
 # The columns of the answers table, in the order of AnswerRecord (without record_id).
 _COLUMNS = (
@@ -215,6 +221,27 @@ class ReviewStore:
         instead of the time, because it never goes back (the clock of a computer can).
         """
         return self._connection.execute("SELECT COALESCE(MAX(last_record_id), 0) FROM resets").fetchone()[0]
+
+    def backup(self, path: Path) -> None:
+        """Copy the whole database to another file, with SQLite's own backup (its folder is made if needed).
+
+        A file that is already there is overwritten.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        target = sqlite3.connect(str(path))
+        try:
+            self._connection.backup(target)
+        finally:
+            target.close()
+
+    def clear(self) -> None:
+        """Remove all answers, set-aside problems, resets and copies of problems (written at once).
+
+        The tables stay, so the database is as a new one (the record_ids are not used again).
+        """
+        with self._connection:
+            for table in _CLEARED_TABLES:
+                self._connection.execute(f"DELETE FROM {table}")
 
     def close(self) -> None:
         """Close the database."""

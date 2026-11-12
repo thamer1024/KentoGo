@@ -135,3 +135,24 @@ def test_problem_copies():
     store.add_answer(RECORD, '{"new": 2}')
     store.add_answer(replace(RECORD, problem_id="p2"))  # No copy.
     assert store.problem_data(["p1", "p2", "p3"]) == {"p1": '{"new": 2}'}
+
+
+def test_backup_then_clear(tmp_path):
+    """The backup keeps everything; clearing leaves an empty history that still works."""
+    store = ReviewStore(tmp_path / "history.sqlite3")
+    store.add_answer(RECORD, '{"copy": 1}')
+    store.exclude(["p2"], "2026-10-20T10:00:00+09:00")
+    store.reset("2026-10-21T10:00:00+09:00")
+    backup = tmp_path / "backups" / "history-1.sqlite3"
+    store.backup(backup)
+    store.clear()
+    assert store.answers("p1") == [] and store.exclusions() == set() and store.last_reset() == 0
+    assert store.problem_data(["p1"]) == {}
+    store.add_answer(RECORD)  # Still usable after clearing.
+    assert len(store.answers("p1")) == 1
+    store.close()
+
+    kept = ReviewStore(backup)
+    assert len(kept.answers("p1")) == 1 and kept.problem_data(["p1"]) == {"p1": '{"copy": 1}'}
+    assert kept.last_reset() > 0
+    kept.close()

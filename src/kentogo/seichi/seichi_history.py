@@ -6,7 +6,8 @@ asked again, in the same way as the answers of the quiz (see repetition.schedule
 is known by the name of its SGF file.
 
 Using the database must not stop the practice: when it cannot be read or written,
-the error is kept in last_error (and printed), and the practice goes on.
+the error is kept in last_error (and printed), and the practice goes on. Only backup and
+clear raise their errors, because the user asked for them (see kentogo.clear_history).
 """
 
 from __future__ import annotations
@@ -101,6 +102,30 @@ class SeichiHistory:
         for problem_id, answered_at, sgf_path, correct in rows:
             results.setdefault(problem_id, []).append(SeichiRecord(problem_id, answered_at, sgf_path, bool(correct)))
         return results
+
+    def backup(self, path: Path) -> None:
+        """Copy the whole database to another file, with SQLite's own backup (its folder is made if needed).
+
+        A file that is already there is overwritten.
+
+        Raises:
+            sqlite3.Error, OSError: If it cannot be copied.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        target = sqlite3.connect(str(path))
+        try:
+            self._connection.backup(target)
+        finally:
+            target.close()
+
+    def clear(self) -> None:
+        """Remove all results (written at once). The table stays, so the database is as a new one.
+
+        Raises:
+            sqlite3.Error: If it cannot be written.
+        """
+        with self._connection:
+            self._connection.execute("DELETE FROM results")
 
     def close(self) -> None:
         """Close the database."""

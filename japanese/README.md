@@ -136,6 +136,9 @@ uv run kentogo --test-quiz punish   # 相手の大きなミスを咎められな
 
 設定、回答の履歴、整地練習の結果は `~/.kentogo`（Windows では `C:\Users\<名前>\.kentogo`）に保存します。
 プログラム版にはコンソールがないため、メッセージは `~/.kentogo/kentogo.log` に書き出します。
+復習設定の「学習履歴を消す」ボタンは、回答の履歴を `~/.kentogo/backups/history-<日付>-<時刻>.sqlite3` に
+写してから消します（元に戻すには、これを `~/.kentogo/history.sqlite3` と置き換えます）。整地練習を使う設定のときは、
+整地練習の結果（`seichi_history.sqlite3`）を同じように消すボタンも出ます。AI 解説の履歴は残ります。
 KataGoで棋譜解析に1局ずつどれだけ時間がかかったか（手順ごと）は、1局を1行の JSON にして
 `~/.kentogo/analysis_timing.jsonl` に追記し、コンソールにも `KENTOGO_ANALYSIS_TIMING ` に続けて出します。
 

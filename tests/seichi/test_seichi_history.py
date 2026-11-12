@@ -24,3 +24,18 @@ def test_open_next_to_the_settings(tmp_path):
     history, problem = open_seichi_history(tmp_path / "settings.json")
     assert history is not None and problem == "" and history.path.parent == tmp_path
     history.close()
+
+
+def test_backup_then_clear(tmp_path):
+    """The backup keeps the results; clearing leaves an empty history that still works."""
+    history = SeichiHistory(tmp_path / "s.sqlite3")
+    history.save("a.sgf", "/games/a.sgf", True)
+    history.backup(tmp_path / "backups" / "s-1.sqlite3")
+    history.clear()
+    assert history.all_results() == {}
+    history.save("b.sgf", "/games/b.sgf", False)
+    assert list(history.all_results()) == ["b.sgf"]
+    history.close()
+    kept = SeichiHistory(tmp_path / "backups" / "s-1.sqlite3")
+    assert list(kept.all_results()) == ["a.sgf"]
+    kept.close()

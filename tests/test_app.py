@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from kentogo.app import (
+    _clear_answers,
     _make_setup,
     _settings_or_defaults,
     _SetupParts,
@@ -168,3 +169,16 @@ def test_setup_follows_the_settings_it_is_made_from(tmp_path):
     assert setup.use_seichi and setup.seichi.step_seconds == 0.7
     off = _make_setup(replace(parts, settings=settings), lambda _saved: None)
     assert not off.use_seichi
+
+
+def test_clearing_the_history_forgets_the_offers(tmp_path):
+    """After clearing, the offers are asked again from 0 answers; the chosen pass ratio and limit are kept."""
+    path = tmp_path / "settings.json"
+    quiz = replace(QuizSettings(), ratio_asked_at=60, limit_asked_at=90)
+    quiz = replace(quiz, scoring=replace(quiz.scoring, pass_ratio=0.7, max_answer_loss=8.0))
+    save_settings(path, AppSettings(quiz=quiz))
+    backup = _clear_answers(path, AppSettings())
+    assert backup.is_file() and backup.parent == tmp_path / "backups"
+    saved = load_settings(path).quiz
+    assert (saved.ratio_asked_at, saved.limit_asked_at) == (0, 0)
+    assert (saved.scoring.pass_ratio, saved.scoring.max_answer_loss) == (0.7, 8.0)

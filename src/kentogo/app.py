@@ -48,11 +48,12 @@ import random
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from kentogo.analysis_run import list_games, run_analysis
-from kentogo.app_settings import AppSettings
+from kentogo.app_settings import AppSettings, without_offer_answers
+from kentogo.clear_history import clear_answers, clear_seichi_results
 from kentogo.commentary.prompt_text import create_user_prompt_file
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines, engines_for, measure_katago_speed
@@ -203,6 +204,20 @@ def _exclude_all(settings_path: Path, folder_argument: Path | None, quiz: QuizSe
         return exclude_all_problems(settings_path, folder_argument, quiz)
     except NoGamesFolderError as error:
         raise ValueError(texts.notice_text(error.notice)) from error
+
+
+def _clear_answers(settings_path: Path, started_with: AppSettings) -> Path:
+    """Clear the history of answers after a backup (see clear_history), and forget when the offers were answered.
+
+    Without the second step, the offers would not come again until there are as many new answers as
+    there were before (see app_settings.without_offer_answers).
+
+    Returns:
+        The path of the backup.
+    """
+    backup = clear_answers(settings_path, datetime.now())
+    save_settings(settings_path, without_offer_answers(_current_settings(settings_path, started_with)))
+    return backup
 
 
 class _SeichiHistoryOpener:
@@ -436,6 +451,8 @@ def _settings_opener(
             save,
             exclude_all=lambda q: _exclude_all(arguments.settings, arguments.folder, q),
             include_all=lambda: include_all_problems(arguments.settings),
+            clear_answers=lambda: _clear_answers(arguments.settings, settings),
+            clear_seichi=lambda: clear_seichi_results(arguments.settings, datetime.now()),
             page=page,
             edit_prompt=lambda: _open_prompt_file(arguments.settings),
             measure=lambda: measure_katago_speed(
