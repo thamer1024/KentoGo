@@ -1,5 +1,3 @@
-> [!CAUTION]
-> The source code in this repository is currently under heavy development, requires CUDA libraries, and results in a large executable build. We strongly recommend downloading the pre-compiled **[Release v0.1.0]([https://github.com/<username>/<repo>/releases/tag/v0.1.0](https://github.com/thamer1024/KentoGo/releases/tag/v0.1.0))** instead.
 <p align="center">
   <img src="src/kentogo/images/app_icon.png" width="96" alt="KentoGo">
 </p>
@@ -17,26 +15,30 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/thamer1024/KentoGo" alt="MIT License"></a>
 </p>
 
-KentoGo picks the moves where you lost the most points in your KaTrain games and asks them again
-as problems, until you find a better move. It also has counting practice from the final positions
-of your games, a game viewer with KataGo's best lines, and optional AI commentary on your games.
-Free and open source, for Windows and macOS; it uses the KataGo you set up in KaTrain.
+KentoGo picks the moves where you lost the most points in your games and asks them again as
+problems, until you find a better move. The games can be analyzed in KaTrain, or by KentoGo itself
+with KataGo. It also has counting practice from the final positions of your games, a game viewer
+with KataGo's best lines, and optional AI commentary on your games. Free and open source, for
+Windows and macOS; it uses the KataGo you set up in KaTrain.
 
 <p align="center"><img src="screenshots/quiz.gif" width="720" alt="Solving a problem made from your own game"></p>
 
 ## What it does
 
 - **Mistake problems.** The moves where you lost the most points become problems. Play your
-  answer on the board, and KataGo judges it. The problems come back along a forgetting curve: a
-  problem you miss is asked again the next day, and each correct answer makes the wait longer
-  (3, 7, 14… days). A problem is finished after a set number of correct answers in a row (a small
-  number, 2, at first; raise it in the settings for more reviews), and a wrong answer starts the
-  count again.
-- **Counting practice.** Count the final position of your own games: remove the dead stones, fill
-  in the prisoners and tidy the territories, then check your count. KentoGo can also show how
-  the territories are tidied (as a reference: even when the count is right, a step can be wrong or unnatural).
-- **Game viewer.** Replay your games with the move KaTrain chose, and the territory and the score
-  at the end of each line.
+  answer on the board, and KataGo judges it (see "Judging the answers" below). The problems come
+  back along a forgetting curve: a problem you miss is asked again the next day, and each correct
+  answer makes the wait longer (3, 7, 14… days). A problem is finished after a set number of
+  correct answers in a row (a small number, 2, at first; raise it in the settings for more
+  reviews), and a wrong answer starts the count again.
+- **Game analysis with KataGo.** KentoGo can analyze your games itself, about two minutes a game,
+  and write into the SGF files only what the problems need (see "Analyzing games in KentoGo").
+- **Counting practice (turn it on in the settings).** Count the final position of your own games:
+  remove the dead stones, fill in the prisoners and tidy the territories, then check your count.
+  KentoGo can also show how the territories are tidied (as a reference: even when the count is
+  right, a step can be wrong or unnatural).
+- **Game viewer.** Replay your games with the best line of the analysis (KentoGo's, or KaTrain's),
+  and the territory and the score at the end of each line.
 - **AI commentary (optional).** An AI such as ChatGPT, Claude, Gemini or DeepSeek can explain in
   words, not only in numbers, how your move differs from the move KaTrain chose: what each move
   aims at, and why one is better. Copy the prompt that KentoGo makes into the chat of any AI and
@@ -66,7 +68,11 @@ open it with the right click > "Open", or run `xattr -dr com.apple.quarantine Ke
 
 ## Getting started
 
-1. Set up KaTrain and its KataGo, and analyze some of your games in KaTrain.
+1. Set up KaTrain and its KataGo. Analyze some of your games in KaTrain, or let KentoGo analyze
+   them (see "Analyzing games in KentoGo" below). A kyu player who uses the games only in KentoGo
+   should analyze them in KentoGo rather than in KaTrain: KentoGo reads deeply only the moves that
+   can become problems, so the SGF files stay small. A dan player who studies the games more deeply
+   should analyze them in KaTrain.
 2. Start KentoGo. At the first start it copies KaTrain's engine settings from
    `~/.katrain/config.json`. When those settings point inside the KaTrain program (paths that
    start with `katrain/`, as in KaTrain's default settings on Windows), KentoGo looks for
@@ -77,10 +83,12 @@ open it with the right click > "Open", or run `xattr -dr com.apple.quarantine Ke
    `~/.kentogo/games` until another folder is chosen; KentoGo run from the source uses its
    `games` folder (SGF files are never added to git).
 
+How to use each screen, and what each setting means, is in the [user guide](USER_GUIDE.md).
+
 ### Preparing your games in KaTrain
 
-KentoGo makes its problems from what KaTrain saves in the SGF files, so a little care in KaTrain
-gives better problems:
+For a game analyzed in KaTrain, KentoGo makes its problems from what KaTrain saves in the SGF file,
+so a little care in KaTrain gives better problems:
 
 1. In KaTrain's "Teaching/Analysis Settings", check "Save in SGF" for the kinds of mistakes that
    suit your level, and check "Cache analysis in SGF".
@@ -88,16 +96,72 @@ gives better problems:
    computer handles comfortably ("Limit analysis to mistakes only" is fine too), and then save the
    SGF file. KaTrain's best sequences are then saved more accurately.
 
+### Analyzing games in KentoGo
+
+Press "Analyze games with KataGo" on the top screen. The games of the games folder are listed; the
+games not analyzed yet (and the files that cannot be read) are checked at first, and the games
+already analyzed by KentoGo are listed only when you ask for them. Every checked game is analyzed,
+also one analyzed by KaTrain before. A run can be stopped; it stops after the game being analyzed.
+
+A game is analyzed in three steps, about two minutes a game with the recommended settings:
+
+1. Every position is read shallowly ("Visits of the fast analysis", never fewer than 50).
+2. The moves played are read, to find the moves that lost points.
+3. The moves that can become problems (a shallow loss of at least half of the problem threshold)
+   are read deeply ("Visits of the moves read deeply"; at most "Most moves read deeply per game",
+   the biggest losses first). Only the moves that lose enough in this deep reading become problems.
+
+Each file is copied to the `backup` folder in the games folder (with the time in its name) before
+it is written. KentoGo writes its own analysis data (`KGA`) into the SGF file, with only what the
+problems need; KaTrain's own analysis data (`KT`), your notes and the AI commentary are kept. The
+visits are set under ☰ > "KataGo game analysis (written into the SGF)".
+
 ### KataGo in KentoGo
 
 How long KataGo takes depends much on the computer. The numbers of visits can be changed on the
 settings screen, or chosen for your kind of computer under ☰ > "Recommended settings" (from an old
-processor without a GPU to a high-end GPU).
+processor without a GPU to a high-end GPU). "Measure" at the bottom of that screen measures
+KataGo's speed with the model you use, and sets the visits from it: press it again after changing
+the model.
+
+The models whose names start with tf3 (the newest kind) are fast only on an NVIDIA RTX with the CUDA
+or TensorRT version of KataGo. Elsewhere (the KataGo that comes with KaTrain, GTX, Radeon or built-in
+GPUs, computers without a GPU, Macs), a b28c512nbt or b18c384nbt model is recommended. On a base M5
+Mac, a tf3 model read about 170 visits a second, b28 about 420 and b18 about 960.
 
 KataGo is started with KentoGo, as in KaTrain, and runs until KentoGo is closed. A dialog shows
 which model is loading and, from the second start on, about how long it will still take (the
 loading times are kept in `~/.kentogo/katago_start_times.json`). You can close the dialog and go
 on; a question to KataGo then waits until it is ready.
+
+### Judging the answers
+
+The loss of your answer is compared with the loss of the move played in the game. The values are set
+under ☰ > "Problem and Judging Settings":
+
+- In a small problem (the game move lost less than "Limit of a small problem", 3 points at first),
+  the answer is correct if it does not lose more than the game move.
+- In the other problems, the answer is correct if it wins back at least the "Passing line" (0.6 at
+  first: 60% of the loss), and, when it is set, loses at most "Most points a correct answer may
+  lose" (0 at first: no limit). With the values at first, an answer that loses 8 points in a
+  problem of 20 points is correct.
+- An answer that loses at most the "Tolerance" (1 point at first) is always correct.
+
+The losses are judged as they are shown, rounded to 0.1 points, and the share won back in whole
+percent as it is shown.
+
+As you get stronger, KentoGo offers to make the rule stricter (or easier), from your latest answers
+to the normal problems ("Number of latest problems for the offers", 30 at first):
+
+- The passing line is raised by 0.1 (up to 0.9) when your answers win back 5% more than the next
+  line on average, and lowered by 0.1 (down to 0.5) when they win back 10% less than the line.
+- A limit on the loss of a correct answer is offered, one step at a time (no limit, then 12, 8, 5
+  and 3 points: "Steps of the most points a correct answer may lose"), when at least a third of
+  the answers are correct, their average loss is below the next limit, and at least 80% of them
+  would still be correct with it.
+
+Only one offer is made at a time (the passing line first), and after you answer an offer, the next
+one comes after that many more answers. The answers saved before are never judged again.
 
 ### The sequences after your answer
 
@@ -157,10 +221,24 @@ results in the same way (`seichi_history.sqlite3`). The history of the AI commen
 How long the analysis of each game took, step by step, is written as one line of JSON per game to
 `~/.kentogo/analysis_timing.jsonl`, and to the console after `KENTOGO_ANALYSIS_TIMING `.
 
+## Game viewer
+
+"Look through games" on the top screen shows a game move by move, with the loss of each move, the
+best move of the analysis, the AI commentary and your notes. The ← → keys (or Space and Shift+Space)
+move one move, ↑ ↓ go to the previous or next AI commentary, and Home / End go to the first or last
+move.
+
+At a move, Tab shows the best line of the analysis in place of the move (KentoGo's, or KaTrain's),
+then the other branches of the SGF file, and then the game again; Shift+Tab goes the other way, and
+Esc goes back to the game. T turns on (and off) the territory and a rough standing of every position
+shown; at the last move of a line, the exact standing is shown, compared with the game after the same
+number of moves.
+
 ## Counting practice
 
-The final position of a game is counted with the Japanese rules. When you have finished, press
-"Finish the seichi" to check your count, then "Done well" or "Not done well" to go to the next game
+The counting practice is off at first: turn on "Also use the territory counting practice (a button
+on the top screen)" on the settings screen. The final position of a game is counted with the
+Japanese rules. When you have finished, press "Finish the seichi" to check your count, then "Done well" or "Not done well" to go to the next game
 (these two buttons appear after "Finish the seichi" or "Show the computer's counting"). Only the
 buttons that can be used are shown. A game not done well is asked again on a later day, as the
 mistake problems are. The order of the games, which games come first, the reviews and the most
@@ -242,7 +320,7 @@ uv run ruff format       # format the code
   `/mnt/c`, which is slow. Windows 11 shows the window through WSLg. To use KataGo there,
   use a KataGo for Linux (not `katago.exe`).
 - GitHub Actions runs the checks and the tests on Windows, macOS and Linux for every push
-  (`.github/workflows/test.yml`).
+  (`.github/workflows/test.yaml`).
 
 ## Making the programs (KentoGo.exe and KentoGo.app)
 

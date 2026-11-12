@@ -6,19 +6,22 @@ the sequences. What is asked, how answers are judged and saved, and which sequen
 calculates are decided there; this module only shows them.
 
 A rotated or color-swapped board stays the same after the answer, and the moves and the notes
-are shown for that board. Tab (or the switch button) goes through the sequences in a fixed order:
-KataGo's sequence after the answer (shown first), the sequences in the SGF file, the comparison
-model's sequence, and KataGo's sequence after the game move. A line shows this order with the
-shown one marked, and which sequences KataGo is still calculating. While KataGo is judging the
-answer, the buttons and keys that switch, play back and play forward cannot be used (the buttons
-are drawn as disabled). The next problem can always be asked, also when the answer is slow or the
-user does not want to wait: KataGo then stops reading for this problem (see QuizRun.next_problem).
-Keys: Space and the right arrow play the sequence forward, Shift+Space and the left arrow play
-it back, Tab switches to the next sequence, and Enter goes to the next problem. After the answer,
-the board shows the areas of whatever move is shown, from a shallow reading (see quiz.quick_areas),
-and the rough standing of that move is told; at the last move of each sequence the exact standing is told,
-with its areas on the board (see quiz.standings). The settings are changed from the top screen. The panel shows how
-many times the problem was asked before and the last result.
+are shown for that board. Tab (or the switch button) goes through the sequences in a fixed order
+(see quiz.session): the rank replies (both players play the human-like moves of their ranks), the
+strongest replies (the opponent plays KataGo's best moves), the game, and the sequences in the SGF
+file (KentoGo's or KaTrain's best line, and the other branches); Shift+Tab goes the other way. The
+first move of the sequence chosen is shown at once, with its short name over the board for a moment.
+A line shows this order with the shown one marked, and which sequences KataGo is still calculating.
+While KataGo is judging the answer, the buttons and keys that switch, play back and play forward
+cannot be used (the buttons are drawn as disabled). The next problem can always be asked, also when
+the answer is slow or the user does not want to wait: KataGo then stops reading for this problem
+(see QuizRun.next_problem). Keys: Space and the right arrow play the sequence forward, Shift+Space
+and the left arrow play it back, Tab switches to the next sequence (Shift+Tab to the one before),
+and Enter goes to the next problem. After the answer, the board shows the areas of whatever move is
+shown, from a shallow reading (see quiz.quick_areas), and the rough standing of that move is told;
+at the last move of each sequence the exact standing is told, with its areas on the board (see
+quiz.standings). The settings are changed from the top screen. The panel shows how many times the
+problem was asked before and the last result.
 """
 
 from __future__ import annotations
