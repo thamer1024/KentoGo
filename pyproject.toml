@@ -1,6 +1,6 @@
 [project]
 name = "kentogo"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Go practice app for KaTrain users. It finds big mistakes in your analyzed games and asks you to find a better move."
 requires-python = ">=3.12,<3.13"
 license = "MIT"
