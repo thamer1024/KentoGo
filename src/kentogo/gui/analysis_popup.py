@@ -1,4 +1,4 @@
-"""The dialog that analyzes the games of the analysis's folder (the "KataGoで棋譜を解析" button of the settings).
+"""The dialog that analyzes the games of the analysis's folder (the top screen's "KataGoで棋譜解析").
 
 The analysis runs in a background thread (see analysis_run); the dialog shows which game is
 analyzed, the progress of its steps, and how each game ended. "中止" stops after the game that
@@ -31,7 +31,7 @@ AnalysisRun = Callable[[AnalysisListener, threading.Event], AnalysisSummary]
 
 @dataclass(frozen=True)
 class FolderAnalysis:
-    """What the settings screen needs to analyze the games of the analysis's folder.
+    """What the top screen needs to analyze the games of the analysis's folder (see gui.analysis_start).
 
     Attributes:
         games: Returns the games of the folder with the settings, and what each one is (see analysis_run.list_games).

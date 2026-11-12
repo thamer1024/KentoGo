@@ -294,6 +294,7 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         lambda running: engines_for(running, settings.engine, arguments.no_katago),
         _settings_opener(arguments, settings, on_saved),
         parts.history,
+        analyze_games=_analysis_starter(arguments, settings),
         notices=parts.notices,
         use_seichi=settings.seichi.use_seichi,
         games_folder=lambda: find_games_folder(arguments.folder, settings.quiz.games_folder),
@@ -391,7 +392,6 @@ def _settings_opener(
 
     def open_settings(page: str) -> None:
         """Open a settings screen with the settings in the file."""
-        from kentogo.gui.analysis_popup import FolderAnalysis
         from kentogo.gui.settings_popup import SettingsPopup
 
         SettingsPopup(
@@ -404,13 +404,28 @@ def _settings_opener(
             measure=lambda: measure_katago_speed(
                 _current_settings(arguments.settings, settings).engine, _running_engines()
             ),
-            analyze=FolderAnalysis(
-                list_games,
-                lambda saved, games, listener, stop: run_analysis(saved, _running_engines(), games, listener, stop),
-            ),
         ).open()
 
     return open_settings
+
+
+def _analysis_starter(arguments: argparse.Namespace, settings: AppSettings) -> Callable[[], None]:
+    """Return the function that starts the analysis of the games with KataGo from the top screen.
+
+    It uses the settings saved last, and the app's KataGo when it runs with them (see analysis_run).
+    """
+
+    def start() -> None:
+        from kentogo.gui.analysis_popup import FolderAnalysis
+        from kentogo.gui.analysis_start import start_folder_analysis
+
+        analysis = FolderAnalysis(
+            list_games,
+            lambda saved, games, listener, stop: run_analysis(saved, _running_engines(), games, listener, stop),
+        )
+        start_folder_analysis(_current_settings(arguments.settings, settings), analysis)
+
+    return start
 
 
 def _running_engines() -> Engines | None:

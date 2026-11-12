@@ -42,6 +42,7 @@ class ScreenSetup:
             (see the function engines_for).
         open_settings: A function that opens a settings screen, given one of settings_form.PAGES.
         history: Where the answers are saved, or None.
+        analyze_games: Starts the analysis of the games with KataGo (the top screen's "KataGoで棋譜解析").
         notices: Problems found at the start, shown in a dialog on the top screen.
         use_seichi: Show the territory counting practice on the top screen.
         games_folder: Finds the games folder, as (folder, problem) (see today.find_games_folder).
@@ -65,6 +66,7 @@ class ScreenSetup:
     engines_for: Callable[[Engines | None], Engines]
     open_settings: Callable[[str], None]
     history: AnswerHistory | None
+    analyze_games: Callable[[], None] = lambda: None
     notices: tuple[Notice, ...] = ()
     use_seichi: bool = False
     games_folder: Callable[[], tuple[Path | None, Notice | None]] = lambda: (None, None)

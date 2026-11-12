@@ -1,6 +1,6 @@
 """Analyze the games of a folder with KataGo and write the analysis into them (see the analysis package).
 
-The command line (analysis_cli) and the settings screen's "KataGoで棋譜を解析" button both use this module.
+The command line (analysis_cli) and the top screen's "KataGoで棋譜解析" (gui.analysis_start) both use this module.
 Each game file is copied to the backup folder before it is written.
 
 The command line analyzes the games given to it (analyze_games): a game whose nodes all have

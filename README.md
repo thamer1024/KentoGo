@@ -141,7 +141,7 @@ uv run kentogo --test-quiz punish   # the opponent's big mistakes that you did n
 ```
 
 Every problem of that kind is asked at once, also those beyond the number of problems of a game.
-Only games analyzed by KentoGo ("Analyze games with KataGo" on the settings screen) are used.
+Only games analyzed by KentoGo ("Analyze games with KataGo" on the top screen) are used.
 When there is no problem, KentoGo tells the folder it read, how many games it read and how many of
 them KentoGo analyzed.
 

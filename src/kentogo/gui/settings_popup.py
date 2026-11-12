@@ -17,9 +17,7 @@ menu (see settings_form.PAGES):
   written, so any model that the AI publishes can be used), the environment variable of the
   API key, and a button that opens the user's prompt file.
 - KataGo棋譜解析: the analysis of games with KataGo (see analysis.analysis_settings): the folders, the first analysis, analyzing again, and the comments.
-  The "KataGoで棋譜を解析" button is at the bottom, in its own color: it saves the inputs as
-  "設定を更新" does, lists the games of the folder to choose the ones to analyze (see
-  gui.analysis_chooser), and starts the analysis of the chosen games (see gui.analysis_popup).
+  The analysis itself is started from the top screen ("KataGoで棋譜解析", see gui.analysis_start).
 
 The two pages of the AI commentary and of the analysis with KataGo start with a text that says
 what the page is for and where the other one is, so that they are not mistaken for each other.
@@ -53,11 +51,8 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from kentogo.analysis_run import AnalysisListener, AnalysisSummary, FolderGames
 from kentogo.app_settings import AppSettings
 from kentogo.gui import texts, theme
-from kentogo.gui.analysis_chooser import AnalysisChooser
-from kentogo.gui.analysis_popup import AnalysisPopup, FolderAnalysis
 from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
 from kentogo.gui.settings_form import (
@@ -123,7 +118,6 @@ PRESET_ROW_HEIGHT = 48  # dp. The lowest row of the recommended settings (a kind
 INPUT_COLOR = (0.12, 0.16, 0.21, 1)
 WRONG_INPUT_COLOR = (0.45, 0.16, 0.16, 1)  # An input whose value cannot be used.
 MISSING_PATH_COLOR = (1.0, 0.54, 0.5, 1)  # The text "ファイルがありません", and a missing folder.
-RUN_BUTTON_COLOR = (0.2, 0.45, 0.32, 1)  # A button that runs something (the analysis), not one that saves.
 
 
 class SettingsPopup(Popup):
@@ -143,7 +137,6 @@ class SettingsPopup(Popup):
         page: str = PAGE_GENERAL,
         edit_prompt: Callable[[], Path] | None = None,
         measure: Callable[[], MeasuredSpeed] | None = None,
-        analyze: FolderAnalysis | None = None,
         **kwargs,
     ):
         """Make the screen with the current settings. Call open() to show it.
@@ -161,8 +154,6 @@ class SettingsPopup(Popup):
                 and returns its path. It may raise OSError. If None, there is no button for it.
             measure: Measures KataGo's speed on this computer, for each model; it runs in a
                 background thread and may raise any error. If None, there is no button for it.
-            analyze: Counts and analyzes the games of the analysis's folder (see gui.analysis_popup).
-                If None, there is no button for it.
             **kwargs: Other arguments of Kivy's Popup.
         """
         super().__init__(
@@ -180,7 +171,6 @@ class SettingsPopup(Popup):
         self._include_all = include_all
         self._edit_prompt = edit_prompt
         self._measure = measure
-        self._analyze = analyze
         self.inputs: dict[str, object] = {}
         self._measuring = False  # True while KataGo's speed is measured.
         self._missing_labels: dict[str, Label] = {}
@@ -218,10 +208,6 @@ class SettingsPopup(Popup):
         self.message_label = wrapping_label(text="", valign="middle")
         bottom = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(SPACING), padding=(dp(SPACING), dp(4)))
         bottom.add_widget(self.message_label)
-        if page == PAGE_ANALYSIS and self._analyze is not None:
-            run = flat_button(texts.text("analyze_games_button"), self.analyze_games, size_hint_x=0.3)
-            run.background_color = RUN_BUTTON_COLOR
-            bottom.add_widget(run)
         if page != PAGE_PRESETS:  # A preset is saved by its own button.
             bottom.add_widget(flat_button(texts.text("update_settings"), self.update_settings, size_hint_x=0.25))
         bottom.add_widget(flat_button(texts.text("close"), self.dismiss, size_hint_x=0.15))
@@ -251,45 +237,6 @@ class SettingsPopup(Popup):
         hint = fitting_label(dp(60))
         hint.text = texts.text("analysis_settings_hint")
         body.add_widget(hint)
-
-    def analyze_games(self) -> None:
-        """Save the inputs as "設定を更新" does (wrong inputs stop here), then list the games to choose from."""
-        settings = self._form_settings()
-        if settings is not None:
-            self._save_then(settings, lambda: self._list_games(settings))
-
-    def _list_games(self, settings: AppSettings) -> None:
-        """Read the games in a background thread (reading many games can take long), then show the list."""
-        self.message_label.text = texts.text("analysis_counting")
-        analysis = self._analyze
-
-        def work() -> None:
-            try:
-                games = analysis.games(settings)
-            except Exception as error:  # The settings screen must stay usable.
-                in_main_thread(self._show_error)(texts.text("action_failed", reason=error))
-                return
-            in_main_thread(self._choose_games)(settings, games)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _choose_games(self, settings: AppSettings, games: FolderGames) -> None:
-        """Show the list of the games to choose the ones to analyze, or only tell why there is none."""
-        self.message_label.text = ""
-        problem = texts.analysis_folder_problem(games)
-        if problem:
-            show_message(texts.text("analysis_title"), problem)
-            return
-        AnalysisChooser(games, settings.analysis, lambda chosen: self._start_analysis(settings, chosen)).open()
-
-    def _start_analysis(self, settings: AppSettings, chosen: list[Path]) -> None:
-        """Analyze the chosen games, showing the progress."""
-        analysis = self._analyze
-
-        def run(listener: AnalysisListener, stop: threading.Event) -> AnalysisSummary:
-            return analysis.run(settings, chosen, listener, stop)
-
-        AnalysisPopup(run).start()
 
     def _add_commentary_page(self, body: GridLayout) -> None:
         """Add the widgets of the AI commentary page: what the page is for, the settings, examples of values,

@@ -1,4 +1,4 @@
-"""The list of the games to analyze, opened by the settings screen's "KataGoで棋譜を解析" button.
+"""The list of the games to analyze, opened by the top screen's "KataGoで棋譜解析" (see gui.analysis_start).
 
 Each game of the analysis's folder is one row: a check box, the file name, and what the game is
 (not analyzed, analyzed by KaTrain, analyzed by KentoGo, or a file that cannot be read). The games

@@ -217,7 +217,7 @@ TEXTS = {
     "trial_no_problems": (
         "テスト出題の問題はありません。\n棋譜フォルダ：{folder}\n棋譜 {files} 局のうち、KentoGoで解析した棋譜は {games} 局で、"
         "その中にこの種類の問題はありませんでした。\n"
-        "解析は設定画面の「KataGoで棋譜を解析」でできます。別のフォルダは、起動するときに指定できます。"
+        "解析はトップメニューの「KataGoで棋譜解析」でできます。別のフォルダは、起動するときに指定できます。"
     ),
     "notice_cache_failed": (
         "問題のキャッシュを使えないため、毎回すべての棋譜を読み込みます（時間がかかります）。\n\n"
@@ -254,6 +254,7 @@ TEXTS = {
     "mode_seichi": "整地練習",
     "mode_viewer": "棋譜を見る",
     "mode_report": "成績表",
+    "mode_analysis": "KataGoで棋譜解析",
     "report_title": "成績表",
     "report_loading": "成績を集計しています…",
     "report_totals": (
@@ -307,7 +308,7 @@ TEXTS = {
     "viewer_review": "総評",
     "viewer_no_review": "この棋譜には総評がありません",
     "open_game": "この棋譜を見る",
-    "mode_commentary": "棋譜解析",
+    "mode_commentary": "AIで棋譜解析",
     "commentary_title": "棋譜解析（AI解説）",
     "commentary_paste": "貼り付けモード（1局ずつ）",
     "back_to_commentary": "棋譜解析のメニューに戻る",
@@ -514,7 +515,6 @@ TEXTS = {
     "field_analysis_language": "コメントの言語",
     "field_eval_show_ai": "AIの手にもコメントを付ける",
     "field_save_marks": "最善手に印（×・□）を付ける",
-    "analyze_games_button": "KataGoで棋譜を解析",
     "analysis_title": "棋譜の解析",
     "analysis_starting": "KataGoを準備しています…",
     "analysis_game": "{number} / {total}　{name}",
@@ -693,7 +693,7 @@ TEXTS = {
     "preset_apply": "設定",
     "preset_question": "推奨設定で現在の設定を置き換えます。よろしいですか？",
     "loading_title": "KataGoを準備しています",
-    "loading_main": "メインモデルを読み込み中…",
+    "loading_main": "モデルを読み込み中…",
     "loading_elapsed": "{seconds}秒経過",
     "loading_remaining": "残り約{seconds}秒",
     "loading_hide": "待たずに使う",

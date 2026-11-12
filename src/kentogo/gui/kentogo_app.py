@@ -135,6 +135,7 @@ class KentoGoApp(App):
             ("mode_quiz", self.show_splash),
             ("mode_viewer", self.show_viewer),
             ("mode_report", self.show_report),
+            ("mode_analysis", self.setup.analyze_games),
         ]
         if self.setup.commentary is not None:
             choices.append(("mode_commentary", self.show_commentary_menu))
