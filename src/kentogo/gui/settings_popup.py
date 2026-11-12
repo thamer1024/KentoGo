@@ -343,7 +343,7 @@ class SettingsPopup(Popup):
         """Tell the speeds, and ask to use the numbers of visits made from them."""
         self._measuring = False
         self.message_label.text = ""
-        preset = speed.preset(self.settings.engine)
+        preset = speed.preset()
         confirm(_measured_text(speed, preset), lambda: self._use_preset(preset), self._cancelled)
 
     def _measure_failed(self, reason: str) -> None:
@@ -662,11 +662,7 @@ def _measured_text(speed: MeasuredSpeed, preset: Preset) -> str:
         "fast": preset.fast_visits,
         "deep": preset.deep_visits,
     }
-    if speed.compare is None:
-        return texts.text("preset_measured", **values)
-    return texts.text(
-        "preset_measured_compare", **values, compare_speed=round(speed.compare), compare=preset.compare_max_visits
-    )
+    return texts.text("preset_measured", **values)
 
 
 def _preset_text(preset: Preset) -> str:
@@ -674,7 +670,6 @@ def _preset_text(preset: Preset) -> str:
     numbers = texts.text(
         "preset_values",
         main=preset.max_visits,
-        compare=preset.compare_max_visits,
         estimate=preset.estimate_visits,
         fast=preset.fast_visits,
         deep=preset.deep_visits,

@@ -11,6 +11,7 @@ from kentogo.analysis.node_analysis import ADDITIONAL_MOVE_ORDER, apply_answer, 
 from kentogo.analysis.played_moves import played_move_loss
 from kentogo.analysis.query import QuerySettings, node_query
 from kentogo.record.katrain_kt import encode_kt
+from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
 
 # Black's move 3 has two branches: A5 loses 5.5 points, D2 is fine.
 GAME = "(;SZ[5]KM[0.5]RU[Chinese];B[cc];W[bb](;B[aa])(;B[db]))"
@@ -116,14 +117,30 @@ def test_fast_visits():
     assert {query["maxVisits"] for query in engine.queries} == {8}  # The played moves too.
 
 
+SAVED = {"moves": {}, "root": {"scoreLead": 1.0, "winrate": 0.5, "visits": 9}, "completed": True}
+
+
+def with_saved(saved: dict, prop: str, mark: str = "") -> GoGame:
+    """GAME with saved analysis data (KGA or KT) on the node of C3, and the root's KGM when mark is given."""
+    values = encode_kga(saved) if prop == KGA_PROPERTY else encode_kt(saved)
+    text = GAME.replace(";B[cc]", f";B[cc]{prop}[" + "][".join(values) + "]")
+    return GoGame.parse_sgf(text.replace("(;", f"(;KGM[{mark}]", 1) if mark else text)
+
+
 def test_saved_analysis_data_is_used_as_it_is():
-    """A node with analysis data (KT) is not analyzed again, as in KaTrain."""
-    saved = {"moves": {}, "root": {"scoreLead": 1.0, "winrate": 0.5, "visits": 9}, "completed": True}
-    text = GAME.replace(";B[cc]", ";B[cc]KT[" + "][".join(encode_kt(saved)) + "]")
+    """A node with KentoGo's analysis data (KGA, or an older KentoGo's KT) is not analyzed again, as in KaTrain."""
+    for root in (with_saved(SAVED, KGA_PROPERTY), with_saved(SAVED, "KT", "KentoGo")):
+        engine = FakeEngine()
+        game = analyze_game(engine, root, AnalysisSettings(), VALUES, lambda *_: None)
+        assert ("C3",) not in by_moves(engine) and len(analyses(engine)) == 4
+        assert game.analysis(game.nodes[1])["root"]["visits"] == 9
+
+
+def test_katrains_own_analysis_data_is_read_again():
+    """KaTrain's KT (a game without KGM[KentoGo]) is not used: KentoGo reads the position itself."""
     engine = FakeEngine()
-    game = analyze_game(engine, GoGame.parse_sgf(text), AnalysisSettings(), VALUES, lambda *_: None)
-    assert ("C3",) not in by_moves(engine) and len(analyses(engine)) == 4
-    assert game.analysis(game.nodes[1])["root"]["visits"] == 9
+    analyze_game(engine, with_saved(SAVED, "KT"), AnalysisSettings(), VALUES, lambda *_: None)
+    assert ("C3",) in by_moves(engine)
 
 
 def test_reanalysis_of_the_mistakes_only():
@@ -204,9 +221,8 @@ def test_the_range_covers_the_positions_of_its_moves():
 def test_reanalysis_counts_the_visits_of_saved_data():
     """Saved analysis data counts with its visits (KaTrain counts it as 0, so it would not read more deeply)."""
     saved = {"moves": {}, "root": {"scoreLead": 1.0, "winrate": 0.5, "visits": 900}, "completed": True}
-    text = GAME.replace(";B[cc]", ";B[cc]KT[" + "][".join(encode_kt(saved)) + "]")
     engine = FakeEngine()
-    analyze_game(engine, GoGame.parse_sgf(text), AnalysisSettings(reanalyze=True), VALUES, lambda *_: None)
+    analyze_game(engine, with_saved(saved, KGA_PROPERTY), AnalysisSettings(reanalyze=True), VALUES, lambda *_: None)
     assert {query["maxVisits"] for query in analyses(engine)[4:]} == {1000}  # The fewest: 500 asked.
 
 

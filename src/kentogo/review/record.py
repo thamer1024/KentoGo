@@ -14,7 +14,7 @@ from dataclasses import dataclass
 LOSS_UNKNOWN = ""  # Not judged (yet).
 LOSS_FROM_SGF = "sgf"  # The losses are in the SGF file (KaTrain's comments or analysis data).
 LOSS_FROM_KATAGO = "katago"  # Both losses were calculated by KataGo (the main model) under the same conditions.
-LOSS_FROM_COMPARE = "katago_compare"  # Both losses were calculated by the comparison model.
+LOSS_FROM_COMPARE = "katago_compare"  # Both losses were calculated by the comparison model (older answers only).
 
 
 @dataclass(frozen=True)

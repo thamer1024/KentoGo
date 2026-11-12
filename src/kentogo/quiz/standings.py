@@ -2,8 +2,8 @@
 
 After the answer, each sequence gets its standing by itself (the one after the game move too, as the
 opponent plays the strongest replies there, not the game's moves):
-KataGo is asked about the position at the end of the sequence (with the model of the sequence: the
-comparison model for its own sequence, else the main model), and about the game after the same number
+KataGo is asked about the position at the end of the sequence (with the main model), and about the game
+after the same number
 of moves, which is read from the SGF file (see prepare). Only the ends of the sequences are read, not
 every move on the way, so it takes about one shallow reading per sequence (the visits of the territory
 and the standing). The standing of the shown sequence is told while it is shown (shown), and its
@@ -22,7 +22,7 @@ from pathlib import Path
 from kentogo.common import sgf
 from kentogo.katago.estimate import Standing, estimate_standing, played
 from kentogo.katago.evaluate import AnalysisModel, Models
-from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Variation
+from kentogo.mistakes.problem import Variation
 from kentogo.quiz.session import ANSWERED, QuizSession
 from kentogo.record.game_record import read_game_record
 
@@ -88,7 +88,7 @@ class SequenceStandings:
         """Ask KataGo for the standing of each sequence that has none yet (after the answer; else nothing).
 
         Args:
-            models: The main model and the comparison model (each None if it is not running: then the
+            models: The main model (None if it is not running: then the
                 sequences of that model get no standing).
             on_change: Called (in the main thread) when a standing has come.
             on_error: Called with the key of a message and its reason, to tell the user.
@@ -98,9 +98,8 @@ class SequenceStandings:
         for variation in self._sequences():
             if variation in self.found or variation in self.pending or variation in self.failed:
                 continue
-            model = models.compare if variation.source == SOURCE_KATAGO_COMPARE else models.main
-            if model is not None:
-                self._estimate(variation, model, on_change, on_error)
+            if models.main is not None:
+                self._estimate(variation, models.main, on_change, on_error)
 
     def _sequences(self) -> list[Variation]:
         """Return the sequences that get a standing: those with moves."""

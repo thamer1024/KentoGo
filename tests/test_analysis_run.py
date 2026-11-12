@@ -20,11 +20,13 @@ from kentogo.analysis_run import (
     GameChoice,
     analyze_chosen_games,
     analyze_games,
+    is_analyzed,
     list_games,
     run_analysis,
 )
 from kentogo.app_settings import AppSettings
 from kentogo.katago.engine_settings import EngineSettings
+from kentogo.record.kentogo_analysis import encode_kga
 
 GAME = "(;SZ[5]KM[0.5];B[cc];W[bb])"
 
@@ -246,3 +248,12 @@ def test_deep_targets_come_from_the_quiz_settings():
         {"B": 5.0, "W": 5.0}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=5.0
     )  # 6 moves of a game at most; an opponent's move when the reply lost 5 points (the quiz's punish_my_loss).
     assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)
+
+
+def test_a_game_with_kentogos_own_analysis_data_is_analyzed():
+    """Every node with KentoGo's KGA (or KaTrain's KT) counts as analyzed."""
+    from pysgf import GoGame
+
+    data = "".join(f"[{value}]" for value in encode_kga({"root": {"scoreLead": 0.0}, "moves": {}}))
+    assert is_analyzed(GoGame.parse_sgf(f"(;SZ[9]KGA{data};B[aa]KGA{data})"))
+    assert not is_analyzed(GoGame.parse_sgf(f"(;SZ[9]KGA{data};B[aa])"))

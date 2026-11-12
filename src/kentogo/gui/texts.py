@@ -24,7 +24,7 @@ from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
 from kentogo.katago.move_value import URGENT, MoveValue, kind_of
 from kentogo.mistakes.extract import PUNISH, SHARED
-from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem
+from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.score import Comparison, compare_with_actual
@@ -89,28 +89,24 @@ TEXTS = {
     "value_big": "大場？（手抜きすると{points}目損）",
     # The marks have their own colors and shapes, so they can be told apart without the colors.
     "legend": "[color=6cc0ff]○打った手[/color]　[color=ff8a80]△実戦[/color]　[color=5be37d]□最善[/color]",
-    "legend_compare": "　[color=d070f0]☆比較用モデル[/color]",
-    "moves_compare": "　比較 {compare}",
-    "compare_move_gain": "[color=d070f0]比較用モデルの手 {move}：{loss:.1f}目損（実戦より {gain:.1f}目得）[/color]",
-    "compare_move_loss": "[color=d070f0]比較用モデルの手 {move}：{loss:.1f}目損（実戦より {gain:.1f}目損）[/color]",
     "sequence": "[color=f2c94c][b]表示中：{name}[/b][/color]\n{explanation}\n手順 {index} / {count}　　{step} / {total} 手目",
     "source_katrain": "最善手の手順（KaTrain）",
+    "source_kentogo": "最善手の手順（KentoGo）",
     "source_katago": "あなたの手の続き（相手は最強の応手）",
     "source_katago_actual": "実戦の手の続き（相手は最強の応手）",
     "source_game": "実戦の手（棋譜の進行）",
-    "source_katago_compare": "比較用モデルの第一手の続き（相手は最強の応手）",
     "explain_katrain": "KaTrainが棋譜に残した、この局面の最善手からの手順です。",
+    "explain_kentogo": "KentoGoの解析が棋譜に残した、この局面の最善手からの手順です。",
     "explain_katago": "あなたが打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
     "explain_katago_actual": "実戦で打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
     "explain_game": "実戦で打った手と、その後に対局で実際に打たれた手です。",
-    "explain_katago_compare": "比較用モデル（通常モデルなど）の最善手から、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
     "switch_sequence": "手順を切り替え（Tab）",
     # Short names of the sequences, for the line that shows the order of Tab.
     "short_katrain": "KaTrainの手",
+    "short_kentogo": "KentoGoの手",
     "short_katago": "あなたの手",
     "short_game": "実戦",
     "short_katago_actual": "最強応手",
-    "short_katago_compare": "比較用モデル",
     "estimate_button": "地と形勢 (T)",
     "estimate_button_on": "地と形勢：表示中 (T)",
     "estimate_running": "地と形勢を計算しています…",
@@ -119,16 +115,11 @@ TEXTS = {
     "quick_standing": "形勢（概算）：{leader} {ahead:.1f}目リード",
     "rough_standing": "形勢の目安：{leader} {ahead:.1f}目リード（{moves}手後・浅い読み）",
     "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）\n実戦の同じ手数と比べて：{player} {gain:+.1f}目",
-    "compare_running": "比較用モデルで解析しています…",
-    "compare_no_sequence": "比較用モデルが手順を返しませんでした",
     "short_waiting": "{name}(考え中 {seconds}秒)",
     "short_failed": "{name}(失敗)",
-    "short_offered": "{name}(選ぶと計算)",
     "sequence_order": "Tabで切替：{names}",
     "sequence_waiting": "KataGoが考えています…",
     "sequence_failed": "KataGoが計算できませんでした。",
-    "sequence_offered": "選ぶと計算を始めます。",
-    "notice_compare_line_failed": "比較用モデルの手順を計算できませんでした。\n\n理由：{reason}",
     "notice_human_line_failed": (
         "手順の中の相手の応手を、人間風モデルで打てませんでした。KataGoの読み筋をそのまま出します。\n\n理由：{reason}"
     ),
@@ -236,11 +227,6 @@ TEXTS = {
         "KataGoを起動できませんでした。棋譜に無い手の損失は判定できません。\n"
         "設定画面のKataGoの設定を確認してください。\n\n理由：{reason}"
     ),
-    "notice_compare_failed": (
-        "比較用モデルでKataGoを起動できませんでした。比較用モデルの読み筋は表示されません。\n"
-        "設定画面の比較用モデルを確認してください。\n\n理由：{reason}"
-    ),
-    "notice_judge_fallback": "比較用モデルが動いていないため、損失はメインのモデルで計算します。",
     "notice_history_error": "解答の記録（履歴）を読み書きできませんでした。\n\n理由：{reason}",
     "settings_cancelled": "保存しませんでした。",
     "settings_invalid": "[color=ff8a80]正しくない値があります：{labels}[/color]",
@@ -253,11 +239,6 @@ TEXTS = {
     "field_model": "KataGoモデルファイルの場所",
     "field_humanlike_model": "人間らしいモデルのパス",
     "field_config": "KataGo設定ファイルの場所",
-    "field_compare_model": "比較用モデル（通常モデル）のパス",
-    "field_use_compare": "比較用モデルも使う（KataGoをもう1つ起動）",
-    "field_judge_model": "損失の計算に使うモデル",
-    "judge_model_main": "KataGoモデル（上の欄）",
-    "judge_model_compare": "比較用モデル",
     "field_games_folder": "棋譜フォルダ（空欄ならKentoGoのgamesフォルダ）",
     "field_my_names": "自分の名前（カンマ区切り）",
     "field_problems_per_game": "1局の問題数",
@@ -452,7 +433,6 @@ TEXTS = {
     "field_swap_colors": "色を入れ替える",
     "field_use_katago": "KataGoで計算する",
     "field_max_visits": "分析時の最大探索手数（メインのモデル）",
-    "field_compare_max_visits": "分析時の最大探索手数（比較用モデル）",
     "field_wide_root_noise": "Wide root noise (考慮する手の範囲を広げる)",
     "field_max_time": "分析の最大時間（秒。0：制限なし）",
     "field_small_problem_threshold": "小さい問題の境目（目）",
@@ -509,7 +489,7 @@ TEXTS = {
     "analysis_settings": "解析",
     "reanalysis_settings": "解析し直す",
     "analysis_comment_settings": "棋譜に書くコメント",
-    "analysis_settings_hint": "KataGoで棋譜を解析し、KaTrainでも開ける形で解析データとコメントを棋譜に書き込みます。元の棋譜は先にバックアップします。損失は、打つ前の局面で最善手と比べて出します（KaTrainの方法とは違います。KaTrainと同じ解析が欲しいときはKaTrainで解析してください）。",
+    "analysis_settings_hint": "KataGoで棋譜を解析し、KentoGo独自の形で解析データとコメントを棋譜に書き込みます（KaTrainで開くことはできますが、KentoGoの解析はKaTrainには表示されません）。元の棋譜は先にバックアップします。損失は、打つ前の局面で最善手と比べて出します（KaTrainの方法とは違います。KaTrainと同じ解析が欲しいときはKaTrainで解析してください）。",
     "field_analysis_games_folder": "解析する棋譜のフォルダ（空：出題と同じ）",
     "field_analysis_backup_folder": "元の棋譜のバックアップ先（空：棋譜フォルダの backup）",
     "field_analysis_fast": "最初は高速解析で読む",
@@ -561,7 +541,7 @@ TEXTS = {
     "analysis_no_folder": "解析する棋譜のフォルダがありません：{folder}",
     "analysis_no_games": "{folder} にSGFファイルがありません。",
     "analysis_choose_title": "解析する棋譜を選ぶ",
-    "analysis_choose_intro": "{folder} の棋譜から、KataGoで解析するものを選んでください。選んだ棋譜には解析データとコメントを書き込みます（上書きします）。元の棋譜は先に {backup} にコピーします。\n「解析済み（KaTrain）」の棋譜を選ぶと、解析済みのデータはそのまま使い、打った手をKentoGoの方法で読み足して書き込みます。",
+    "analysis_choose_intro": "{folder} の棋譜から、KataGoで解析するものを選んでください。選んだ棋譜には解析データとコメントを書き込みます（上書きします）。元の棋譜は先に {backup} にコピーします。\n「解析済み（KaTrain）」の棋譜を選ぶと、KaTrainの解析データはそのまま残し、KentoGoがすべての局面を読み直して書き込みます。",
     "analysis_show_kentogo": "KentoGoで解析済みの棋譜も表示する（{count} 局）",
     "analysis_select_all": "すべて選ぶ",
     "analysis_select_none": "すべて外す",
@@ -672,6 +652,7 @@ TEXTS = {
     "comment_review_move": " - 第 {number} 手目 ({color}{taken_back}) (損失: {loss}目 / 最善手: {best})",
     "comment_loss_title": "■ この対局の損失の回数",
     "comment_loss_note": "(KaTrainの損失目数で数えた,この対局のあなたの手の回数.形勢が決まった後の手も含みます)",
+    "comment_loss_note_kentogo": "(KentoGoの解析の損失目数で数えた,この対局のあなたの手の回数.形勢が決まった後の手も含みます)",
     "comment_loss_line": "{size}目以上: {count}回{targets}",
     "comment_loss_targets": "(目標 {goal}回,超えてはいけない {limit}回)",
     "comment_no_targets": "({rank}の行が目標表に無いため,目標との比較はありません)",
@@ -707,14 +688,12 @@ TEXTS = {
     "preset_measure_button": "測る",
     "preset_measuring": "KataGoの速さを測っています…（KataGoの起動を含めて、数十秒かかることがあります）",
     "preset_measured": "このパソコンのKataGoは、1秒に約{speed}手読めました。\n探索手数を 判定 {main}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分） にします。よろしいですか？",
-    "preset_measured_compare": "このパソコンのKataGoは、1秒に約{speed}手（比較用モデルは約{compare_speed}手）読めました。\n探索手数を 判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分） にします。よろしいですか？",
     "preset_measure_failed": "KataGoの速さを測れませんでした：{reason}",
-    "preset_values": "探索手数：判定 {main}　比較用モデル {compare}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分）",
+    "preset_values": "探索手数：判定 {main}　地と形勢 {estimate}　棋譜解析 最初の解析 {fast}・深い読み {deep}（1局約2分）",
     "preset_apply": "設定",
     "preset_question": "推奨設定で現在の設定を置き換えます。よろしいですか？",
     "loading_title": "KataGoを準備しています",
     "loading_main": "メインモデルを読み込み中…",
-    "loading_compare": "比較用モデルを読み込み中…",
     "loading_elapsed": "{seconds}秒経過",
     "loading_remaining": "残り約{seconds}秒",
     "loading_hide": "待たずに使う",
@@ -866,15 +845,10 @@ def sequence_order_text(choices: list[tuple[str, str]], selected: int, seconds: 
     for index, (source, status) in enumerate(choices):
         key = f"short_{source}"
         name = text(key) if key in TEXTS else source
-        if status and not _quiet_while_hidden(source, status, index == selected):
+        if status:
             name = text(f"short_{status}", name=name, seconds=seconds)
         names.append(f"[color=f2c94c][b]▶{name}[/b][/color]" if index == selected else name)
     return text("sequence_order", names=" → ".join(names))
-
-
-def _quiet_while_hidden(source: str, status: str, shown: bool) -> bool:
-    """True if a sequence's status is not told: the comparison model's sequence being calculated, not shown."""
-    return source == SOURCE_KATAGO_COMPARE and status == "waiting" and not shown
 
 
 def sequence_text(source: str, index: int, count: int, step: int, total: int, status: str = "") -> str:
@@ -1089,9 +1063,6 @@ def result_text(
     problem: Problem,
     result: AnswerResult,
     waiting_reason: str = "",
-    compare_best: Move | None = None,
-    by_compare: bool = False,
-    compare_best_loss: float | None = None,
     sequence: tuple[Move, float | None] | None = None,
     show_verdict: bool = True,
     tactics: tuple[str, ...] = (),
@@ -1104,10 +1075,6 @@ def result_text(
         result: The result of the answer.
         waiting_reason: Why the answer is not judged yet (used only when result.correct is None),
             such as text("evaluating").
-        compare_best: The comparison model's best move, or None if it is not known.
-        by_compare: True while the comparison model's sequence is shown (with its losses).
-        compare_best_loss: Points lost by the comparison model's best move. With by_compare, its line
-            (how much it gains or loses against the game move) is the only line of the losses.
         sequence: The first move of the shown sequence and its loss (None if unknown), when it is
             not the answer: the line of the losses then tells about that move (see QuizSession.sequence_loss).
         show_verdict: False to leave out whether the answer is correct (or why it is not judged yet),
@@ -1122,17 +1089,10 @@ def result_text(
     shown_move, shown_loss = sequence if sequence is not None else (result.answer, None)
     moves = text("moves", answer=result.answer.gtp(), actual=problem.actual_move.gtp(), best=best)
     legend = text("legend")
-    if compare_best is not None:
-        moves += text("moves_compare", compare=compare_best.gtp())
-        legend += text("legend_compare")
     if result.correct is None:
         waiting = [text("not_judged", reason=waiting_reason)] if show_verdict else []
         return "\n".join([*waiting, moves, legend])
-    comparison = result.comparison
-    if by_compare and compare_best is not None and compare_best_loss is not None:
-        losses = _compare_line(comparison.actual_loss, compare_best, compare_best_loss)
-    else:
-        losses = _comparison_line(comparison, shown_move, sequence is not None, shown_loss)
+    losses = _comparison_line(result.comparison, shown_move, sequence is not None, shown_loss)
     verdict = [text("correct") if result.correct else text("wrong")] if show_verdict else []
     what = tactics_text(problem.best_move, tactics, value)
     return "\n".join([*verdict, losses, moves, *([what] if what else []), legend])
@@ -1163,13 +1123,6 @@ def value_words(value: MoveValue) -> list[str]:
         key = "value_urgent" if kind_of(value) == URGENT else "value_big"
         words.append(text(key, points=f"{value.points:.1f}"))
     return words
-
-
-def _compare_line(actual_loss: float, compare_best: Move, compare_best_loss: float) -> str:
-    """Return the line of the comparison model's move: its loss, and how much it gains (or loses) against the game."""
-    gain = actual_loss - compare_best_loss
-    key = "compare_move_gain" if gain >= 0 else "compare_move_loss"
-    return text(key, move=compare_best.gtp(), loss=compare_best_loss, gain=abs(gain))
 
 
 def _percent(value: float | None) -> str:

@@ -4,7 +4,7 @@ from fake_analysis import FakeEngine
 
 from kentogo.common.types import Move, Position
 from kentogo.katago.evaluate import AnalysisModel, EvaluationSettings, Models
-from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem, Variation
+from kentogo.mistakes.problem import Problem, Variation
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import QuizSession
 from kentogo.quiz.standings import FAILED, SequenceStandings
@@ -54,13 +54,10 @@ class Told:
         self.errors.append((text_key, reason))
 
 
-def models(main=None, compare=None) -> Models:
-    """Make the models from fake engines (None for one that is not running)."""
+def models(main=None) -> Models:
+    """Make the models from a fake engine (None when it is not running)."""
     settings = EvaluationSettings(estimate_visits=10)
-    return Models(
-        AnalysisModel(main, settings) if main is not None else None,
-        AnalysisModel(compare, settings) if compare is not None else None,
-    )
+    return Models(AnalysisModel(main, settings) if main is not None else None)
 
 
 def test_the_standing_is_calculated_by_itself_after_the_answer(tmp_path):
@@ -114,18 +111,6 @@ def test_without_the_model_nothing_is_asked(tmp_path):
     standings = SequenceStandings(session, background=lambda work: work())
     standings.prepare(models(), told.changed, told.failed)
     assert told.errors == [] and not standings.busy and standings.shown() is None
-
-
-def test_the_comparison_models_sequence_uses_its_own_model(tmp_path):
-    """The standing at the end of the comparison model's sequence is calculated with the comparison model."""
-    session = make_session(tmp_path)
-    session.offer(SOURCE_KATAGO_COMPARE)
-    session.apply_compare_evaluation(0.0, 5.0, (Move.from_gtp("E5", "B"), Move.from_gtp("D4", "W")), 0.0)
-    main, compare = FakeEngine(), FakeEngine()
-    SequenceStandings(session, background=lambda work: work()).prepare(
-        models(main, compare), Told().changed, Told().failed
-    )
-    assert len(main.queries) == 2 and len(compare.queries) == 2  # The SGF's sequence, and the comparison model's.
 
 
 def test_a_failure_is_told_once(tmp_path):

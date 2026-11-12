@@ -4,7 +4,8 @@ The parts that do not depend on the game are kept in a text file, so that the us
 change them with a text editor:
 
 - system: the role of the AI (the system prompt).
-- intro: the first sentence of the message. "{color}" is replaced with the user's color (such as 黒 or Black).
+- intro: the first sentence of the message. "{color}" is replaced with the user's color (such as 黒 or Black),
+  and "{analyzer}" with the program that analyzed the game (KaTrain or KentoGo, see commentary.prompt_words).
 - about_me: lines about the user (weak points, goals, and so on). The rank and the
   opponent are added by KentoGo for each game.
 - rules: the rules that the AI must keep.
@@ -30,6 +31,7 @@ _FOLDER = Path(__file__).resolve().parent
 DEFAULT_FILES = {PROMPT_JAPANESE: _FOLDER / "default_prompt.txt", PROMPT_ENGLISH: _FOLDER / "default_prompt_en.txt"}
 USER_FILE_NAMES = {PROMPT_JAPANESE: "commentary_prompt_jp.txt", PROMPT_ENGLISH: "commentary_prompt_en.txt"}
 COLOR_PLACEHOLDER = "{color}"
+ANALYZER_PLACEHOLDER = "{analyzer}"  # KaTrain or KentoGo: the program that analyzed the game.
 
 _SECTION_LINE = re.compile(r"\[\[(\w+)\]\]")
 

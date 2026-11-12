@@ -7,6 +7,7 @@ import json
 import pytest
 from pysgf import GoGame
 
+from kentogo.common.sgf import main_line, node_move
 from kentogo.common.types import Move
 from kentogo.mistakes.extract import (
     PUNISH,
@@ -14,12 +15,14 @@ from kentogo.mistakes.extract import (
     SHARED,
     ExtractSettings,
     PunishmentChance,
+    _undone_moves,
     extract_problems,
     first_of_each_best_move,
     punishment_chances,
 )
 from kentogo.record.ai_comment import AI_HEADER
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR
+from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
 
 HUMAN = f"Human (Normal Game){INTERNAL_MARKER}"
 AI = f"AI (Human-like){INTERNAL_MARKER}"
@@ -220,6 +223,16 @@ def test_candidate_losses_from_katrain_analysis_data():
     assert problem.candidate_losses == (("Q4", 0.0), ("R4", 1.5))
 
 
+def test_candidate_losses_from_kentogos_own_analysis_data():
+    """KentoGo's KGA is read in the same way as KaTrain's KT, and comes before it on the same node."""
+    analysis = {"root": {"scoreLead": 3.0}, "moves": {"Q4": {"scoreLead": 3.0}, "R4": {"scoreLead": 1.5}}}
+    old = {"root": {"scoreLead": 3.0}, "moves": {"Q4": {"scoreLead": 3.0}, "R4": {"scoreLead": -9.0}}}
+    kga = KGA_PROPERTY + "".join(f"[{value}]" for value in encode_kga(analysis))
+    text = game().replace(";W[dp]C[", f";W[dp]{kga}{kt_property(old)}C[", 1)
+    problem = next(p for p in extract(text).problems if p.move_number == 3)
+    assert problem.candidate_losses == (("Q4", 0.0), ("R4", 1.5))
+
+
 def test_broken_analysis_data_is_ignored():
     """Broken analysis data does not stop the problem from being made."""
     text = game().replace(";W[dp]C[", ";W[dp]KT[a][b][c]C[", 1)
@@ -329,6 +342,7 @@ def test_kentogo_mode_losses_come_from_the_best_move_in_the_position_before():
     assert dict(katrain.candidate_losses)["Q4"] == pytest.approx(0.3)  # From the root's score.
     assert dict(kentogo.candidate_losses)["Q4"] == pytest.approx(0.5)  # From the best move.
     assert dict(kentogo.candidate_losses)["D16"] == 0.0
+    assert katrain.variations[0].source == "katrain" and kentogo.variations[0].source == "kentogo"
 
 
 def chances(text: str, opponent_loss: float, my_loss: float, **settings) -> list:
@@ -425,3 +439,15 @@ def test_the_same_point_left_again_is_no_punishment():
     first = next(p for p in extract(left_again(), **low).problems if p.move_number == 3)
     assert first.punishment == PUNISH  # The first time white left D16 counts.
     assert [c.move_number for c in chances(left_again(), 3.0, 1.0)] == [3]
+
+
+def test_a_move_taken_back_is_found_from_kentogos_analysis_data():
+    """A branch whose KGA says "taken_back" is a move that KaTrain took back (without KaTrain's comment)."""
+    data = "".join(f"[{value}]" for value in encode_kga({"root": {"scoreLead": 0.0}, "moves": {}, "taken_back": True}))
+    text = "(;SZ[9]PB[Human]PW[AI]KGM[KentoGo];B[cc](;W[dd];B[ee])(;W[aa]KGA" + data + "))"
+    assert [m.gtp() for m in _undone(text)] == ["A9"]
+
+
+def _undone(text: str) -> list:
+    """The taken-back moves of a game (the moves of the branches that KaTrain took back)."""
+    return [node_move(node) for node, _ in _undone_moves(main_line(GoGame.parse_sgf(text)))]

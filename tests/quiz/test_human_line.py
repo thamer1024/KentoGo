@@ -61,8 +61,8 @@ def test_an_answer_without_the_human_like_policy_is_an_error():
     assert "human-like" in ended["error"]
 
 
-def test_an_error_of_the_comparison_model_is_told():
-    """An error of the comparison model's query is told."""
+def test_an_error_of_the_best_moves_query_is_told():
+    """An error of the query for a best move is told."""
     best, human, ended = build()
     human_answer(human, 0, "C16")
     best.answer(0, error="broken")

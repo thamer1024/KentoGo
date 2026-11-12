@@ -13,12 +13,11 @@ from pathlib import Path
 
 from kentogo.app_settings import AppSettings
 from kentogo.commentary.commentary_settings import PROVIDERS
-from kentogo.katago.engine_settings import JUDGE_MODELS, EngineSettings
+from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.locate import KataGoNotFoundError, read_engine_config, resolve_path
 from kentogo.quiz.problem_kinds import PROBLEM_KINDS
 from kentogo.quiz.quiz_settings import ORDERS, QuizSettings
 from kentogo.quiz.stages import parse_stages
-from kentogo.record.katrain_texts import KATRAIN_TEXTS
 from kentogo.repetition.modes import PRIORITIES, REVIEW_MODES
 from kentogo.seichi.seichi_settings import ORDERS as SEICHI_ORDERS
 
@@ -44,8 +43,8 @@ GROUP_ANALYSIS = "analysis"  # The analysis of games: the mode, the folders and 
 GROUP_REANALYSIS = "reanalysis"  # Analyzing again (KaTrain's "Re-analyze game").
 GROUP_ANALYSIS_COMMENTS = "analysis_comments"  # The comments written into the games.
 
-# The languages of KaTrain's comments (KaTrain's codes).
-ANALYSIS_LANGUAGES = tuple(sorted(KATRAIN_TEXTS))
+# The languages of KentoGo's comments (see analysis.kentogo_comment), by KaTrain's codes as in the settings.
+ANALYSIS_LANGUAGES = ("en", "jp")
 
 
 @dataclass(frozen=True)
@@ -82,7 +81,6 @@ FIELDS = (
     FieldSpec("model", "engine", KIND_FILE, GROUP_KATAGO),
     FieldSpec("humanlike_model", "engine", KIND_FILE, GROUP_KATAGO),
     FieldSpec("config", "engine", KIND_FILE, GROUP_KATAGO),
-    FieldSpec("compare_model", "engine", KIND_FILE, GROUP_KATAGO),
     FieldSpec("games_folder", "quiz", KIND_FOLDER, GROUP_GENERAL),
     FieldSpec("my_names", "quiz", KIND_TEXT, GROUP_GENERAL),
     FieldSpec("use_seichi", "seichi", KIND_BOOL, GROUP_GENERAL),
@@ -104,11 +102,8 @@ FIELDS = (
     FieldSpec("max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("wide_root_noise", "engine", KIND_FLOAT, GROUP_ENGINE),
     FieldSpec("max_time", "engine", KIND_FLOAT, GROUP_ENGINE),
-    FieldSpec("use_compare", "engine", KIND_BOOL, GROUP_ENGINE),
-    FieldSpec("compare_max_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("estimate_visits", "engine", KIND_INT, GROUP_ENGINE),
     FieldSpec("ready_timeout", "engine", KIND_FLOAT, GROUP_ENGINE),
-    FieldSpec("judge_model", "engine", KIND_CHOICE, GROUP_ENGINE, JUDGE_MODELS),
     FieldSpec("small_problem_threshold", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("pass_ratio", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("max_answer_loss", "quiz", KIND_FLOAT, GROUP_JUDGE),

@@ -2,7 +2,7 @@
 
 import pytest
 
-from kentogo.katago.engine_settings import JUDGE_COMPARE, EngineSettings
+from kentogo.katago.engine_settings import EngineSettings
 
 VALUES = {
     "use_katago": False,
@@ -15,10 +15,6 @@ VALUES = {
     "max_time": 12.0,
     "katrain_config": "settings/katrain-config.json",
     "katrain_folder": "C:/Program Files/KaTrain",
-    "compare_model": "models/normal.bin.gz",
-    "use_compare": True,
-    "compare_max_visits": 200,
-    "judge_model": "compare",
     "estimate_visits": 50,
     "ready_timeout": 1200.0,
 }
@@ -45,7 +41,6 @@ def test_from_and_to_dict():
         {"model": None},
         {"max_visits": "many"},
         {"max_visits": 0},
-        {"compare_max_visits": 0},
         {"estimate_visits": 0},
         {"ready_timeout": 0},
         {"ready_timeout": "long"},
@@ -95,32 +90,9 @@ def test_katrain_engine():
     }
 
 
-def test_comparison_model():
-    """The comparison model has its own switch, and runs without the human-like model."""
-    settings = EngineSettings.from_dict(
-        {"model": "/h.bin.gz", "humanlike_model": "/h.bin.gz", "compare_model": "/n.bin.gz", "use_compare": True}
-    )
-    assert settings.compare_on and settings.judge_model == "main"
-    assert settings.compare_engine()["model"] == "/n.bin.gz"
-    assert settings.compare_engine()["humanlike_model"] == ""
-    # Each model has its own visits.
-    assert (settings.max_visits, settings.compare_engine()["max_visits"]) == (500, 500)
-    assert EngineSettings(max_visits=2500, compare_max_visits=100).compare_engine()["max_visits"] == 100
-    assert not EngineSettings(use_compare=True).compare_on  # No model set.
-    assert not EngineSettings(compare_model="/n.bin.gz").compare_on  # Turned off.
-    judged = EngineSettings.from_dict({"judge_model": "compare"})
-    assert judged.judge_model == JUDGE_COMPARE
-    assert EngineSettings.from_dict(judged.to_dict()) == judged
-    for wrong in ({"judge_model": "other"}, {"use_compare": "yes"}, {"compare_model": 3}):
-        with pytest.raises(ValueError):
-            EngineSettings.from_dict(wrong)
-
-
-def test_models_differ():
-    """Only a comparison model that is turned on and is another file differs from the main model."""
-    main = EngineSettings(model="~/models/b18.bin.gz", compare_model="~/models/b28.bin.gz", use_compare=True)
-    assert main.models_differ
-    assert not EngineSettings(
-        model="~/models/b18.bin.gz", compare_model=" ~/models/b18.bin.gz ", use_compare=True
-    ).models_differ
-    assert not EngineSettings(model="~/models/b18.bin.gz", compare_model="~/models/b28.bin.gz").models_differ
+def test_settings_of_the_comparison_model_are_ignored():
+    """The settings of the comparison model of older versions are ignored, as other unknown keys."""
+    old = {"compare_model": "/n.bin.gz", "use_compare": True, "compare_max_visits": 200, "judge_model": "compare"}
+    settings = EngineSettings.from_dict({**old, "max_visits": 300})
+    assert settings == EngineSettings(max_visits=300)
+    assert not set(old) & set(settings.to_dict())

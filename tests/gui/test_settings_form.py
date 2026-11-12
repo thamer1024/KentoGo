@@ -80,10 +80,10 @@ def test_seichi_page():
 def test_wrong_inputs_are_all_reported():
     """All wrong inputs are reported together, with their keys."""
     values = form_values(SETTINGS)
-    values.update({"problems_per_game": "five", "tolerance": "x", "max_visits": "-1", "compare_max_visits": "x"})
+    values.update({"problems_per_game": "five", "tolerance": "x", "max_visits": "-1", "estimate_visits": "x"})
     with pytest.raises(FormError) as caught:
         settings_from_form(values, SETTINGS)
-    assert set(caught.value.errors) == {"problems_per_game", "tolerance", "max_visits", "compare_max_visits"}
+    assert set(caught.value.errors) == {"problems_per_game", "tolerance", "max_visits", "estimate_visits"}
 
 
 def test_value_refused_by_the_settings():

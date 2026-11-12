@@ -2,9 +2,9 @@
 
 KataGo's analysis engine reads several queries at the same time (numAnalysisThreads in its settings
 file; KaTrain's analysis_config.cfg has 12) and starts them in the order of their priority. So each
-query is sent as soon as it is asked for, to the main model's or the comparison model's KataGo,
-and KataGo is never left waiting for the next query. Each query has a time limit (the engine's
-max_time, KaTrain's "max_time"), so a slow computer does not make the user wait long.
+query is sent as soon as it is asked for, and KataGo is never left waiting for the next query. Each
+query has a time limit (the engine's max_time, KaTrain's "max_time"), so a slow computer does not make
+the user wait long.
 
 The time of each final answer is written to the console (or the log) with its visits and the
 number of queries still running, so that a slow computer or model can be found.
@@ -57,7 +57,7 @@ class TimedEngine:
         """Wrap an engine.
 
         Args:
-            engine: The KataGo engine (such as KataGoProcess or OnDemandEngine).
+            engine: The KataGo engine (such as KataGoProcess).
             running: The count of running queries, shared by all engines.
         """
         self.engine = engine
@@ -101,12 +101,6 @@ class TimedEngine:
         terminate_all = getattr(self.engine, "terminate_all", None)
         if terminate_all is not None:
             terminate_all()
-
-    def stop(self) -> None:
-        """Stop the engine when it can be stopped and started again (see on_demand.OnDemandEngine)."""
-        stop = getattr(self.engine, "stop", None)
-        if stop is not None:
-            stop()
 
 
 def _answer_line(answer: dict, seconds: float, running: int) -> str:

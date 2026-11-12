@@ -1,6 +1,6 @@
 """The dialog shown while KataGo loads at the start of the app (as KaTrain waits for its engine).
 
-It tells which model is loaded ("loading_main", then "loading_compare"), and how long it may
+It tells that the model is loaded ("loading_main"), and how long it may
 still take: the time that the same KataGo took last time, minus the time that has passed, with
 a bar (see katago.startup). A KataGo that has not been started before shows only the time that
 has passed. It closes by itself when every KataGo is ready, or has failed (the reason is then

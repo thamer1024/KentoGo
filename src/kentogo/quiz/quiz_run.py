@@ -5,17 +5,12 @@ This part decides:
 
 - which problem is asked, and when the quiz has ended. The next problem can be asked at any time: what
   KataGo is still calculating for this one is stopped (an answer still judged is saved without losses);
-- how an answer is judged: from the SGF file when its loss is there, otherwise with KataGo
-  (the main model, or the comparison model when it judges). While KataGo judges the answer, the
-  sequences cannot be switched or played (busy), and the next problem waits until KataGo has
-  finished everything for this one (calculating);
-- KataGo's sequences after the answer and after the game move, and the comparison model's
-  sequence, which is asked only when the user first chooses it (so that it does not slow down
-  the result). In these sequences, the opponent's replies are those of a human of the opponent's rank (else
-  of the user's rank), when a rank is known and the main KataGo has the human-like model; the user's moves
-  after the answer and after the game move are those of a human of the user's rank (else of the opponent's
-  rank), and only the comparison model plays its own best moves (see quiz.human_line). Without any rank,
-  KataGo's own sequences;
+- how an answer is judged: from the SGF file when its loss is there, otherwise with KataGo. While
+  KataGo judges the answer, the sequences cannot be switched or played (busy), and the next problem
+  waits until KataGo has finished everything for this one (calculating);
+- KataGo's sequences after the answer and after the game move. In them, the user's moves are those of
+  a human of the user's rank (else of the opponent's rank), and the opponent plays the strongest
+  replies (the main KataGo's best moves, see quiz.human_line). Without any rank, KataGo's own sequences;
 - saving each answer once, when its result is known (or without losses when it cannot be judged).
   A problem answered wrong is not asked again the same day: it is reviewed on a later day
   (see repetition.schedule).
@@ -42,19 +37,17 @@ from kentogo.katago.evaluate import (
     predict_after,
 )
 from kentogo.katago.human_moves import human_profile
-from kentogo.mistakes.problem import SOURCE_KATAGO_ACTUAL, SOURCE_KATAGO_ANSWER, SOURCE_KATAGO_COMPARE, Problem
+from kentogo.mistakes.problem import SOURCE_KATAGO_ACTUAL, SOURCE_KATAGO_ANSWER, Problem
 from kentogo.quiz.human_line import Extension, LineEngines, PlayerRanks, build_line
 from kentogo.quiz.judge import ScoringPolicy
-from kentogo.quiz.session import ANSWERED, OFFERED, WAITING, QuizSession
+from kentogo.quiz.session import ANSWERED, WAITING, QuizSession
 from kentogo.quiz.transform import BoardTransform
 
-# The sequences after the answer, after the game move and from the comparison model's move are made as long as
-# the longest sequence in the SGF file (KaTrain's), at least MIN_LINE moves, so that their ends can be compared;
-# but no move is added after KataGo's own length once LINE_SECONDS have passed.
+# The sequences after the answer and after the game move are made as long as the longest sequence in the
+# SGF file (KaTrain's), at least MIN_LINE moves, so that their ends can be compared; but no move is added
+# after KataGo's own length once LINE_SECONDS have passed.
 MIN_LINE = 15
 LINE_SECONDS = 5.0
-# The sequence from the comparison model's move is not offered for now (the user may want it back).
-SHOW_COMPARE_LINE = False
 
 # Why an answer is not judged yet: the key of a screen text and its values.
 REASON_EVALUATING = "evaluating"
@@ -62,7 +55,7 @@ REASON_NO_ENGINE = "no_engine"
 REASON_FAILED = "evaluation_failed"
 
 Reason = tuple[str, dict]
-Saver = Callable[[QuizSession, int | None, bool], None]
+Saver = Callable[[QuizSession, int | None], None]
 
 
 @dataclass(frozen=True)
@@ -73,9 +66,6 @@ class Judging:
         engine: KataGo with the main model, or None if it is not available.
         settings: How the main model analyzes the positions.
         engine_problem: Why KataGo is not available ("" if it is available).
-        compare_engine: KataGo with the comparison model, or None.
-        compare_settings: How the comparison model analyzes the positions (its own visits).
-        judge_with_compare: True to calculate the losses with the comparison model.
         player_ranks: Returns the ranks of the players of a problem's game, for the human-like moves of KataGo's
             sequences (see kentogo.opponent_rank; without a rank, KataGo's own sequences are shown).
     """
@@ -83,32 +73,11 @@ class Judging:
     engine: AnalysisEngine | None = None
     settings: EvaluationSettings = EvaluationSettings()
     engine_problem: str = ""
-    compare_engine: AnalysisEngine | None = None
-    compare_settings: EvaluationSettings = EvaluationSettings()
-    judge_with_compare: bool = False
     player_ranks: Callable[[Problem], PlayerRanks] = lambda _problem: PlayerRanks()
 
-    @property
-    def judges_with_compare(self) -> bool:
-        """True if the comparison model judges the answers (it must be there)."""
-        return self.judge_with_compare and self.compare_engine is not None
-
-    @property
-    def judge_engine(self) -> AnalysisEngine | None:
-        """The KataGo that judges the answers."""
-        return self.compare_engine if self.judges_with_compare else self.engine
-
-    @property
-    def judge_settings(self) -> EvaluationSettings:
-        """How the model that judges the answers analyzes the positions."""
-        return self.compare_settings if self.judges_with_compare else self.settings
-
     def models(self) -> Models:
-        """Return the main model and the comparison model, for the territory and the standing."""
-        main = AnalysisModel(self.engine, self.settings) if self.engine is not None else None
-        if self.compare_engine is None:
-            return Models(main)
-        return Models(main, AnalysisModel(self.compare_engine, self.compare_settings))
+        """Return the main model, for the territory and the standing."""
+        return Models(AnalysisModel(self.engine, self.settings) if self.engine is not None else None)
 
 
 class QuizListener(Protocol):
@@ -134,7 +103,7 @@ class QuizRun:
         choose_transform: Returns how to change each problem.
         judging: KataGo for judging the answers.
         listener: Told what changed.
-        save: Saves an answer (the session, KataGo's visits or None, True if the comparison model judged it).
+        save: Saves an answer (the session, and KataGo's visits or None).
         in_main: Wraps a callback of KataGo so that it runs in the screen's main thread.
         index: The index of the problem asked now.
         session: The session of the problem asked now, or None after the last problem.
@@ -145,7 +114,7 @@ class QuizRun:
     choose_transform: Callable[[], BoardTransform]
     judging: Judging
     listener: QuizListener
-    save: Saver = lambda _session, _visits, _compare: None
+    save: Saver = lambda _session, _visits: None
     in_main: Callable[[Callable], Callable] = lambda function: function
     index: int = field(default=0, init=False)
     session: QuizSession | None = field(default=None, init=False)
@@ -158,9 +127,7 @@ class QuizRun:
         if index >= len(self.problems):
             self.session = None
         else:
-            problem = self.problems[index]
-            use_sgf_losses = not self.judging.judges_with_compare
-            self.session = QuizSession(problem, self.policy, self.choose_transform(), use_sgf_losses=use_sgf_losses)
+            self.session = QuizSession(self.problems[index], self.policy, self.choose_transform())
         self.listener.started(self.session)
 
     @property
@@ -195,11 +162,10 @@ class QuizRun:
         return True
 
     def stop_katago(self) -> None:
-        """Ask both KataGo engines to stop reading all queries, when they can (KataGo's "terminate_all")."""
-        for engine in (self.judging.engine, self.judging.compare_engine):
-            terminate_all = getattr(engine, "terminate_all", None)
-            if terminate_all is not None:
-                terminate_all()
+        """Ask KataGo to stop reading all queries, when it can (KataGo's "terminate_all")."""
+        terminate_all = getattr(self.judging.engine, "terminate_all", None)
+        if terminate_all is not None:
+            terminate_all()
 
     def answer(self, point: tuple[int, int]) -> str:
         """Take a point of the shown board as the answer.
@@ -218,22 +184,14 @@ class QuizRun:
             self._evaluate(session)
         else:
             self._judged_from_the_file(session)
-        if SHOW_COMPARE_LINE and self.judging.compare_engine is not None:
-            session.offer(SOURCE_KATAGO_COMPARE)  # Calculated only when the user chooses it.
         return ""
 
     def next_variation(self) -> bool:
-        """Switch to the next sequence (after the answer, when not busy). Returns True if it switched.
-
-        When the comparison model's sequence is chosen for the first time, it is calculated.
-        """
+        """Switch to the next sequence (after the answer, when not busy). Returns True if it switched."""
         session = self.session
         if session is None or session.phase != ANSWERED or self.busy:
             return False
         session.next_variation()
-        choice = session.choice
-        if choice is not None and choice.source == SOURCE_KATAGO_COMPARE and choice.status == OFFERED:
-            self._ask_compare(session)
         return True
 
     def waiting_reason(self, session: QuizSession) -> Reason | None:
@@ -243,12 +201,12 @@ class QuizRun:
     def save_unfinished(self) -> None:
         """Save the answers that KataGo is still judging, without losses (when the screen is left or the app closes)."""
         for session in list(self._waiting):
-            self.save(session, None, False)
+            self.save(session, None)
         self._waiting.clear()
 
     def _judged_from_the_file(self, session: QuizSession) -> None:
         """Save an answer judged from the SGF file, and ask KataGo for the sequences after it and after the game move."""
-        self._finish(session, None, False)
+        self.save(session, None)
         answer = session.result.answer
         self._predict_after(session, answer, SOURCE_KATAGO_ANSWER)
         if answer != session.problem.actual_move:
@@ -256,10 +214,10 @@ class QuizRun:
 
     def _evaluate(self, session: QuizSession) -> None:
         """Ask KataGo for the losses of an answer whose loss is not in the SGF file."""
-        engine = self.judging.judge_engine
+        engine = self.judging.engine
         if engine is None:
             self._reasons[session] = (REASON_NO_ENGINE, {"reason": self.judging.engine_problem})
-            self.save(session, None, False)  # It cannot be judged, so it is saved without losses.
+            self.save(session, None)  # It cannot be judged, so it is saved without losses.
             return
         self._reasons[session] = (REASON_EVALUATING, {})
         self._waiting.add(session)
@@ -271,7 +229,7 @@ class QuizRun:
             problem.position,
             session.result.answer,
             problem.actual_move,
-            self.judging.judge_settings,
+            self.judging.settings,
             on_done=self.in_main(lambda evaluation: self._evaluated(session, evaluation)),
             on_error=self.in_main(lambda message: self._evaluation_failed(session, message)),
         )
@@ -285,7 +243,7 @@ class QuizRun:
         self._add_line(session, session.result.answer, evaluation.answer_sequence, SOURCE_KATAGO_ANSWER)
         self._add_line(session, session.problem.actual_move, evaluation.actual_sequence, SOURCE_KATAGO_ACTUAL)
         self._reasons.pop(session, None)
-        self._finish(session, self.judging.judge_settings.max_visits, self.judging.judges_with_compare)
+        self.save(session, self.judging.settings.max_visits)
         self.listener.changed(session)
 
     def _evaluation_failed(self, session: QuizSession, message: str) -> None:
@@ -296,13 +254,9 @@ class QuizRun:
         session.fail(SOURCE_KATAGO_ANSWER)
         session.fail(SOURCE_KATAGO_ACTUAL)
         self._reasons[session] = (REASON_FAILED, {"reason": message})
-        self.save(session, None, False)
+        self.save(session, None)
         self.listener.failed(REASON_FAILED, message)
         self.listener.changed(session)
-
-    def _finish(self, session: QuizSession, max_visits: int | None, by_compare: bool) -> None:
-        """Save a judged answer."""
-        self.save(session, max_visits, by_compare)
 
     def _predict_after(self, session: QuizSession, move: Move, source: str) -> None:
         """Ask KataGo for the sequence after a move (SOURCE_KATAGO_ANSWER or SOURCE_KATAGO_ACTUAL)."""
@@ -352,23 +306,6 @@ class QuizRun:
         judging = self.judging
         return _strongest_replies(judging.player_ranks(problem), judging.engine, judging.settings)
 
-    def _compare_line_engines(self, problem: Problem) -> LineEngines | None:
-        """Return what the sequence from the comparison model's best move is made with.
-
-        Only the first move is the comparison model's; then the user plays as a human and the opponent plays
-        the strongest replies, as after the answer, so that the sequences differ only in their first moves.
-        Without a rank (or the main KataGo), the comparison model plays both sides.
-        """
-        judging = self.judging
-        if judging.compare_engine is None:
-            return None
-        found = _strongest_replies(judging.player_ranks(problem), judging.engine, judging.settings)
-        settings = judging.compare_settings
-        alone = LineEngines(
-            judging.compare_engine, judging.compare_engine, settings.estimate_visits, settings.wide_root_noise, ""
-        )
-        return found or alone
-
     def _human_line_failed(
         self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str, message: str
     ) -> None:
@@ -388,52 +325,6 @@ class QuizRun:
             session.add_sequence(move, sequence, source)
         else:
             session.fail(source)
-
-    def _ask_compare(self, session: QuizSession) -> None:
-        """Ask the comparison model for the losses of the answer and the game move, and its best sequence."""
-        session.expect(SOURCE_KATAGO_COMPARE)
-        evaluate_moves(
-            self.judging.compare_engine,
-            session.problem.position,
-            session.result.answer,
-            session.problem.actual_move,
-            self.judging.compare_settings,
-            on_done=self.in_main(lambda evaluation: self._compared(session, evaluation)),
-            on_error=self.in_main(lambda message: self._compare_failed(session, message)),
-        )
-
-    def _compared(self, session: QuizSession, evaluation: Evaluation) -> None:
-        """Keep the comparison model's sequence: its best moves, with the opponent's human-like replies when it can."""
-        engines = self._compare_line_engines(session.problem)
-        if engines is None or not evaluation.best_sequence:
-            self._keep_compare(session, evaluation, evaluation.best_sequence)
-            return
-        build_line(
-            engines,
-            session.problem.position,
-            evaluation.best_sequence,
-            on_done=self.in_main(lambda line: self._keep_compare(session, evaluation, line)),
-            on_error=self.in_main(lambda message: self._compare_line_failed(session, evaluation, message)),
-            extension=Extension(_aimed_length(session.problem), LINE_SECONDS),
-        )
-
-    def _keep_compare(self, session: QuizSession, evaluation: Evaluation, line: tuple[Move, ...]) -> None:
-        """Keep the comparison model's result and the sequence shown for it."""
-        session.apply_compare_evaluation(evaluation.answer_loss, evaluation.actual_loss, line, evaluation.best_loss)
-        self.listener.changed(session)
-
-    def _compare_line_failed(self, session: QuizSession, evaluation: Evaluation, message: str) -> None:
-        """Show the comparison model's own sequence, and tell why the human-like replies could not be used."""
-        self._keep_compare(session, evaluation, evaluation.best_sequence)
-        if session is self.session:
-            self.listener.failed("notice_human_line_failed", message)
-
-    def _compare_failed(self, session: QuizSession, message: str) -> None:
-        """Mark the comparison model's sequence as failed, and tell why (if the problem is still asked)."""
-        session.fail(SOURCE_KATAGO_COMPARE)
-        if session is self.session:
-            self.listener.failed("notice_compare_line_failed", message)
-        self.listener.changed(session)
 
 
 def _strongest_replies(

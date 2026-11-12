@@ -10,7 +10,7 @@ from kentogo.mistakes.problem import Problem
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import QuizSession
 from kentogo.quiz.transform import BoardTransform
-from kentogo.review.record import LOSS_FROM_COMPARE, LOSS_FROM_KATAGO, LOSS_FROM_SGF, LOSS_UNKNOWN
+from kentogo.review.record import LOSS_FROM_KATAGO, LOSS_FROM_SGF, LOSS_UNKNOWN
 
 JST = timezone(timedelta(hours=9))
 WHEN = datetime(2026, 10, 20, 21, 30, tzinfo=JST)
@@ -70,10 +70,3 @@ def test_record_before_the_answer():
     """There is no record before the answer."""
     with pytest.raises(ValueError):
         record_of(QuizSession(PROBLEM, ScoringPolicy()), WHEN)
-
-
-def test_record_of_the_comparison_model():
-    """Losses calculated by the comparison model are marked as such."""
-    session = answered("R4")
-    session.apply_evaluation(answer_loss=1.0, actual_loss=9.0)
-    assert record_of(session, WHEN, max_visits=500, comparison_model=True).loss_source == LOSS_FROM_COMPARE

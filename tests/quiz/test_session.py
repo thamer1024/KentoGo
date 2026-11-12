@@ -10,12 +10,11 @@ from kentogo.mistakes.problem import (
     SOURCE_GAME,
     SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
-    SOURCE_KATAGO_COMPARE,
     Problem,
     Variation,
 )
 from kentogo.quiz.judge import ScoringPolicy
-from kentogo.quiz.session import ANSWERED, ASKING, FAILED, OFFERED, WAITING, QuizSession
+from kentogo.quiz.session import ANSWERED, ASKING, FAILED, WAITING, QuizSession
 from kentogo.quiz.transform import BoardTransform
 
 
@@ -162,25 +161,22 @@ def sources(quiz: QuizSession) -> list[tuple[str, str]]:
 
 
 def test_katago_sequences_are_in_a_fixed_order():
-    """Tab order: after the answer, after the game move, the SGF file's sequences, and last the comparison model."""
+    """Tab order: after the answer, after the game move, and the SGF file's sequences."""
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
     quiz.expect(SOURCE_KATAGO_ACTUAL)
-    quiz.expect(SOURCE_KATAGO_COMPARE)
     assert sources(quiz) == [
         ("katago", WAITING),
         (SOURCE_KATAGO_ACTUAL, WAITING),
         ("katrain", ""),
         ("katago", ""),  # The SGF file's own second sequence.
-        (SOURCE_KATAGO_COMPARE, WAITING),
     ]
     # The sequence after the answer is shown first, while KataGo is still calculating it.
     assert quiz.variation_index == 0 and quiz.variation is None and quiz.shown_sequence() == ()
     quiz.apply_evaluation(1.0, 9.0, (gtp("C3", "W"), gtp("D3")), actual_sequence=(gtp("B18", "W"),))
     assert quiz.variation == Variation((gtp("R4"), gtp("C3", "W"), gtp("D3")), "katago")
     assert quiz.choices[1].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
-    assert quiz.choices[4].status == WAITING  # The comparison model is still calculating.
     assert quiz.replay_step == 0
 
 
@@ -197,35 +193,23 @@ def test_shown_sequence_stays_when_another_arrives():
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
-    quiz.expect(SOURCE_KATAGO_COMPARE)
+    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    quiz.next_variation()
     quiz.next_variation()  # KaTrain's sequence.
-    quiz.add_sequence(gtp("Q3"), (gtp("R3", "W"),), SOURCE_KATAGO_COMPARE)
+    quiz.add_sequence(gtp("A19"), (gtp("R3", "W"),), SOURCE_KATAGO_ACTUAL)
     quiz.add_sequence(gtp("R4"), (gtp("C3", "W"),), SOURCE_KATAGO_ANSWER)
     assert quiz.variation == PROBLEM.variations[0]
-    quiz.next_variation()
-    quiz.next_variation()
-    assert quiz.variation == Variation((gtp("Q3"), gtp("R3", "W")), SOURCE_KATAGO_COMPARE)
-
-
-def test_offered_sequence_waits_until_it_is_asked_for():
-    """An offered sequence is in the order without moves, and becomes waiting when KataGo is asked."""
-    quiz = session()
-    quiz.answer(gtp("R4"))
-    quiz.offer(SOURCE_KATAGO_COMPARE)
-    assert sources(quiz)[-1] == (SOURCE_KATAGO_COMPARE, OFFERED)
-    quiz.expect(SOURCE_KATAGO_COMPARE)
-    assert sources(quiz)[-1] == (SOURCE_KATAGO_COMPARE, WAITING)
-    quiz.offer(SOURCE_KATAGO_COMPARE)  # Offering again does not undo the asking.
-    assert sources(quiz)[-1] == (SOURCE_KATAGO_COMPARE, WAITING)
+    quiz.select_variation(1)
+    assert quiz.variation == Variation((gtp("A19"), gtp("R3", "W")), SOURCE_KATAGO_ACTUAL)
 
 
 def test_failed_sequence_is_marked():
     """A sequence that KataGo could not calculate stays in the order, marked as failed."""
     quiz = session()
     quiz.answer(gtp("R4"))
-    quiz.expect(SOURCE_KATAGO_COMPARE)
-    quiz.fail(SOURCE_KATAGO_COMPARE)
-    assert sources(quiz)[-1] == (SOURCE_KATAGO_COMPARE, FAILED)
+    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    quiz.fail(SOURCE_KATAGO_ACTUAL)
+    assert sources(quiz)[0] == (SOURCE_KATAGO_ACTUAL, FAILED)
     quiz.fail(SOURCE_KATAGO_ANSWER)  # Not expected, so nothing is added.
     assert len(quiz.choices) == 3
 
@@ -240,31 +224,6 @@ def test_no_sequence_after_the_game_move_when_it_is_the_answer():
     quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ANSWER)
     assert [choice.source for choice in quiz.choices] == ["katago", "katrain", "katago"]
     assert quiz.variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ANSWER)
-
-
-def test_comparison_result_is_shown_with_its_sequence():
-    """The comparison model's result is shown only while its sequence is shown."""
-    quiz = session()
-    quiz.answer(gtp("R4"))
-    quiz.apply_evaluation(1.0, 8.0)
-    quiz.expect(SOURCE_KATAGO_COMPARE)
-    compare = quiz.apply_compare_evaluation(3.0, 6.0, (gtp("Q3"), gtp("R3", "W")), 0.2)
-    assert (compare.answer_loss, compare.correct) == (3.0, False)  # It recovers only half of the loss.
-    assert (quiz.compare_best, quiz.compare_best_loss) == (gtp("Q3"), 0.2)
-    assert quiz.displayed_result.answer_loss == 1.0  # KaTrain's sequence is shown first.
-    quiz.select_variation(2)  # katrain, katago (in the SGF file), then the comparison model.
-    assert quiz.showing_compare and quiz.displayed_result.answer_loss == 3.0
-    quiz.next_variation()
-    assert not quiz.showing_compare and quiz.displayed_result.answer_loss == 1.0
-
-
-def test_comparison_without_a_sequence_is_marked_as_failed():
-    """Without a best sequence, the comparison model's sequence is marked as failed."""
-    quiz = session()
-    quiz.answer(gtp("R4"))
-    quiz.expect(SOURCE_KATAGO_COMPARE)
-    quiz.apply_compare_evaluation(3.0, 6.0, ())
-    assert quiz.choices[-1].status == FAILED and quiz.compare_best is None
 
 
 def test_next_variation_goes_around():
@@ -301,13 +260,6 @@ def test_candidate_move_from_analysis_data_is_judged_at_once():
     assert other.correct is None  # Not in the analysis data: KataGo is needed.
 
 
-def test_sgf_losses_can_be_turned_off():
-    """When another model judges, even the best move and the game move wait for KataGo."""
-    quiz = QuizSession(PROBLEM, ScoringPolicy(), use_sgf_losses=False)
-    assert quiz.answer(gtp("Q4")).correct is None
-    assert QuizSession(PROBLEM, ScoringPolicy(), use_sgf_losses=False).known_loss(gtp("A19")) is None
-
-
 def test_the_loss_of_the_shown_sequences_first_move():
     """While another sequence is shown, its first move and its loss are given; for the answer's own, nothing."""
     problem = replace(PROBLEM, candidate_losses=(("R4", 1.0),))
@@ -337,22 +289,6 @@ def test_the_end_of_a_sequence_is_where_the_territory_can_be_shown():
     assert quiz.choice.source == SOURCE_KATAGO_ACTUAL and quiz.sequence_at_end() is None
     quiz.step_forward()
     assert quiz.sequence_at_end() == quiz.choice.variation
-
-
-def test_the_ai_commentary_is_not_shown_with_the_comparison_model():
-    """The AI commentary goes with every sequence but the comparison model's (another AI's view)."""
-    quiz = QuizSession(PROBLEM, ScoringPolicy())
-    quiz.answer(gtp("Q4"))
-    assert quiz.choice.source == "katrain" and quiz.shows_ai_comment
-    quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ACTUAL)
-    quiz.add_sequence(gtp("K10"), (gtp("K11", "W"),), SOURCE_KATAGO_ANSWER)
-    quiz.add_sequence(gtp("D4"), (gtp("D5", "W"),), SOURCE_KATAGO_COMPARE)
-    sources = [choice.source for choice in quiz.choices]
-    for source in (SOURCE_KATAGO_ANSWER, SOURCE_KATAGO_ACTUAL, "katrain"):
-        quiz.select_variation(sources.index(source))
-        assert quiz.shows_ai_comment
-    quiz.select_variation(sources.index(SOURCE_KATAGO_COMPARE))
-    assert not quiz.shows_ai_comment
 
 
 def test_the_verdict_goes_with_the_answers_sequence():

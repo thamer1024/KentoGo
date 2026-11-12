@@ -10,6 +10,7 @@
 # The data files of KentoGo are put at the same places under "kentogo" as in the source, so the
 # code finds them as it does when it runs from the source.
 
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,11 @@ from kivy_deps import angle, glew, sdl2
 HERE = Path(SPECPATH).resolve()
 ROOT = HERE.parents[1]
 PACKAGE = ROOT / "src" / "kentogo"
+
+# The DLLs of NVIDIA's GPU libraries (CUDA, cuDNN and TensorRT). KentoGo does not use them, but PyInstaller
+# can find them in PATH (newer NVIDIA display drivers put CUDA there), so they are never put in the program
+# (see also build.ps1, which leaves those folders out of PATH).
+GPU_DLLS = re.compile(r"^(cuda|cublas|cudnn|cufft|curand|cusolver|cusparse|nvinfer|nvonnx|nvparsers|nvrtc|nvjit)", re.I)
 
 # The data files of KentoGo (tests/test_packaging.py checks that every folder of data is here).
 DATA = [
@@ -49,6 +55,7 @@ a = Analysis(
     runtime_hooks=runtime_hooks(),
     **get_deps_all(),
 )
+a.binaries = [binary for binary in a.binaries if not GPU_DLLS.match(Path(binary[0]).name)]
 # The DLLs of SDL2, GLEW and ANGLE, which Kivy needs on Windows.
 DLLS = [Tree(folder) for folder in (sdl2.dep_bins + glew.dep_bins + angle.dep_bins)]
 

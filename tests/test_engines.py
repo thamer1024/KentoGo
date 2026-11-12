@@ -3,42 +3,18 @@
 from dataclasses import replace
 
 import pytest
-from fake_engines import fake_katago_settings, make_fake_katago, started_in_the_background
+from fake_engines import fake_katago_settings, make_fake_katago
 
-from kentogo import engines as engines_module
 from kentogo.engines import (
-    COMPARE_CACHE,
-    engine_commands,
+    engine_command_line,
     engines_for,
-    make_command,
     measure_katago_speed,
     open_engines,
+    start_app_engine,
     start_engine,
-    start_engines,
 )
 from kentogo.gui.texts import notice_text
 from kentogo.katago.engine_settings import EngineSettings
-
-
-@pytest.fixture(autouse=True)
-def compare_model_started(monkeypatch):
-    """The comparison model is tested as when it is started (it is left out for now)."""
-    monkeypatch.setattr(engines_module, "COMPARE_MODEL_STARTED", True)
-
-
-def test_the_comparison_model_is_not_started_for_now(tmp_path, monkeypatch):
-    """While COMPARE_MODEL_STARTED is off, only the main KataGo starts, even with the comparison model turned on."""
-    monkeypatch.setattr(engines_module, "COMPARE_MODEL_STARTED", False)
-    settings = fake_katago_settings(
-        tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True, judge_model="compare"
-    )
-    notices = []
-    engine, compare, _, problem = start_engines(settings, turned_off=False, notices=notices)
-    try:
-        assert problem == "" and compare is None and notices == []
-        assert engine_commands(settings, turned_off=False)[1] is None
-    finally:
-        engine.close()
 
 
 def test_start_engine_without_katago(tmp_path):
@@ -71,119 +47,56 @@ def test_start_engine(tmp_path):
         engine.close()
 
 
-def test_start_engines_with_the_comparison_model(tmp_path):
-    """With the comparison model turned on, a second KataGo is started when it is first needed."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
-    engine, compare, _, problem = start_engines(settings, turned_off=False)
-    try:
-        assert problem == "" and engine.is_running and not compare.is_running
-        answers = []
-        compare.query({"moves": []}, answers.append)
-        assert compare.is_running  # Started by the first query.
-        compare.stop()
-        assert not compare.is_running
-        assert "normal.bin.gz" in " ".join(compare.command.command)
-        assert "-human-model" not in compare.command.command
-        # The settings of the queries are on the command line, so a humanSLProfile in the file does no harm.
-        assert compare.command.settings_in_command and not engine.command.settings_in_command
-        assert "reportAnalysisWinratesAs=BLACK" in compare.command.command[-1]
-    finally:
-        engine.close()
-        compare.close()
-
-
-def test_quiz_starts_the_comparison_model_after_the_main_one(tmp_path):
-    """In the quiz, the comparison model's KataGo is started when the main KataGo is ready."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
-    engines = open_engines(settings, turned_off=False)
-    try:
-        main, compare = engines.processes
-        assert main.wait_until_ready(10) and started_in_the_background(compare)
-    finally:
-        engines.close()
-    assert not compare.is_running
-
-
 def test_engines_are_kept_when_only_the_visits_change(tmp_path):
     """New numbers of visits use the running KataGo; another model starts KataGo again."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
+    settings = fake_katago_settings(tmp_path)
     running = engines_for(None, settings, turned_off=False)
     try:
-        same = engines_for(running, replace(settings, max_visits=77, compare_max_visits=11), turned_off=False)
-        assert same.processes == running.processes and same.notices == ()
-        assert (same.evaluation.max_visits, same.compare_evaluation.max_visits) == (77, 11)
+        same = engines_for(running, replace(settings, max_visits=77), turned_off=False)
+        assert same.process is running.process and same.notices == () and same.evaluation.max_visits == 77
         (tmp_path / "other.bin.gz").write_text("x")
         other = engines_for(same, replace(settings, model=str(tmp_path / "other.bin.gz")), turned_off=False)
-        assert other.processes != running.processes and not running.processes[0].is_running
+        assert other.process is not running.process and not running.process.is_running
     finally:
         other.close()
 
 
-def test_loading_follows_the_main_model_then_the_comparison_model(tmp_path):
-    """The loading stages are the main KataGo, then the comparison model's; both get ready."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
+def test_loading_follows_the_main_model(tmp_path):
+    """The loading stage is the main KataGo, which gets ready; without KataGo there is none."""
+    settings = fake_katago_settings(tmp_path)
     engines = open_engines(settings, turned_off=False)
     try:
         stages = engines.loading_stages()
-        assert [stage.text_key for stage in stages] == ["loading_main", "loading_compare"]
-        assert started_in_the_background(engines.processes[1])
-        assert all(stage.is_ready() and not stage.has_failed() for stage in stages)
-        assert all(stage.seconds() is not None for stage in stages)
+        assert [stage.text_key for stage in stages] == ["loading_main"]
+        assert engines.process.wait_until_ready(10)
+        assert all(stage.is_ready() and not stage.has_failed() and stage.seconds() is not None for stage in stages)
     finally:
         engines.close()
     assert open_engines(settings, turned_off=True).loading_stages() == []
 
 
-def test_start_engines_without_the_comparison_model(tmp_path):
-    """Without the comparison model, or with KataGo turned off, no second KataGo is started."""
-    engine, compare, _, _ = start_engines(fake_katago_settings(tmp_path), turned_off=False)
-    engine.close()
-    assert compare is None
-    assert start_engines(fake_katago_settings(tmp_path, use_compare=True), turned_off=True)[:2] == (None, None)
+def test_start_app_engine_when_turned_off(tmp_path):
+    """With KataGo turned off, it is not started and has no command line."""
+    engine, _, problem = start_app_engine(fake_katago_settings(tmp_path), turned_off=True)
+    assert engine is None and problem
+    assert engine_command_line(fake_katago_settings(tmp_path), turned_off=True) is None
 
 
-def test_comparison_model_that_judges_is_started_after_the_main_one(tmp_path):
-    """When the comparison model judges every answer, its KataGo is also started after the main one."""
-    settings = fake_katago_settings(
-        tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True, judge_model="compare"
-    )
-    engines = open_engines(settings, turned_off=False)
-    try:
-        assert engines.judge_with_compare and started_in_the_background(engines.processes[1])
-    finally:
-        engines.close()
-
-
-def test_start_engines_tells_when_the_comparison_model_cannot_start(tmp_path):
-    """If the comparison model cannot be started, the user is told in a dialog, and so is the judge fallback."""
-    settings = fake_katago_settings(
-        tmp_path, compare_model=str(tmp_path / "missing.bin.gz"), use_compare=True, judge_model="compare"
-    )
-    notices = []
-    engine, compare, _, problem = start_engines(settings, turned_off=False, notices=notices)
-    engine.close()
-    assert compare is None and problem == ""
-    assert len(notices) == 2
-    first, second = (notice_text(notice) for notice in notices)
-    assert "比較用モデル" in first and "missing.bin.gz" in first
-    assert "メインのモデル" in second
-
-
-def test_start_engines_tells_when_katago_cannot_start(tmp_path):
+def test_start_app_engine_tells_when_katago_cannot_start(tmp_path):
     """If KataGo cannot be started, the user is told why. Turning it off is not a problem to tell."""
     notices = []
-    engine, _, _, problem = start_engines(EngineSettings(katago=str(tmp_path / "none")), False, notices)
+    engine, _, problem = start_app_engine(EngineSettings(katago=str(tmp_path / "none")), False, notices)
     assert engine is None and problem
     assert len(notices) == 1 and "KataGoを起動できませんでした" in notice_text(notices[0])
     notices.clear()
-    start_engines(EngineSettings(), turned_off=True, notices=notices)
+    start_app_engine(EngineSettings(), turned_off=True, notices=notices)
     assert notices == []
 
 
 def test_quiz_engines_start_when_asked_and_stop_when_closed(tmp_path):
     """KataGo for the quiz is started by open_engines, and stopped by close (when the quiz ends)."""
     engines = open_engines(fake_katago_settings(tmp_path), turned_off=False)
-    process = engines.processes[0]
+    process = engines.process
     assert engines.engine is not None and engines.engine_problem == "" and process.is_running
     engines.close()
     assert not process.is_running
@@ -195,34 +108,10 @@ def test_quiz_engines_start_when_asked_and_stop_when_closed(tmp_path):
 def test_measure_katago_speed(tmp_path):
     """The speed is measured with a KataGo of its own (the fake one reads every visit at once)."""
     speed = measure_katago_speed(fake_katago_settings(tmp_path))
-    assert speed.main > 0 and speed.compare is None
-
-
-def test_measure_katago_speed_of_both_models(tmp_path):
-    """With the comparison model turned on, it is measured too, with a KataGo of its own."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
-    speed = measure_katago_speed(settings)
-    assert speed.main > 0 and speed.compare is not None and speed.compare > 0
+    assert speed.main > 0
 
 
 def test_measure_katago_speed_without_katago(tmp_path):
     """When KataGo cannot be started, the error tells why."""
     with pytest.raises(RuntimeError, match="KataGo"):
         measure_katago_speed(EngineSettings(katago=str(tmp_path / "missing")))
-
-
-def test_measure_the_same_model_once(tmp_path):
-    """A comparison model that is the main model's file is not measured again: it has the same speed."""
-    settings = fake_katago_settings(tmp_path, use_compare=True)
-    settings = replace(settings, compare_model=settings.model)
-    speed = measure_katago_speed(settings)
-    assert speed.compare == speed.main
-
-
-def test_the_comparison_model_has_a_smaller_cache(tmp_path):
-    """The comparison model's KataGo is started with a smaller cache; the main one keeps KaTrain's."""
-    settings = fake_katago_settings(tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True)
-    compare, _, _ = make_command(settings, settings.compare_engine())
-    main, _, _ = make_command(settings)
-    cache = f"nnCacheSizePowerOfTwo={COMPARE_CACHE['nnCacheSizePowerOfTwo']}"
-    assert cache in " ".join(compare.command) and cache not in " ".join(main.command)

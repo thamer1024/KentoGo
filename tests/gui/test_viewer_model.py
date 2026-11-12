@@ -108,35 +108,6 @@ def test_sequence_on_the_board_and_in_the_text():
     assert variation_text(game, Browse(0)) == ""
 
 
-def test_the_comparison_models_sequence_comes_last():
-    """The comparison model's sequence (added by the screen) comes after the others, with its own marks."""
-    from kentogo.common.types import Move
-    from kentogo.gui.board_view import MARK_ACTUAL, MARK_COMPARE
-    from kentogo.gui.viewer_model import (
-        SOURCE_COMPARE,
-        Browse,
-        browse_view,
-        is_last_sequence,
-        next_variation,
-        step_game,
-        variations_at,
-    )
-    from kentogo.mistakes.problem import Variation
-
-    game = branched()
-    line = Variation((Move.from_gtp("E3", "W"), Move.from_gtp("F3", "B")), SOURCE_COMPARE)
-    added = {2: line}
-    assert variations_at(game, 2, added)[-1] == line and len(variations_at(game, 2, added)) == 3
-    assert is_last_sequence(game, Browse(2, 1, 1)) and not is_last_sequence(game, Browse(2, 1, 1), added)
-    assert is_last_sequence(game, Browse(3)) and not is_last_sequence(game, Browse(2))
-    assert next_variation(game, Browse(2, 1, 2), added) == Browse(2, 2, 1)  # From its first move.
-    assert next_variation(game, Browse(2, 2, 2), added) == Browse(2)  # Then back to the game at the move.
-    assert step_game(game, Browse(2, 2, 1), 1, added) == Browse(2, 2, 2)  # → plays it forward.
-    assert step_game(game, Browse(2, 2, 2), -1, added) == Browse(2, 2, 1)  # ← plays it back.
-    view = browse_view(game, Browse(2, 2, 2), added)
-    assert view.marks == {(0, 0): (MARK_ACTUAL,), (4, 2): (MARK_COMPARE,), (5, 2): (MARK_COMPARE,)}
-
-
 def test_the_end_of_a_sequence():
     """Only a sequence shown to its last move is at its end."""
     from kentogo.gui.viewer_model import Browse, sequence_at_end
@@ -151,16 +122,3 @@ def test_the_game_after_some_moves():
     game = branched()
     assert len(game.position_after(1).moves) == 1
     assert len(game.position_after(99).moves) == len(game.position_after(game.last_position).moves)
-
-
-def test_the_ai_commentary_is_hidden_with_the_comparison_models_sequence():
-    """With the comparison model's sequence shown, only the user's notes are shown, as in the quiz."""
-    from kentogo.common.types import Move
-    from kentogo.gui.viewer_model import SOURCE_COMPARE, Browse, browse_comment_text, variations_at
-    from kentogo.mistakes.problem import Variation
-
-    game = record()
-    added = {2: Variation((Move.from_gtp("C3", "W"),), SOURCE_COMPARE)}
-    last = len(variations_at(game, 2, added)) - 1
-    assert browse_comment_text(game, Browse(2, last, 1), added) == "note"
-    assert browse_comment_text(game, Browse(2), added) == comment_text(game, 2)

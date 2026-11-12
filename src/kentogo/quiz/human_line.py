@@ -1,17 +1,15 @@
-"""KataGo's sequences of a problem, with the opponent's replies of a human of its rank.
+"""KataGo's sequences of a problem, made again move by move with the moves of a human of a rank.
 
-KataGo's own sequence has the opponent's best replies, which are much stronger than the opponent's
-real moves (often KaTrain's human-like AI), so the sequence often ends worse for the user than the
-game did. So the sequence is made again move by move: the opponent's moves are the moves that a human
-of the opponent's rank would most likely play (see katago.human_moves), as KaTrain's human-like AI
-plays them. The user's moves are those of a human too (my_profile: the user's rank, else the opponent's),
-except in the comparison model's sequence, where the comparison model plays its best moves. Without the
-opponent's rank (profile ""), the opponent plays the best moves of the sequence's model too.
+KataGo's own sequence has the best moves of both sides, which are much stronger than the user's real
+moves. So the sequence is made again move by move: a side with a profile (my_profile for the user,
+profile for the opponent) plays the move that a human of that rank would most likely play (see
+katago.human_moves), as KaTrain's human-like AI plays it; a side without one plays KataGo's best move
+(for the opponent: the strongest replies). The quiz gives the user's rank and no opponent's profile.
 
-A sequence can be made longer than KataGo's own one (see Extension): the comparison model reads with few
-visits, so its own sequence is often much shorter than KaTrain's. The moves after KataGo's own length are
-added only while the time limit has not passed, so that the user does not wait long. Otherwise the
-sequence is as long as KataGo's own sequence. It ends at a pass.
+A sequence can be made longer than KataGo's own one (see Extension), so that the sequences of a problem
+are about as long as KaTrain's. The moves after KataGo's own length are added only while the time limit
+has not passed, so that the user does not wait long. Otherwise the sequence is as long as KataGo's own
+sequence. It ends at a pass.
 
 The rank is found elsewhere (see kentogo.opponent_rank).
 """
@@ -61,7 +59,7 @@ class LineEngines:
     """What the sequence is made with.
 
     Attributes:
-        best: KataGo for the best moves of a side without a profile (the main KataGo, or the comparison model).
+        best: KataGo for the best moves of a side without a profile (the main KataGo).
         human: KataGo with the human-like model (the main KataGo), for the moves of a side with a profile.
         visits: The visits of each best move.
         wide_root_noise: KaTrain's "wide_root_noise", or None for KataGo's own setting.

@@ -1,7 +1,7 @@
 """KentoGo's own analysis data of a node: the KGD property (KentoGo Data).
 
-KaTrain's analysis data (KT, see record.katrain_kt) is written for every node; it is what KaTrain
-needs. KentoGo writes more for the moves that can become problems (see analysis.analyze): how the
+KentoGo's analysis of every node is in its KGA property (see record.kentogo_analysis). KentoGo
+writes more for the moves that can become problems (see analysis.analyze): how the
 areas change with one move, the sequences until the position settles, the value of not answering
 (tenuki), the moves that punish an opponent's mistake. Those data are kept as KataGo's numbers, not
 as conclusions ("a big point was missed" and the like are worked out when they are shown), so that

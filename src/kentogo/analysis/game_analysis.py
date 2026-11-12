@@ -1,7 +1,9 @@
 """The analyses of all nodes of a game, and how KataGo is asked about the nodes.
 
-The analysis of a node is kept as KaTrain keeps it (see analysis.node_analysis), so the analysis data
-(KT) can be read by KaTrain too. Saved analysis data is used as it is, as KaTrain's GameNode.load_analysis.
+The analysis of a node is kept in the same shape as KaTrain keeps it (see analysis.node_analysis), and is
+saved in KentoGo's own property (KGA, see record.kentogo_analysis). Analysis data that KentoGo saved before
+is used as it is, as KaTrain's GameNode.load_analysis does: KGA, or the KT that an older KentoGo wrote (its
+games have KGM[KentoGo] and no KGA). KaTrain's own KT is not used: KentoGo reads such games itself.
 KataGo's reports during the search are not asked for, and the answers are put into the analyses in the
 order of the tree, the node before its children, whatever order KataGo answers in, so the result is the
 same every time. The steps of the analysis of a game are in analysis.analyze.
@@ -18,7 +20,8 @@ from pysgf import GoNode
 
 from kentogo.analysis.node_analysis import apply_answer, empty_analysis, points_lost
 from kentogo.analysis.query import QuerySettings, node_query
-from kentogo.record.katrain_kt import decode_kt, decode_kt_numbers
+from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY, decode_kt, decode_kt_numbers
+from kentogo.record.kentogo_analysis import KGA_PROPERTY, read_kentogo_analysis
 
 GAME_PRIORITY = -100  # KaTrain's PRIORITY_GAME_ANALYSIS.
 REANALYSIS_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game".
@@ -63,6 +66,7 @@ class GameAnalysis:
         deep_visits: The visits of the deep reading.
         readings: KentoGo's own readings of the deep nodes, by id(node) and then by name
             (see analysis.kentogo_reading).
+        old_kentogo_kt: True if the KT of the game was written by an older KentoGo (it is removed when written).
     """
 
     root: GoNode
@@ -73,6 +77,7 @@ class GameAnalysis:
     deep_nodes: list[GoNode] = field(default_factory=list)
     deep_visits: int = 0
     readings: dict[int, dict[str, dict]] = field(default_factory=dict)
+    old_kentogo_kt: bool = False
 
     @property
     def failed(self) -> int:
@@ -101,23 +106,38 @@ class GameAnalysis:
 
 
 def load_saved_analyses(game: GameAnalysis) -> None:
-    """Use the analysis data (KT) already saved in the nodes, as KaTrain's GameNode.load_analysis.
-
-    A node whose data cannot be read is analyzed again, as in KaTrain.
+    """Use the analysis data that KentoGo saved in the nodes (KGA, or an older KentoGo's KT), as KaTrain's
+    GameNode.load_analysis. A node whose data cannot be read is analyzed again, as in KaTrain.
     """
-    version = game.root.get_property("KTV", "1.0")
-    size_x, size_y = game.root.board_size
+    game.old_kentogo_kt = written_by_old_kentogo(game.root)
     for node in game.nodes:
-        values = node.get_list_property("KT", [])
-        if not values:
-            continue
-        try:
-            main = decode_kt(values, version)
-            ownership, policy = decode_kt_numbers(values, size_x * size_y)
-        except ValueError:
-            continue
-        game.analyses[id(node)] = {**main, "policy": policy, "ownership": ownership}
-        game.loaded.add(id(node))
+        analysis = read_kentogo_analysis(node)
+        if analysis is None and game.old_kentogo_kt:
+            analysis = _old_kentogo_kt(game.root, node)
+        if analysis is not None:
+            game.analyses[id(node)] = analysis
+            game.loaded.add(id(node))
+
+
+def written_by_old_kentogo(root: GoNode) -> bool:
+    """True if an older KentoGo analyzed the game: it has KGM[KentoGo] and no node has KGA (its KT is KentoGo's)."""
+    if root.get_property(KENTOGO_MODE_PROPERTY, "") != KENTOGO_MODE:
+        return False
+    return not any(node.get_list_property(KGA_PROPERTY, []) for node in root.nodes_in_tree)
+
+
+def _old_kentogo_kt(root: GoNode, node: GoNode) -> dict | None:
+    """Return the analysis that an older KentoGo wrote into a node's KT, with its areas and policy (or None)."""
+    values = node.get_list_property("KT", [])
+    if not values:
+        return None
+    size_x, size_y = root.board_size
+    try:
+        main = decode_kt(values, root.get_property("KTV", "1.0"))
+        ownership, policy = decode_kt_numbers(values, size_x * size_y)
+    except ValueError:
+        return None
+    return {**main, "policy": policy, "ownership": ownership}
 
 
 def first_nodes(game: GameAnalysis) -> list[GoNode]:

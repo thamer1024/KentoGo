@@ -43,6 +43,7 @@ from kentogo.analysis_run import (
 from kentogo.app_settings import AppSettings
 from kentogo.common.sgf import load_game
 from kentogo.engines import start_engine
+from kentogo.record.kentogo_analysis import has_analysis
 from kentogo.settings_file import SETTINGS_PATH, load_settings
 
 STEP_NAMES = {
@@ -158,7 +159,7 @@ def show_plan(games: list[Path], settings: AppSettings) -> int:
             print(f"[{number}/{len(games)}] {path.name}: cannot be read: {error}")
             continue
         nodes = root.nodes_in_tree
-        saved = sum(1 for node in nodes if node.get_list_property("KT", []))
+        saved = sum(1 for node in nodes if has_analysis(node))
         if needs_kentogo_analysis(root, analysis):
             action = "ask (analyzed by KaTrain: analyze again for KentoGo?)"
         else:

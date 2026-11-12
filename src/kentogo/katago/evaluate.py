@@ -188,11 +188,9 @@ class Models:
 
     Attributes:
         main: KataGo with the main model (for the territory and the standing), or None.
-        compare: KataGo with the comparison model, or None.
     """
 
     main: AnalysisModel | None = None
-    compare: AnalysisModel | None = None
 
 
 class _Collector:

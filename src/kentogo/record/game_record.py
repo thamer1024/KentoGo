@@ -26,6 +26,9 @@ from kentogo.common.board import Board, IllegalMoveError, Point
 from kentogo.common.types import Move, Position
 from kentogo.record.ai_comment import split_ai_comment
 from kentogo.record.katrain_comment import KatrainMoveInfo, read_comment, split_comment
+from kentogo.record.katrain_kt import evaluate_played_move
+from kentogo.record.kentogo_analysis import read_kentogo_analysis
+from kentogo.record.kentogo_comment import split_kentogo_comment
 
 
 @dataclass(frozen=True)
@@ -36,8 +39,12 @@ class MoveRecord:
         number: The move number, from 1.
         move: The move.
         notes: The user's notes ("" if there are none).
-        katrain: KaTrain's evaluation of the move, or None if KaTrain did not write one.
+        katrain: The evaluation of the move: KaTrain's text, or else KentoGo's analysis data (KGA) of the move
+            and of the position before it (a game that KentoGo analyzed has no text in KaTrain's form);
+            None if there is neither.
         katrain_text: The text that KaTrain wrote for the move, as it is ("" if there is none).
+        kentogo_text: The text that KentoGo's analysis wrote for the move ("" if there is none).
+        kentogo_evaluation: True if the evaluation (katrain) comes from KentoGo's analysis data, not KaTrain's text.
         ai_text: The AI commentary on the move ("" if there is none).
         ai_review: The AI review of the whole game, on the last move ("" if there is none).
         illegal: True if the move could not be played on the board (it is then left out of the positions).
@@ -50,6 +57,8 @@ class MoveRecord:
     notes: str = ""
     katrain: KatrainMoveInfo | None = None
     katrain_text: str = ""
+    kentogo_text: str = ""
+    kentogo_evaluation: bool = False
     ai_text: str = ""
     ai_review: str = ""
     illegal: bool = False
@@ -200,9 +209,44 @@ def read_move_record(node: GoNode, number: int) -> MoveRecord | None:
     if move is None:
         return None
     ai = split_ai_comment(str(node.get_property("C", "")))
-    notes, info = read_comment(ai.rest)
-    katrain_text = "\n".join(split_comment(ai.rest)[1])
-    return MoveRecord(number, move, notes, info, katrain_text, ai.move_text, ai.review_text)
+    kentogo = split_kentogo_comment(ai.rest)
+    notes, info = read_comment(kentogo.rest)
+    kentogo_evaluation = info is None
+    if info is None:
+        info = _kentogo_evaluation(node, move)
+    katrain_text = "\n".join(split_comment(kentogo.rest)[1])
+    return MoveRecord(
+        number,
+        move,
+        notes,
+        info,
+        katrain_text,
+        kentogo.text,
+        kentogo_evaluation and info is not None,
+        ai.move_text,
+        ai.review_text,
+    )
+
+
+def _kentogo_evaluation(node: GoNode, move: Move) -> KatrainMoveInfo | None:
+    """Return the evaluation of a move from KentoGo's analysis data (KGA) of its node and of the node before it.
+
+    The loss is read in the position before the move, as KentoGo's analysis does (see
+    record.katrain_kt.evaluate_played_move). None without KentoGo's analysis data on both nodes.
+    """
+    after = read_kentogo_analysis(node)
+    before = read_kentogo_analysis(node.parent)
+    if before is None or after is None:
+        return None
+    evaluation = evaluate_played_move(before, after, move.color, move.gtp())
+    if evaluation is None:
+        return None
+    pv = tuple(evaluation.pv)
+    best = evaluation.best_move
+    taken_back = bool(after.get("taken_back"))
+    return KatrainMoveInfo(
+        "", 0, move.color, move.gtp(), evaluation.points_lost, best, move.color if pv else None, pv, taken_back
+    )
 
 
 def _move_records(nodes: list[GoNode]) -> list[MoveRecord]:

@@ -27,11 +27,11 @@ def test_presets_go_from_the_slowest_computer_to_the_fastest(presets):
 
 
 def test_presets_keep_the_waiting_short():
-    """An analysis takes about 1.6 seconds at the speed of each model (unless the fewest visits are more)."""
+    """An analysis takes about 1.6 seconds at the speed of the model (unless the fewest visits are more)."""
     for preset in PRESETS:
-        for visits, speed in ((preset.max_visits, preset.speed), (preset.compare_max_visits, preset.compare_speed)):
-            assert visits == MIN_VISITS or visits / speed <= 1.7, preset.key
-            assert visits >= MIN_VISITS
+        visits = preset.max_visits
+        assert visits == MIN_VISITS or visits / preset.speed <= 1.7, preset.key
+        assert visits >= MIN_VISITS
         assert preset.estimate_visits <= preset.max_visits / 4 + 1, preset.key
 
 
@@ -39,7 +39,7 @@ def test_a_preset_changes_only_the_visits():
     """The numbers of visits are replaced; the paths and the other settings are kept."""
     engine = EngineSettings(katago="bin/katago", model="m.bin.gz", max_visits=2500, wide_root_noise=0.02)
     changed = apply_preset(engine, PRESETS[0])
-    assert (changed.max_visits, changed.compare_max_visits, changed.estimate_visits) == (16, 5, 4)
+    assert (changed.max_visits, changed.estimate_visits) == (16, 4)
     assert (changed.katago, changed.model, changed.wide_root_noise) == ("bin/katago", "m.bin.gz", 0.02)
 
 

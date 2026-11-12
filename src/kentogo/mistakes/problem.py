@@ -13,9 +13,9 @@ from kentogo.common.types import Move, Position
 
 # Where a sequence came from (Variation.source).
 SOURCE_KATRAIN = "katrain"  # KaTrain's best sequence, read from the game file (see extract).
+SOURCE_KENTOGO = "kentogo"  # The best sequence of KentoGo's analysis, read from the game file (see extract).
 SOURCE_KATAGO_ANSWER = "katago"  # KataGo's sequence after the answer.
 SOURCE_KATAGO_ACTUAL = "katago_actual"  # KataGo's sequence after the game move.
-SOURCE_KATAGO_COMPARE = "katago_compare"  # The comparison model's best sequence in the position.
 SOURCE_GAME = "game"  # The game move and the moves played after it, as the game record has them.
 
 

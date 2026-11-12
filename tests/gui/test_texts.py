@@ -77,7 +77,6 @@ def test_all_texts_can_be_filled():
         "new_black": 9,
         "new_white": 8,
         "placed": 3,
-        "compare": "Q3",
         "seconds": 5,
         "move": "Q3",
         "leader": "黒",
@@ -153,7 +152,6 @@ def test_all_texts_can_be_filled():
         "main": 500,
         "estimate": 100,
         "speed": 120,
-        "compare_speed": 60,
     }
     for key in TEXTS:
         assert text(key, **values)
@@ -197,23 +195,6 @@ def test_result_text_correct():
     assert "打った手 Q14　実戦 H1　最善 Q14" in shown
 
 
-def test_result_text_by_the_comparison_model():
-    """With the comparison model's sequence, only its move's loss is shown: no verdict, no other losses."""
-    result = AnswerResult(Move.from_gtp("R4", "B"), 1.0, compare_with_actual(5.0, 1.0), True)
-    compare = {"compare_best": Move.from_gtp("Q3", "B"), "by_compare": True, "show_verdict": False}
-    gain = result_text(PROBLEM, result, **compare, compare_best_loss=0.5)
-    assert gain.startswith("[color=d070f0]比較用モデルの手 Q3：0.5目損（実戦より 4.5目得）")
-    assert "正解" not in gain and "打った手 R4 1.0目損" not in gain and "80%" not in gain
-    assert "比較 Q3" in gain and "☆比較用モデル" in gain
-    worse = result_text(PROBLEM, result, **compare, compare_best_loss=6.0)
-    assert "（実戦より 1.0目損）" in worse
-    waiting = result_text(PROBLEM, result, **compare)  # Its loss is not known yet: the losses of the answer.
-    assert "実戦 5.0目損 → 打った手 R4 1.0目損（+4.0目）" in waiting
-    assert "比較用モデル" not in result_text(PROBLEM, result)  # Without the comparison model.
-    shaped = result_text(PROBLEM, result, compare_best=Move.from_gtp("Q3", "B"))
-    assert "○打った手" in shaped and "△実戦" in shaped and "□最善" in shaped and "☆比較用モデル" in shaped
-
-
 def test_result_text_not_judged():
     """An answer without a known loss shows why it is not judged yet."""
     result = AnswerResult(Move.from_gtp("R4", "B"), None, None, None)
@@ -226,7 +207,6 @@ def test_result_text_not_judged():
 def test_settings_screen_has_all_texts():
     """Every input of the settings screen has a name, and every order has a name."""
     from kentogo.gui.settings_form import FIELDS, PAGES
-    from kentogo.katago.engine_settings import JUDGE_MODELS
     from kentogo.quiz.quiz_settings import ORDERS
     from kentogo.repetition.modes import PRIORITIES, REVIEW_MODES
 
@@ -242,8 +222,6 @@ def test_settings_screen_has_all_texts():
         assert f"review_mode_{mode}" in TEXTS
     for page in PAGES:
         assert f"page_{page}" in TEXTS
-    for model in JUDGE_MODELS:
-        assert f"judge_model_{model}" in TEXTS
 
 
 def test_notes_text():
@@ -288,30 +266,19 @@ def test_skipped_games_text():
 
 def test_sequence_order_text():
     """The order line names every sequence, marks the shown one, and tells which are still calculated."""
-    line = sequence_order_text([("katago", "waiting"), ("katrain", ""), ("katago_compare", "failed")], 1, 12)
+    line = sequence_order_text([("katago", "waiting"), ("katrain", ""), ("katago_actual", "failed")], 1, 12)
     assert line.startswith("Tabで切替：あなたの手(考え中 12秒) → ")
-    assert "▶KaTrainの手" in line and "比較用モデル(失敗)" in line
-    assert "比較用モデル(選ぶと計算)" in sequence_order_text([("katago_compare", "offered")], 0)
+    assert "▶KaTrainの手" in line and "最強応手(失敗)" in line
     order = sequence_order_text([("katago", ""), ("game", ""), ("katago_actual", ""), ("katrain", "")], 0)
     assert order.endswith("あなたの手[/b][/color] → 実戦 → 最強応手 → KaTrainの手")
-
-
-def test_the_comparison_models_seconds_are_shown_only_while_its_sequence_is_shown():
-    """After Tab switches from the comparison model's sequence being calculated, only its name is shown."""
-    choices = [("katago", ""), ("katago_compare", "waiting")]
-    assert "比較用モデル(考え中 30秒)" in sequence_order_text(choices, 1, 30)
-    hidden = sequence_order_text(choices, 0, 30)
-    assert "比較用モデル" in hidden and "考え中" not in hidden
+    kentogo = sequence_order_text([("katago", ""), ("kentogo", "")], 0)
+    assert kentogo.endswith("→ KentoGoの手") and sequence_name("kentogo") == "最善手の手順（KentoGo）"
 
 
 def test_sequence_text_while_waiting():
     """While KataGo is calculating, the text says so instead of the move count."""
-    shown = sequence_text("katago_compare", index=1, count=2, step=0, total=0, status="waiting")
-    assert (
-        "表示中：比較用モデルの第一手の続き（相手は最強の応手）" in shown
-        and "考えています" in shown
-        and "手目" not in shown
-    )
+    shown = sequence_text("katago_actual", index=1, count=2, step=0, total=0, status="waiting")
+    assert "表示中：実戦の手の続き（相手は最強の応手）" in shown and "考えています" in shown and "手目" not in shown
 
 
 def test_fill_step_text():

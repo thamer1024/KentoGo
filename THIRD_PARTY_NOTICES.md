@@ -23,18 +23,20 @@ Each part is under its own license, which is given here.
   - Code copied unchanged, letter for letter, into `src/kentogo/vendor/katrain_analysis.py`:
     the functions `var_to_grid`, `evaluation_class`, `pack_floats` and `unpack_floats` (from
     `katrain/core/utils.py`) and `analysis_dumps` (from `katrain/core/game_node.py`). KentoGo uses
-    them to write and read KaTrain's analysis data (the KT property of SGF files) in exactly
-    KaTrain's format, and to write KaTrain's comments on analyzed moves.
-  - `src/kentogo/analysis/comment.py` is written for KentoGo with the same behavior as KaTrain's
-    `GameNode.comment` (from `katrain/core/game_node.py`), which cannot be copied unchanged
-    because it is part of KaTrain's game tree class.
+    them to read KaTrain's analysis data (the KT property of SGF files) in exactly KaTrain's
+    format, to keep the board-sized numbers of KentoGo's own data (KGA and KGD), and to order
+    the candidate moves and choose which moves get comments as KaTrain does.
+  - `src/kentogo/analysis/candidate_moves.py` is written for KentoGo with the same behavior as KaTrain's
+    `GameNode.candidate_moves` and `GameNode.policy_ranking` (from `katrain/core/game_node.py`), which
+    cannot be copied unchanged because they are part of KaTrain's game tree class.
   - `src/kentogo/analysis/node_analysis.py`, `query.py`, `game_analysis.py` and `rules.py` are written for
     KentoGo with the same behavior as KaTrain's `GameNode.update_move_analysis` and
     `GameNode.set_analysis` (from `katrain/core/game_node.py`), `KataGoEngine.request_analysis`
     (from `katrain/core/engine.py`) and `Game.analyze_all_nodes` and `Game.analyze_extra`
     (from `katrain/core/game.py`), which are methods of KaTrain's classes and cannot be copied unchanged.
-  - `src/kentogo/analysis/sgf_writer.py` is written for KentoGo with the same behavior as KaTrain's
-    `GameNode.sgf_properties` and `Game.write_sgf` (from `katrain/core/game_node.py` and `game.py`).
+  - `src/kentogo/analysis/sgf_writer.py` chooses the nodes that get comments and marks with the same
+    behavior as KaTrain's `GameNode.sgf_properties` and `Game.write_sgf` (from `katrain/core/game_node.py`
+    and `game.py`); the comments and the analysis data it writes are KentoGo's own.
   - Code copied unchanged into `src/kentogo/vendor/katrain_engine.py`: the constant
     `ENGINE_BACKENDS` and the function `resolve_engine_backend` (from `katrain/core/engine.py`),
     which tell the kind of engine (local, remote or custom) that KaTrain's settings choose.

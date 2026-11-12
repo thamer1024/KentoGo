@@ -7,7 +7,7 @@ from pysgf import GoGame
 
 from kentogo import analysis_cli
 from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.record.katrain_kt import decode_kt
+from kentogo.record.kentogo_analysis import read_kentogo_analysis
 from kentogo.settings_file import load_settings
 
 GAME = "(;SZ[5]KM[0.5];B[cc];W[bb])"
@@ -65,7 +65,7 @@ def test_analyze_the_games_folder(folder, capsys):
     games, settings, engine = folder
     assert analysis_cli.main(["--settings", str(settings)]) == 0
     root = GoGame.parse_sgf((games / "game.sgf").read_text(encoding="utf-8"))
-    assert all(decode_kt(node.get_list_property("KT"))["completed"] for node in root.nodes_in_tree)
+    assert all(read_kentogo_analysis(node)["completed"] for node in root.nodes_in_tree)
     assert [path.read_text(encoding="utf-8") for path in (games / "backup").iterdir()] == [GAME]
     assert engine.closed
     output = capsys.readouterr().out

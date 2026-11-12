@@ -163,7 +163,7 @@ def backup_file(path: Path, when: datetime) -> Path:
 def _loss_lines(material: GameMaterial, rank: str, labels: CommentLabels) -> list[str]:
     """Return the counts of losses with the targets of the rank, as the script writes them."""
     targets = targets_for(rank)
-    lines = [labels.loss_title, labels.loss_note]
+    lines = [labels.loss_title, labels.loss_note_kentogo if material.kentogo else labels.loss_note]
     for size, count in material.loss_counts:
         extra = labels.loss_targets.format(goal=targets[size][0], limit=targets[size][1]) if targets else ""
         lines.append(labels.bullet + labels.loss_line.format(size=size, count=count, targets=extra))

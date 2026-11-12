@@ -45,6 +45,7 @@ class CommentLabels:
         review_move: A line of the review for a move: {number}, {color}, {taken_back} (" " + taken_back, or ""),
             {loss} and {best}.
         loss_title, loss_note: The title of the counts of losses, and the line that explains them.
+        loss_note_kentogo: loss_note for a game analyzed by KentoGo.
         loss_line: A count of losses (after the bullet): {size} points or more, {count} times, and {targets} (loss_targets or "").
         loss_targets: The targets of the rank: {goal} and {limit}.
         no_targets: Instead of the targets, when the rank is not in the table: {rank}.
@@ -73,6 +74,9 @@ class CommentLabels:
     review_move: str = " - 第 {number} 手目 ({color}{taken_back}) (損失: {loss}目 / 最善手: {best})"
     loss_title: str = "■ この対局の損失の回数"
     loss_note: str = "(KaTrainの損失目数で数えた,この対局のあなたの手の回数.形勢が決まった後の手も含みます)"
+    loss_note_kentogo: str = (
+        "(KentoGoの解析の損失目数で数えた,この対局のあなたの手の回数.形勢が決まった後の手も含みます)"
+    )
     loss_line: str = "{size}目以上: {count}回{targets}"
     loss_targets: str = "(目標 {goal}回,超えてはいけない {limit}回)"
     no_targets: str = "({rank}の行が目標表に無いため,目標との比較はありません)"

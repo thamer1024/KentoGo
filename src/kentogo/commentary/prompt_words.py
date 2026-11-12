@@ -43,10 +43,14 @@ class PromptWords:
     paste_reminder: str
     loss_heading: str
     loss_note: str
+    loss_note_kentogo: str  # loss_note for a game analyzed by KentoGo.
     loss_header: str
     loss_row: str  # {size}, {count}, {goal} and {limit}.
     no_targets: str
     data_heading: str
+    data_heading_kentogo: str
+    analyzer_katrain: str  # The analyzer in the intro ({analyzer}, see commentary.prompt_text).
+    analyzer_kentogo: str
     move_heading: str  # {number} and {color}.
     move_heading_taken_back: str
     played_line: str  # {move} and {loss}.
@@ -96,6 +100,7 @@ class PromptWords:
     reply_sequence_line: str
     notes_line: str
     katrain_line: str
+    kentogo_line: str  # {text}: the comment of KentoGo's analysis.
     before_diagram: str
     zoom_diagram: str
     after_diagram: str
@@ -165,10 +170,14 @@ JAPANESE_WORDS = PromptWords(
     paste_reminder="回答は上の[回答の形式]のJSONだけにしてください.前置きや説明は付けないでください.",
     loss_heading="# この対局の損失の回数",
     loss_note="(KaTrainの損失目数で数えた,この対局の私の手の回数.形勢が決まった後の手も含む)",
+    loss_note_kentogo="(KentoGoの解析の損失目数で数えた,この対局の私の手の回数.形勢が決まった後の手も含む)",
     loss_header="| 損失の大きさ | この対局の回数 | 目標とする回数 | 超えてはいけない回数 |\n|---|---|---|---|",
     loss_row="| {size}目以上 | {count}回 | {goal} | {limit} |",
     no_targets="(段級位が目標表に無いため,目標との比較はありません)",
     data_heading="# KaTrainの解析データ",
+    data_heading_kentogo="# KentoGoの解析データ",
+    analyzer_katrain="KaTrain(KataGo)",
+    analyzer_kentogo="KentoGo(KataGo)",
     move_heading="## 第{number}手目({color}番)",
     move_heading_taken_back="## 第{number}手目({color}番,KaTrainの指導碁で待ったをした手)",
     played_line="- 実戦の手: {move},損失: {loss:.1f}目",
@@ -243,6 +252,7 @@ JAPANESE_WORDS = PromptWords(
     reply_sequence_line="- 相手の手番での予想手順: {sequence}",
     notes_line="- 私のメモ: {notes}",
     katrain_line="- KaTrainの元コメント:\n{text}",
+    kentogo_line="- KentoGoの解析のコメント:\n{text}",
     before_diagram="- 直前の盤面図:",
     zoom_diagram="- 拡大図:",
     after_diagram="- 予想手順の後の盤面図:",
@@ -317,10 +327,15 @@ and the counts not to exceed"
     loss_heading="# Counts of losses in this game",
     loss_note="(The numbers of my moves in this game by KaTrain's point loss, "
     "including the moves after the game was decided)",
+    loss_note_kentogo="(The numbers of my moves in this game by the point loss of KentoGo's analysis, "
+    "including the moves after the game was decided)",
     loss_header="| Loss | Times in this game | Target | Not to exceed |\n|---|---|---|---|",
     loss_row="| {size}+ points | {count} | {goal} | {limit} |",
     no_targets="(My rank is not in the table of targets, so there is no comparison with the targets)",
     data_heading="# KaTrain's analysis data",
+    data_heading_kentogo="# KentoGo's analysis data",
+    analyzer_katrain="KaTrain (KataGo)",
+    analyzer_kentogo="KentoGo (KataGo)",
     move_heading="## Move {number} ({color})",
     move_heading_taken_back="## Move {number} ({color}, taken back in KaTrain's teaching game)",
     played_line="- Move played: {move}, loss: {loss:.1f} points",
@@ -400,6 +415,7 @@ and the counts not to exceed"
     reply_sequence_line="- Predicted sequence for the opponent: {sequence}",
     notes_line="- My notes: {notes}",
     katrain_line="- KaTrain's comment:\n{text}",
+    kentogo_line="- The comment of KentoGo's analysis:\n{text}",
     before_diagram="- Board before the move:",
     zoom_diagram="- Zoomed board:",
     after_diagram="- Board after the predicted sequence:",

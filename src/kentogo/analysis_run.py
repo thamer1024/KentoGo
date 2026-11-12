@@ -6,8 +6,8 @@ Each game file is copied to the backup folder before it is written.
 The command line analyzes the games given to it (analyze_games): a game whose nodes all have
 analysis data is skipped, unless it is analyzed again (the setting reanalyze), as in KaTrain.
 A game analyzed by KaTrain (it has no KGM[KentoGo]) is skipped too, unless the user says yes to
-analyzing it again for KentoGo (redo_kentogo): then its saved analysis is kept, and the played moves
-are read and written in KentoGo's way (see analysis.played_moves).
+analyzing it again for KentoGo (redo_kentogo): then KentoGo reads every position itself and writes
+its own analysis data (KGA); KaTrain's analysis data (KT) is left as it is (see analysis.game_analysis).
 
 The settings screen lists the games of the folder (list_games) and the user checks the ones to
 analyze (see gui.analysis_chooser); every checked game is analyzed (analyze_chosen_games), whatever
@@ -40,6 +40,7 @@ from kentogo.common.types import opponent
 from kentogo.engines import Engines, analysis_engine
 from kentogo.mistakes.selection import Selection
 from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY
+from kentogo.record.kentogo_analysis import has_analysis
 from kentogo.record.players import detect_my_color
 from kentogo.version import app_version
 
@@ -226,8 +227,8 @@ def analyzed_by_kentogo(root: GoNode) -> bool:
 
 
 def is_analyzed(root: GoNode) -> bool:
-    """True if every node of the game has analysis data."""
-    return all(node.get_list_property("KT", []) for node in root.nodes_in_tree)
+    """True if every node of the game has analysis data (KentoGo's KGA or KaTrain's KT)."""
+    return all(has_analysis(node) for node in root.nodes_in_tree)
 
 
 def engine_values(settings: AppSettings) -> EngineValues:

@@ -11,14 +11,10 @@ predicted sequences after the answer and after the game move are then added
 as more sequences.
 
 After the answer, the sequences are shown in a fixed order (see choices):
-KataGo's sequence after the answer, the sequences in the SGF file, the comparison
-model's sequence, and KataGo's sequence after the game move. The first one is
-shown first. A sequence that KataGo is still calculating (see expect) is in the
-order too, without moves, so that the user can see that it is coming.
-
-The comparison model judges the answer too (see apply_compare_evaluation). While
-its sequence is shown, its result is shown (see displayed_result); with any other
-sequence, the usual result is shown.
+KataGo's sequence after the answer, the game's own moves, KataGo's sequence after
+the game move, and the sequences in the SGF file. The first one is shown first.
+A sequence that KataGo is still calculating (see expect) is in the order too,
+without moves, so that the user can see that it is coming.
 
 The problem can be shown rotated, flipped, or with colors swapped. The user
 answers on that board, and the board stays the same after the answer. The
@@ -37,7 +33,6 @@ from kentogo.mistakes.problem import (
     SOURCE_GAME,
     SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
-    SOURCE_KATAGO_COMPARE,
     Problem,
     Variation,
 )
@@ -51,10 +46,8 @@ ANSWERED = "answered"
 
 # The sequences of the game, which the AI commentary of the game talks about.
 
-# The state of a sequence in choices: ready to show, can be calculated when it is chosen
-# (see offer), still being calculated, or failed.
+# The state of a sequence in choices: ready to show, still being calculated, or failed.
 READY = ""
-OFFERED = "offered"
 WAITING = "waiting"
 FAILED = "failed"
 
@@ -66,7 +59,7 @@ class SequenceChoice:
     Attributes:
         source: Where the sequence comes from, such as "katrain" or SOURCE_KATAGO_ANSWER.
         variation: The sequence, or None while it is being calculated (or when that failed).
-        status: READY, OFFERED, WAITING or FAILED.
+        status: READY, WAITING or FAILED.
     """
 
     source: str
@@ -100,34 +93,22 @@ class QuizSession:
         transform: How the problem is shown (rotated, flipped, colors swapped).
         phase: ASKING before the answer, ANSWERED after it.
         result: The result of the answer, or None before the answer.
-        compare_result: The result calculated by the comparison model, or None if there is none.
-        compare_best: The comparison model's best move, or None if it is not known.
-        compare_best_loss: Points lost by that move (seen by the comparison model), or None.
         replay_step: How many moves of the sequence are shown.
     """
 
-    def __init__(
-        self, problem: Problem, policy: ScoringPolicy, transform: BoardTransform = IDENTITY, use_sgf_losses: bool = True
-    ):
+    def __init__(self, problem: Problem, policy: ScoringPolicy, transform: BoardTransform = IDENTITY):
         """Start asking a problem.
 
         Args:
             problem: The problem in the original direction and colors.
             policy: The rule for deciding whether an answer is correct.
             transform: How to change the problem while it is asked.
-            use_sgf_losses: Use the losses written in the SGF file (KaTrain's model). When another
-                model judges the answers, this is False, so that every answer is calculated by that
-                model, and both losses come from the same model.
         """
         self.problem = problem
         self.policy = policy
         self.transform = transform
-        self.use_sgf_losses = use_sgf_losses
         self.phase = ASKING
         self.result: AnswerResult | None = None
-        self.compare_result: AnswerResult | None = None
-        self.compare_best: Move | None = None
-        self.compare_best_loss: float | None = None
         self.replay_step = 0
         self._added: dict[str, Variation] = {}  # KataGo's sequences, by source.
         self._status: dict[str, str] = {}  # KataGo's sequences that are not there, by source.
@@ -199,9 +180,7 @@ class QuizSession:
         Args:
             move: A move in the original direction and colors.
         """
-        if not self.use_sgf_losses:
-            return None
-        elif self.problem.best_move is not None and move == self.problem.best_move:
+        if self.problem.best_move is not None and move == self.problem.best_move:
             return 0.0
         elif move == self.problem.actual_move:
             return self.problem.points_lost
@@ -246,44 +225,6 @@ class QuizSession:
             self.fail(SOURCE_KATAGO_ACTUAL)
         return self.result
 
-    def apply_compare_evaluation(
-        self,
-        answer_loss: float,
-        actual_loss: float,
-        best_sequence: tuple[Move, ...],
-        best_loss: float | None = None,
-    ) -> AnswerResult:
-        """Keep the comparison model's losses and add its best sequence (shown when that sequence is chosen).
-
-        Args:
-            answer_loss: Points lost by the answer, calculated by the comparison model.
-            actual_loss: Points lost by the game move, calculated by the comparison model.
-            best_sequence: The comparison model's best sequence in the problem position.
-            best_loss: Points lost by the comparison model's best move, or None if not known.
-
-        Returns:
-            The comparison model's result.
-
-        Raises:
-            RuntimeError: If the problem has not been answered yet.
-        """
-        if self.result is None:
-            raise RuntimeError("the problem has not been answered yet")
-        self.compare_result = self._make_result(self.result.answer, answer_loss, actual_loss)
-        if best_sequence:
-            self.compare_best = best_sequence[0]
-            self.compare_best_loss = best_loss
-            self.add_sequence(best_sequence[0], best_sequence[1:], SOURCE_KATAGO_COMPARE)
-        else:
-            self.fail(SOURCE_KATAGO_COMPARE)
-        return self.compare_result
-
-    @property
-    def showing_compare(self) -> bool:
-        """True while the comparison model's sequence is shown and its result is known."""
-        choice = self.choice
-        return self.compare_result is not None and choice is not None and choice.source == SOURCE_KATAGO_COMPARE
-
     def sequence_at_end(self) -> Variation | None:
         """Return the shown sequence when it is shown to its last move.
 
@@ -302,14 +243,14 @@ class QuizSession:
 
         The loss is the game move's (as in the result) for the game move, else the loss known from
         the SGF file (see known_loss; None if it is not known). None while the answer's sequence
-        (or none, or the comparison model's sequence with its own result) is shown.
+        (or none) is shown.
         """
         variation = self.variation
         result = self.result
         if self.phase != ANSWERED or result is None or variation is None or not variation.moves:
             return None
         move = variation.moves[0]
-        if move == result.answer or self.showing_compare:
+        if move == result.answer:
             return None
         if move == self.problem.actual_move and result.comparison is not None:
             return move, result.comparison.actual_loss
@@ -317,26 +258,17 @@ class QuizSession:
 
     @property
     def displayed_result(self) -> AnswerResult | None:
-        """The result to show, as it is shown on the board: the comparison model's while its sequence is shown."""
-        result = self.compare_result if self.showing_compare else self.result
+        """The result to show, as it is shown on the board."""
+        result = self.result
         if result is None:
             return None
         return replace(result, answer=self.shown_move(result.answer))
-
-    def offer(self, source: str) -> None:
-        """Put a sequence in the order that KataGo calculates only when the user chooses it.
-
-        Args:
-            source: SOURCE_KATAGO_ANSWER, SOURCE_KATAGO_COMPARE or SOURCE_KATAGO_ACTUAL.
-        """
-        if source not in self._added and source not in self._status and self._is_needed(source):
-            self._status[source] = OFFERED
 
     def expect(self, source: str) -> None:
         """Tell that KataGo is calculating a sequence, so that it is shown as being calculated.
 
         Args:
-            source: SOURCE_KATAGO_ANSWER, SOURCE_KATAGO_COMPARE or SOURCE_KATAGO_ACTUAL.
+            source: SOURCE_KATAGO_ANSWER or SOURCE_KATAGO_ACTUAL.
         """
         if source not in self._added and self._is_needed(source):
             self._status[source] = WAITING
@@ -352,9 +284,9 @@ class QuizSession:
         The shown sequence stays the same (it is found again in the new order).
 
         Args:
-            move: The first move (the answer, the game move, or the comparison model's best move).
+            move: The first move (the answer or the game move).
             sequence: The predicted moves after it.
-            source: SOURCE_KATAGO_ANSWER, SOURCE_KATAGO_COMPARE or SOURCE_KATAGO_ACTUAL.
+            source: SOURCE_KATAGO_ANSWER or SOURCE_KATAGO_ACTUAL.
         """
         if not self._is_needed(source):
             return
@@ -386,8 +318,8 @@ class QuizSession:
         """All sequences to show after the answer, in the order that Tab goes through them.
 
         KataGo's sequence after the answer, the game's own moves after the game move, KataGo's sequence
-        after the game move, the sequences in the SGF file, and last the sequence from the comparison
-        model's move (another AI). KataGo's sequences are there only when they are added, expected or offered.
+        after the game move, and the sequences in the SGF file. KataGo's sequences are there only when
+        they are added or expected.
         """
         game_line = self.problem.game_line
         game = (SequenceChoice(SOURCE_GAME, Variation(game_line, SOURCE_GAME)),) if game_line else ()
@@ -397,7 +329,6 @@ class QuizSession:
             *game,
             *self._katago_choice(SOURCE_KATAGO_ACTUAL),
             *sgf,
-            *self._katago_choice(SOURCE_KATAGO_COMPARE),
         )
 
     def _katago_choice(self, source: str) -> tuple[SequenceChoice, ...]:
@@ -430,15 +361,6 @@ class QuizSession:
         """The sequence that is shown (or is being calculated), or None if there is none."""
         choices = self.choices
         return choices[self.variation_index] if choices else None
-
-    @property
-    def shows_ai_comment(self) -> bool:
-        """True while the AI commentary of the move is shown: with every sequence but the comparison model's.
-
-        The comparison model's sequence is another AI's view, so the commentary is not shown with it.
-        """
-        choice = self.choice
-        return choice is None or choice.source != SOURCE_KATAGO_COMPARE
 
     @property
     def shows_verdict(self) -> bool:

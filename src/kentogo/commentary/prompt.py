@@ -24,7 +24,7 @@ from kentogo.commentary import diagram
 from kentogo.commentary.fact_lines import fact_lines, group_text, move_text, placed_move_text
 from kentogo.commentary.language import CATEGORIES, CommentaryLanguage
 from kentogo.commentary.material import GameMaterial, GroupInfo, MoveMaterial, PvStep
-from kentogo.commentary.prompt_text import COLOR_PLACEHOLDER, PromptText
+from kentogo.commentary.prompt_text import ANALYZER_PLACEHOLDER, COLOR_PLACEHOLDER, PromptText
 from kentogo.commentary.prompt_words import PromptWords, words_for
 from kentogo.commentary.targets import targets_for
 from kentogo.common.board import Point
@@ -85,15 +85,22 @@ def build_prompt(material: GameMaterial, player: PlayerInfo, text: PromptText) -
     """
     words = words_for(text.language.prompt)
     parts = [
-        text.intro.replace(COLOR_PLACEHOLDER, words.color_name(material.my_color)),
+        _intro(material, text.intro, words),
         _about_me(player, text.about_me, words),
         f"{words.rules_heading}\n{text.rules}",
         words.diagram_legend,
         answer_format(words, text.language),
         f"{words.loss_heading}\n{loss_table(material, player.rank, words)}",
-        f"{words.data_heading}\n" + "\n\n".join(_move_facts(material, move, words) for move in material.moves),
+        f"{words.data_heading_kentogo if material.kentogo else words.data_heading}\n"
+        + "\n\n".join(_move_facts(material, move, words) for move in material.moves),
     ]
     return Prompt(text.system, "\n\n".join(part for part in parts if part), words.paste_reminder)
+
+
+def _intro(material: GameMaterial, intro: str, words: PromptWords) -> str:
+    """Return the intro with the user's color and the program that analyzed the game put in."""
+    analyzer = words.analyzer_kentogo if material.kentogo else words.analyzer_katrain
+    return intro.replace(COLOR_PLACEHOLDER, words.color_name(material.my_color)).replace(ANALYZER_PLACEHOLDER, analyzer)
 
 
 def answer_format(words: PromptWords, language: CommentaryLanguage) -> str:
@@ -123,7 +130,7 @@ def _relation_text(relation: str, words: PromptWords) -> str:
 def loss_table(material: GameMaterial, rank: str, words: PromptWords) -> str:
     """Return the table of how many moves lost at least each size of points, with the targets of the rank."""
     targets = targets_for(rank)
-    lines = [words.loss_note, words.loss_header]
+    lines = [words.loss_note_kentogo if material.kentogo else words.loss_note, words.loss_header]
     for size, count in material.loss_counts:
         goal, limit = targets[size] if targets else ("-", "-")
         lines.append(words.loss_row.format(size=size, count=count, goal=goal, limit=limit))
@@ -144,6 +151,7 @@ def _move_facts(material: GameMaterial, move: MoveMaterial, words: PromptWords) 
         *_reply_lines(move, material.size, words),
         *([words.notes_line.format(notes=move.notes)] if move.notes else []),
         *([words.katrain_line.format(text=move.katrain_text)] if move.katrain_text else []),
+        *([words.kentogo_line.format(text=move.kentogo_text)] if move.kentogo_text else []),
         words.before_diagram,
         _whole_diagram(material, move),
         words.zoom_diagram,

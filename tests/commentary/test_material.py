@@ -11,6 +11,7 @@ from kentogo.common.types import Move
 from kentogo.mistakes.extract import ExtractSettings
 from kentogo.record.game_record import read_game_record
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR
+from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
 
 
 def katrain(number: int, color: str, point: str, loss: float | None, best: str, pv: str) -> str:
@@ -190,3 +191,16 @@ def test_candidates_written_the_same_keep_katagos_order():
     }
     game = make_material(GoGame.parse_sgf(GAME.replace(kt(BEFORE_3), kt(before))), "B", ExtractSettings())
     assert [point for point, _loss in game.moves[0].candidates] == ["A2", "E5", "G7"]
+
+
+def kga(analysis: dict) -> str:
+    """Make a KGA property in the same way as KentoGo."""
+    return KGA_PROPERTY + "".join(f"[{value}]" for value in encode_kga(analysis))
+
+
+def test_kentogos_own_analysis_data_is_read_as_kt_was():
+    """With KGA in place of KT, the game analyzed by KentoGo gives the same numbers."""
+    text = GAME.replace(kt(BEFORE_3), kga(KENTOGO_BEFORE_3), 1).replace("(;", "(;KGM[KentoGo]", 1)
+    move = make_material(GoGame.parse_sgf(text), "B", ExtractSettings(problems_per_game=5)).moves[0]
+    assert (move.points_lost, move.best_move) == (6.5, Move.from_gtp("A2", "B"))
+    assert move.candidates == (("A2", 0.0), ("G7", 6.5))

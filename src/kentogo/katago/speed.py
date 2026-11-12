@@ -11,10 +11,9 @@ batches of positions), so at least MIN_RUNS analyses are measured, and the faste
 Each analysis starts with another first move, so that KataGo cannot reuse what it read before
 (it keeps the results of its neural network for the positions it has seen).
 
-The numbers of visits are then made from the speeds (see MeasuredSpeed.preset): each analysis
-should take about QUERY_SECONDS. After an answer, KataGo judges it with three analyses, and the
-comparison model also analyzes three positions, so each of the two takes at most about five
-seconds (with the comparison model's KataGo already started). A user who wants deeper or
+The numbers of visits are then made from the speed (see MeasuredSpeed.preset): each analysis
+should take about QUERY_SECONDS. After an answer, KataGo judges it with three analyses, so it
+takes at most about five seconds (with KataGo already started). A user who wants deeper or
 quicker reading can change the visits on the settings screen.
 """
 
@@ -26,7 +25,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from kentogo.common.types import Move, Position
-from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.evaluate import AnalysisEngine
 from kentogo.katago.presets import Preset, analysis_visits_for, round_visits
 from kentogo.katago.queries import position_query
@@ -49,30 +47,25 @@ PRESET_MEASURED = "measured"  # The key of the preset made from measured speeds.
 
 @dataclass(frozen=True)
 class MeasuredSpeed:
-    """The speeds of the KataGo processes on this computer (positions read per second).
+    """The speed of KataGo on this computer (positions read per second).
 
     Attributes:
         main: The speed with the main model.
-        compare: The speed with the comparison model, or None when it is not turned on.
     """
 
     main: float
-    compare: float | None = None
 
-    def preset(self, engine: EngineSettings) -> Preset:
-        """Return the numbers of visits that fit the speeds (see QUERY_SECONDS), as a preset.
+    def preset(self) -> Preset:
+        """Return the numbers of visits that fit the speed (see QUERY_SECONDS), as a preset.
 
         The territory and the standing need only a shallow reading, so they get a quarter of the
         visits of the main model. The analysis of games gets the visits that analyze a game in about
-        two minutes (see presets.analysis_visits_for). Without a measured comparison model, its visits
-        stay as they are.
+        two minutes (see presets.analysis_visits_for).
         """
         main = visits_for(self.main)
-        compare = visits_for(self.compare) if self.compare is not None else engine.compare_max_visits
         estimate = max(LEAST_ESTIMATE_VISITS, round_visits(main / ESTIMATE_SHARE))
         fast, deep = analysis_visits_for(self.main)  # The analysis of games (see presets).
-        speeds = (round(self.main), round(self.compare or 0))
-        return Preset(PRESET_MEASURED, main, compare, estimate, *speeds, fast, deep)
+        return Preset(PRESET_MEASURED, main, estimate, round(self.main), fast, deep)
 
 
 def visits_for(speed: float) -> int:

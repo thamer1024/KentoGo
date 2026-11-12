@@ -44,10 +44,10 @@ from kentogo.record.katrain_kt import (
     SUPPORTED_VERSION,
     KtEvaluation,
     candidate_losses,
-    decode_kt,
     evaluate_played_move,
     relative_candidate_losses,
 )
+from kentogo.record.kentogo_analysis import read_analysis
 
 # The sizes of losses that are counted for the whole game (the same as the user's script).
 LOSS_SIZES = (20, 12, 10, 8, 6, 3)
@@ -110,6 +110,7 @@ class MoveMaterial:
         katrain_text: The text that KaTrain wrote for the move, as it is (score, policy rank, and so on).
         taken_back: True if KaTrain took the move back in a teaching game (it is in a branch, not in the game).
         facts: The shapes, cutting points and aimed groups around the move (see commentary.move_facts).
+        kentogo_text: The comment that KentoGo's analysis wrote for the move ("" if there is none).
     """
 
     number: int
@@ -129,6 +130,7 @@ class MoveMaterial:
     katrain_text: str
     taken_back: bool = False
     facts: MoveFacts | None = None
+    kentogo_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,7 @@ class GameMaterial:
         moves: The mistakes to explain, in the order they were played.
         loss_counts: For each size in LOSS_SIZES, how many of the user's moves lost at least that many points.
         final_number: The number of the last move of the game.
+        kentogo: True if KentoGo analyzed the game (KGM[KentoGo]), so the losses are KentoGo's.
     """
 
     size: int
@@ -150,6 +153,7 @@ class GameMaterial:
     moves: tuple[MoveMaterial, ...]
     loss_counts: tuple[tuple[int, int], ...]
     final_number: int
+    kentogo: bool = False
 
 
 def has_katrain_evaluation(record: GameRecord, my_color: str) -> bool:
@@ -181,7 +185,7 @@ def make_material(root: GoNode, my_color: str, conditions: ExtractSettings = Ext
         for number, node in chosen
     )
     counts = tuple((size, sum(1 for loss in losses.values() if loss >= size)) for size in LOSS_SIZES)
-    return GameMaterial(record.size, record.komi, my_color, moves, counts, record.last_position)
+    return GameMaterial(record.size, record.komi, my_color, moves, counts, record.last_position, kentogo)
 
 
 def is_kentogo_mode(root: GoNode) -> bool:
@@ -310,6 +314,7 @@ def _move_material(
         katrain_text=move.katrain_text,
         taken_back=taken_back,
         facts=_facts(record, number, board, move.move, pv, reply),
+        kentogo_text=move.kentogo_text,
     )
 
 
@@ -404,14 +409,8 @@ def _score(node: GoNode, version: str) -> float | None:
 
 
 def _analysis(node: GoNode | None, version: str) -> dict | None:
-    """Return KaTrain's main analysis of a node, or None if there is none or it cannot be read."""
-    values = node.get_list_property("KT") if node is not None else None
-    if not values:
-        return None
-    try:
-        return decode_kt(values, version)
-    except ValueError:
-        return None
+    """Return the main analysis of a node (KentoGo's KGA, else KaTrain's KT), or None if there is none or it cannot be read."""
+    return read_analysis(node, version)
 
 
 def _reply(record: GameRecord, number: int) -> OpponentReply | None:

@@ -18,18 +18,15 @@ Point = tuple[int, int]
 MARK_ANSWER = "answer"
 MARK_ACTUAL = "actual"
 MARK_BEST = "best"
-MARK_COMPARE = "compare"  # The comparison model's best move.
 
 # The shape of each kind of mark (see mark_outline).
 SHAPE_CIRCLE = "circle"
 SHAPE_TRIANGLE = "triangle"
 SHAPE_SQUARE = "square"
-SHAPE_STAR = "star"
 MARK_SHAPES = {
     MARK_ANSWER: SHAPE_CIRCLE,
     MARK_ACTUAL: SHAPE_TRIANGLE,
     MARK_BEST: SHAPE_SQUARE,
-    MARK_COMPARE: SHAPE_STAR,
 }
 
 
@@ -128,9 +125,6 @@ def mark_outline(kind: str, center: tuple[float, float], radius: float) -> list[
         corners = [(radius, 90 + 120 * i) for i in range(3)]  # Pointing up.
     elif shape == SHAPE_SQUARE:
         corners = [(radius, 45 + 90 * i) for i in range(4)]
-    elif shape == SHAPE_STAR:
-        # Five points, with the inner corners at less than half of the radius.
-        corners = [(radius if i % 2 == 0 else radius * 0.45, 90 + 36 * i) for i in range(10)]
     else:
         return None
     x, y = center

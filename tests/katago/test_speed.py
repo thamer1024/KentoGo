@@ -4,7 +4,6 @@ import threading
 
 import pytest
 
-from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.speed import (
     FIRST_VISITS,
     MAX_VISITS,
@@ -110,17 +109,17 @@ def test_wait_for_the_final_answer():
         wait_for_answer(SilentEngine(), {"maxVisits": 50}, timeout=0.05)
 
 
-def test_visits_are_made_from_the_speeds():
-    """Each model gets the visits it reads in about 1.6 seconds; 地と形勢 gets a quarter of the main model's."""
-    preset = MeasuredSpeed(616, 120).preset(EngineSettings(compare_max_visits=999))
-    assert (preset.max_visits, preset.compare_max_visits, preset.estimate_visits) == (980, 190, 240)
+def test_visits_are_made_from_the_speed():
+    """The model gets the visits it reads in about 1.6 seconds; 地と形勢 gets a quarter of them."""
+    preset = MeasuredSpeed(616).preset()
+    assert (preset.max_visits, preset.estimate_visits, preset.speed) == (980, 240, 616)
     assert (preset.fast_visits, preset.deep_visits) == (130, 1500)  # The analysis of a game in about 2 minutes.
 
 
-def test_without_the_comparison_model_its_visits_stay():
-    """A comparison model that was not measured keeps its visits; a very slow computer gets the fewest visits."""
-    preset = MeasuredSpeed(3).preset(EngineSettings(compare_max_visits=999))
-    assert (preset.max_visits, preset.compare_max_visits, preset.estimate_visits) == (5, 999, 3)
+def test_a_very_slow_computer_gets_the_fewest_visits():
+    """A very slow computer gets the fewest visits."""
+    preset = MeasuredSpeed(3).preset()
+    assert (preset.max_visits, preset.estimate_visits) == (5, 3)
 
 
 def test_round_visits():

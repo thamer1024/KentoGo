@@ -1,22 +1,17 @@
 """The recommended numbers of visits for each kind of computer (the "推奨設定" screen).
 
 KataGo reads very different numbers of positions per second on each computer: a GPU is 30 to
-100 times faster than a processor alone. The main model is usually KaTrain's own model, an
-18-block one, and the comparison model a heavier one, such as the transformer model
-kata1-tf3-b11c768 that KataGo uses as its usual model now. So each kind of computer has two
-speeds: the 18-block model's (Preset.speed, estimated from published benchmarks, and for a
-base M5 measured: about 600 positions per second), and the heavy model's (Preset.compare_speed:
-about half of it with CUDA on NVIDIA GPUs, and about a fifth with Metal on a Mac or on a
-processor alone).
+100 times faster than a processor alone. The model is usually KaTrain's own model, an 18-block
+one, so each kind of computer has the speed of that model (Preset.speed, estimated from published
+benchmarks, and for a base M5 measured: about 600 positions per second).
 
 As for measured speeds (see katago.speed), each analysis takes about 1.6 seconds, so that the
-judging and the comparison model (three analyses each) take at most about five seconds each
-(with KataGo already loaded: it is started with the app). The territory and the standing need
-only a shallow reading, and each of them is two analyses with the owner of every point, so
-they get a quarter of the main model's visits. A user who wants deeper or quicker reading
-changes the visits on the settings screen. On slow computers the visits would be too few, so
-the main model and the comparison model get at least MIN_VISITS (an analysis then takes some
-seconds; the screen advises a lighter model there).
+judging (three analyses) takes at most about five seconds (with KataGo already loaded: it is
+started with the app). The territory and the standing need only a shallow reading, and each of
+them is two analyses with the owner of every point, so they get a quarter of the main model's
+visits. A user who wants deeper or quicker reading changes the visits on the settings screen.
+On slow computers the visits would be too few, so the main model gets at least MIN_VISITS (an
+analysis then takes some seconds; the screen advises a lighter model there).
 
 The computers with a processor or a GPU come first, from the slowest; the Macs come last, from
 the slowest. A Mac's speed depends on the kind of KataGo (the Metal version is much faster than
@@ -62,25 +57,21 @@ class Preset:
     Attributes:
         key: One of the PRESET_ constants (the screen names it with the text "preset_<key>").
         max_visits: The visits of the main model, for judging answers.
-        compare_max_visits: The visits of the comparison model.
         estimate_visits: The visits of the territory and the standing.
         speed: The positions per second of the main model (an 18-block one; estimated).
-        compare_speed: The positions per second of the comparison model (a heavy one; estimated).
         fast_visits: The visits of the first analysis of a game (an analysis setting, see GAME_SECONDS).
         deep_visits: The visits of the deep reading in the analysis of games (an analysis setting).
     """
 
     key: str
     max_visits: int
-    compare_max_visits: int
     estimate_visits: int
     speed: int
-    compare_speed: int
     fast_visits: int
     deep_visits: int
 
 
-MIN_VISITS = 5  # The fewest visits of the main model and the comparison model in a preset.
+MIN_VISITS = 5  # The fewest visits of the main model in a preset.
 DEEP_SHARE = 4  # Before the speed is known, the deep reading reads this many times the main model's visits.
 GAME_SECONDS = 120  # The analysis of a game should take about this long (see the module's docstring).
 GAME_POSITIONS = 290  # About 250 moves of a game analyzed first, and about 40 played moves read again.
@@ -107,22 +98,22 @@ def analysis_visits_for(speed: float) -> tuple[int, int]:
     return fast, deep
 
 
-def _preset(key: str, max_visits: int, compare: int, estimate: int, speed: int, compare_speed: int) -> Preset:
+def _preset(key: str, max_visits: int, estimate: int, speed: int) -> Preset:
     """Make a preset; the visits of the analysis of games come from its speed (see analysis_visits_for)."""
-    return Preset(key, max_visits, compare, estimate, speed, compare_speed, *analysis_visits_for(speed))
+    return Preset(key, max_visits, estimate, speed, *analysis_visits_for(speed))
 
 
 PC_PRESETS = (
-    _preset(PRESET_CPU_OLD, 16, 5, 4, 10, 2),
-    _preset(PRESET_CPU_NEW, 40, 8, 10, 25, 5),
-    _preset(PRESET_GPU_MIDDLE, 480, 240, 120, 300, 150),
-    _preset(PRESET_GPU_HIGH, 1600, 800, 400, 1000, 500),
+    _preset(PRESET_CPU_OLD, 16, 4, 10),
+    _preset(PRESET_CPU_NEW, 40, 10, 25),
+    _preset(PRESET_GPU_MIDDLE, 480, 120, 300),
+    _preset(PRESET_GPU_HIGH, 1600, 400, 1000),
 )
 MAC_PRESETS = (
-    _preset(PRESET_MAC_STANDARD, 80, 16, 20, 50, 10),
-    _preset(PRESET_MAC_FAST, 160, 32, 40, 100, 20),
-    _preset(PRESET_MAC_FASTER, 360, 70, 90, 225, 45),
-    _preset(PRESET_MAC_FASTEST, 960, 190, 240, 600, 120),
+    _preset(PRESET_MAC_STANDARD, 80, 20, 50),
+    _preset(PRESET_MAC_FAST, 160, 40, 100),
+    _preset(PRESET_MAC_FASTER, 360, 90, 225),
+    _preset(PRESET_MAC_FASTEST, 960, 240, 600),
 )
 PRESETS = (*PC_PRESETS, *MAC_PRESETS)  # In the order of the screen.
 
@@ -138,9 +129,4 @@ def apply_preset(engine: EngineSettings, preset: Preset) -> EngineSettings:
     The visits of the analysis of games are analysis settings: the caller sets them (preset.fast_visits as
     KaTrain's fast analysis, and preset.deep_visits).
     """
-    return replace(
-        engine,
-        max_visits=preset.max_visits,
-        compare_max_visits=preset.compare_max_visits,
-        estimate_visits=preset.estimate_visits,
-    )
+    return replace(engine, max_visits=preset.max_visits, estimate_visits=preset.estimate_visits)

@@ -1,5 +1,7 @@
 """Tests for kentogo.commentary.prompt."""
 
+from dataclasses import replace
+
 from kentogo.commentary.language import CommentaryLanguage
 from kentogo.commentary.material import GameMaterial, GroupInfo, MoveMaterial, OpponentReply, PvStep
 from kentogo.commentary.prompt import PlayerInfo, build_prompt, loss_table
@@ -115,3 +117,15 @@ def test_default_english_prompt():
     prompt = build_prompt(MATERIAL, PlayerInfo(), default_prompt_text(ENGLISH))
     assert "I played Black." in prompt.user and "Facts worked out by KentoGo" in prompt.user
     assert not any("\u3040" <= char <= "\u30ff" or "\u4e00" <= char <= "\u9fff" for char in prompt.for_paste())
+
+
+def test_a_game_analyzed_by_kentogo_names_kentogo():
+    """The intro, the heading, the note of the losses and the comment line name KentoGo's analysis."""
+    material = replace(MATERIAL, kentogo=True, moves=(replace(MATERIAL.moves[0], kentogo_text="損失: 6.0目"),))
+    intro = replace(TEXT, intro="下のデータは,{analyzer}で解析した私の実戦です.")
+    text = build_prompt(material, PLAYER, intro).user
+    assert text.startswith("下のデータは,KentoGo(KataGo)で解析した私の実戦です.")
+    assert "# KentoGoの解析データ" in text and "KentoGoの解析の損失目数で数えた" in text
+    assert "- KentoGoの解析のコメント:\n損失: 6.0目" in text and "KaTrain" not in text.split("# 回答の形式")[0]
+    katrain = build_prompt(MATERIAL, PLAYER, intro).user
+    assert katrain.startswith("下のデータは,KaTrain(KataGo)で解析した") and "# KaTrainの解析データ" in katrain

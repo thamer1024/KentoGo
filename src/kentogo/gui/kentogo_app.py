@@ -102,13 +102,13 @@ class KentoGoApp(App):
     def start_engines(self) -> None:
         """Start KataGo with the settings of the setup (unless it runs with them), and show its loading.
 
-        KataGo that runs with the same command lines is kept (see app.engines_for). The problems
+        KataGo that runs with the same command line is kept (see app.engines_for). The problems
         found when it was started are shown when the loading is done.
         """
         running = self.engines
         self.engines = self.setup.engines_for(running)
         self.engines_outdated = False
-        if running is not None and self.engines.processes == running.processes:
+        if running is not None and self.engines.process is running.process:
             return  # Only the numbers of visits changed.
         engines = self.engines
         loading = Loading(engines.loading_stages(), self.setup.start_times)

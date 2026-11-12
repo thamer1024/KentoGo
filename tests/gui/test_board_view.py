@@ -7,7 +7,6 @@ from kentogo.gui.board_view import (
     MARK_ACTUAL,
     MARK_ANSWER,
     MARK_BEST,
-    MARK_COMPARE,
     collect_marks,
     make_board_view,
     mark_outline,
@@ -72,20 +71,17 @@ def test_marks_on_the_same_point_are_kept_together():
             (Move.from_gtp("E5", "B"), MARK_ANSWER),
             (Move.from_gtp("C3", "B"), MARK_ACTUAL),
             (Move.from_gtp("E5", "B"), MARK_BEST),
-            (Move.from_gtp("E5", "B"), MARK_COMPARE),
-            (None, MARK_COMPARE),
+            (None, MARK_BEST),
             (Move("B", None), MARK_ACTUAL),
         ]
     )
-    assert marks == {point("E5"): (MARK_ANSWER, MARK_BEST, MARK_COMPARE), point("C3"): (MARK_ACTUAL,)}
+    assert marks == {point("E5"): (MARK_ANSWER, MARK_BEST), point("C3"): (MARK_ACTUAL,)}
 
 
 def test_mark_outlines():
-    """Each kind has its own shape: a circle, a triangle, a square and a star."""
+    """Each kind has its own shape: a circle, a triangle and a square."""
     assert mark_outline(MARK_ANSWER, (0, 0), 10) is None  # A circle.
     triangle = mark_outline(MARK_ACTUAL, (0, 0), 10)
     assert len(triangle) == 6 and triangle[:2] == pytest.approx([0, 10])  # Pointing up.
     square = mark_outline(MARK_BEST, (5, 5), 10)
     assert len(square) == 8 and all(abs(abs(value - 5) - 7.07) < 0.01 for value in square)
-    star = mark_outline(MARK_COMPARE, (0, 0), 10)
-    assert len(star) == 20 and star[2:4] != pytest.approx([0, 10])

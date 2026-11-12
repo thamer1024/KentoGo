@@ -1,6 +1,7 @@
 """Tests for the settings of the programs made with PyInstaller (packaging/*/kentogo.spec)."""
 
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,20 @@ def test_the_version_of_a_release_is_in_the_program(spec_path):
     spec = spec_path.read_text(encoding="utf-8")
     assert 'VERSION_FILE = ROOT / "packaging" / "version.txt"' in spec
     assert 'DATA.append((VERSION_FILE, "kentogo"))' in spec
+
+
+def test_the_windows_program_is_made_without_nvidias_gpu_libraries():
+    """The folders of CUDA are left out of PATH while the program is made, and their DLLs are never put in it."""
+    build = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+    spec = (ROOT / "packaging" / "windows" / "kentogo.spec").read_text(encoding="utf-8")
+    assert '-notmatch "NVIDIA|CUDA|TensorRT|cuDNN"' in build
+    assert build.index("$env:PATH =") < build.index("pyinstaller")
+    gpu_dlls = re.compile(re.search(r'GPU_DLLS = re.compile\(r"(.*?)", re.I\)', spec).group(1), re.I)
+    assert all(
+        gpu_dlls.match(name) for name in ("nvinfer_10.dll", "cudart64_12.dll", "cudnn64_9.dll", "cublasLt64_12.dll")
+    )
+    assert not any(gpu_dlls.match(name) for name in ("SDL2.dll", "libEGL.dll", "glew32.dll", "python312.dll"))
+    assert "a.binaries = [binary for binary in a.binaries if not GPU_DLLS.match" in spec
 
 
 def _release_version():

@@ -22,11 +22,7 @@ they are on, every position shown (of the game or of a sequence) gets its areas 
 rough standing, from a shallow reading with the main model (see katago.quick_reading). At the last
 move of a sequence, the exact territory and standing are shown instead, as KaTrain does, with how
 much better the sequence is than the game after the same number of moves (see katago.estimate):
-they are calculated the first time with the model of the sequence and kept.
-
-When the comparison model can be used, Tab after the last sequence analyzes the position
-before the move with it: its best sequence then comes last at that move, with its own mark
-on the board.
+they are calculated the first time with the main model and kept.
 
 The screen can also be opened on one game at one move (from the quiz, see open_game).
 What is drawn and written comes from gui.viewer_model, and the game from record.game_record.
@@ -88,14 +84,13 @@ class ViewerScreen(BoxLayout):
                 screen without the "choose a game" button (when it is opened on one game).
             on_back: Called by the back button (the screen is closed first, see close).
             back_label: The key of the text of the back button (see gui.texts).
-            models: KataGo with the main model (the territory and the standing) and with the
-                comparison model (its best sequence), each None if it cannot be used.
+            models: KataGo with the main model (the territory and the standing), None if it cannot be used.
             **kwargs: Kivy's layout arguments.
         """
         super().__init__(orientation="horizontal", **kwargs)
         self.record: GameRecord | None = None
         self.browse = viewer_model.Browse()
-        self.analyses = GameAnalyses(models, self, in_main_thread)  # KataGo's sequences and standings of the game.
+        self.analyses = GameAnalyses(models, self, in_main_thread)  # KataGo's standings of the game.
         self.standing_on = False  # True while the territory and the standing are turned on (T).
         self.standing_button = None  # The button of T, which tells whether they are on.
         self._estimating: viewer_model.Browse | None = None  # The end of a sequence whose standing is calculated.
@@ -154,35 +149,8 @@ class ViewerScreen(BoxLayout):
             self._show()
 
     def next_variation(self) -> None:
-        """Switch between the game and the sequences at the move (see viewer_model.next_variation).
-
-        After the last sequence, the comparison model analyzes the move (see the module
-        docstring); not while it is analyzing.
-        """
-        record = self.record
-        if record is None or self.analyses.analyzing is not None:
-            return
-        if not self._may_ask_compare(record):
-            self._move(self._next_sequence)
-            return
-        set_text(self.variation_label, texts.lazy("compare_running"))
-        self.analyses.compare(self.position)
-
-    def _next_sequence(self, record: GameRecord, browse: viewer_model.Browse) -> viewer_model.Browse:
-        """Return where Tab goes, with the comparison model's sequences of this game."""
-        return viewer_model.next_variation(record, browse, self.analyses.lines)
-
-    def _may_ask_compare(self, record: GameRecord) -> bool:
-        """True when Tab should start the comparison model: it can be asked at the move, and Tab is at the end."""
-        lines = self.analyses.lines
-        return self.analyses.can_compare(self.position) and viewer_model.is_last_sequence(record, self.browse, lines)
-
-    def compared(self, position: int) -> None:
-        """Show the comparison model's sequence from its first move, if the screen is still at its move."""
-        if self.position == position:
-            last = len(viewer_model.variations_at(self.record, position, self.analyses.lines)) - 1
-            self.browse = viewer_model.Browse(position, last, 1)
-        self._show()
+        """Switch between the game and the sequences at the move (see viewer_model.next_variation)."""
+        self._move(viewer_model.next_variation)
 
     def estimated(self, key: viewer_model.Browse) -> None:
         """Show the territory and the standing, if the screen still shows that end of a sequence."""
@@ -225,7 +193,7 @@ class ViewerScreen(BoxLayout):
         if not self.standing_on:
             self.quick.stop()
             return
-        variation = viewer_model.sequence_at_end(record, browse, self.analyses.lines)
+        variation = viewer_model.sequence_at_end(record, browse)
         if variation is None:
             self._ask_quick(record, browse)
             return
@@ -248,7 +216,7 @@ class ViewerScreen(BoxLayout):
         """Return the position that the board shows: the game after the move, or the sequence played so far."""
         if browse.variation is None:
             return record.position_after(browse.position)
-        variation = viewer_model.variations_at(record, browse.position, self.analyses.lines)[browse.variation]
+        variation = viewer_model.variations_at(record, browse.position)[browse.variation]
         return played(record.position_before(browse.position), variation.moves[: browse.step])
 
     def main_line(self) -> None:
@@ -350,17 +318,16 @@ class ViewerScreen(BoxLayout):
             return
         browse = self.browse
         position = browse.position
-        added = dict(self.analyses.lines)
-        at_end = viewer_model.sequence_at_end(record, browse, self.analyses.lines) is not None
+        at_end = viewer_model.sequence_at_end(record, browse) is not None
         standing = self.analyses.standings.get(browse) if self.standing_on and at_end else None
         quick = self.quick.get(browse) if self.standing_on and standing is None else None
-        view = viewer_model.browse_view(record, browse, added)
+        view = viewer_model.browse_view(record, browse)
         areas = standing.end.ownership if standing is not None else quick.ownership if quick is not None else None
         self.board.show(replace(view, ownership=areas) if areas is not None else view)
         set_text(self.position_label, lambda: viewer_model.position_text(record, position))
         set_text(self.loss_label, lambda: viewer_model.loss_text(record, position))
-        set_text(self.variation_label, lambda: self._variation_text(record, browse, added, standing, quick))
-        set_text(self.comment_label, lambda: viewer_model.browse_comment_text(record, browse, added))
+        set_text(self.variation_label, lambda: self._variation_text(record, browse, standing, quick))
+        set_text(self.comment_label, lambda: viewer_model.comment_text(record, position))
         self._moving_slider = True
         self.slider.value = position
         self._moving_slider = False
@@ -370,12 +337,11 @@ class ViewerScreen(BoxLayout):
     def _variation_text(
         record: GameRecord,
         browse: viewer_model.Browse,
-        added: dict,
         standing: Standing | None,
         quick: QuickReading | None,
     ) -> str:
         """Return the text about the shown sequence, with the exact standing at its end or the rough one."""
-        text = viewer_model.variation_text(record, browse, added)
+        text = viewer_model.variation_text(record, browse)
         if standing is not None:
             return f"{text}\n{texts.standing_text(standing, browse.step)}".strip("\n")
         if quick is not None:
@@ -384,7 +350,7 @@ class ViewerScreen(BoxLayout):
 
     def _step(self, step: int) -> None:
         """Move some moves forward (or back, if step is negative) through the game, or through the shown sequence."""
-        self._move(lambda record, browse: viewer_model.step_game(record, browse, step, self.analyses.lines))
+        self._move(lambda record, browse: viewer_model.step_game(record, browse, step))
 
     def _jump(self, find: Callable[[GameRecord, int], int | None]) -> None:
         """Go to the previous or next move with an AI commentary (find is previous_ai_position or next_ai_position)."""

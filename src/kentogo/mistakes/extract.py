@@ -34,7 +34,7 @@ from pysgf import GoNode
 from kentogo.common import sgf
 from kentogo.common.handicap import from_start
 from kentogo.common.types import Move, Position, moves_from_gtp
-from kentogo.mistakes.problem import Problem, Variation, problem_id_of
+from kentogo.mistakes.problem import SOURCE_KATRAIN, SOURCE_KENTOGO, Problem, Variation, problem_id_of
 from kentogo.mistakes.selection import (
     DECIDED_LEAD,
     DECIDED_WINRATE,
@@ -51,12 +51,13 @@ from kentogo.record.katrain_kt import (
     SUPPORTED_VERSION,
     KtEvaluation,
     candidate_losses,
-    decode_kt,
     evaluate_katrain_move,
     evaluate_played_move,
     relative_candidate_losses,
     root_value,
 )
+from kentogo.record.kentogo_analysis import has_analysis, read_analysis, read_kentogo_analysis
+from kentogo.record.kentogo_comment import split_kentogo_comment
 from kentogo.record.players import detect_my_color
 
 # Reasons why no problem was made from a game.
@@ -216,6 +217,7 @@ class _Game:
     evaluate: Callable[[dict, dict, str, str], KtEvaluation | None] = evaluate_katrain_move
     candidate_losses: Callable[[dict, str], dict[str, float]] = candidate_losses
     start_lead: float | None = None  # Black's score lead before the first move (for handicap games).
+    sequence_source: str = SOURCE_KATRAIN  # Whose analysis the best sequences of the problems come from.
 
 
 def _game(root: GoNode, sgf_path: str, start: Position, my_color: str) -> _Game:
@@ -223,7 +225,8 @@ def _game(root: GoNode, sgf_path: str, start: Position, my_color: str) -> _Game:
     version = str(root.get_property("KTV", SUPPORTED_VERSION))
     start_lead = _position_value(root, version)[1]
     if root.get_property(KENTOGO_MODE_PROPERTY, "") == KENTOGO_MODE:
-        return _Game(sgf_path, start, my_color, version, evaluate_played_move, relative_candidate_losses, start_lead)
+        evaluate, losses = evaluate_played_move, relative_candidate_losses
+        return _Game(sgf_path, start, my_color, version, evaluate, losses, start_lead, SOURCE_KENTOGO)
     return _Game(sgf_path, start, my_color, version, start_lead=start_lead)
 
 
@@ -304,7 +307,7 @@ def _move_losses(main_line: list[GoNode], game: _Game) -> tuple[float, ...]:
 
 def _evaluated(node: GoNode, move: Move, game: _Game) -> KatrainMoveInfo | None:
     """Return the evaluation of a node's move (analysis data first, then KaTrain's comment), or None."""
-    _, info = read_comment(split_ai_comment(str(node.get_property("C", ""))).rest)
+    _, info = read_comment(_comment_rest(node))
     info = _with_analysis_data(info, node, move, game)
     return info if info is not None and (info.color, info.move) == (move.color, move.gtp()) else None
 
@@ -436,11 +439,11 @@ def _choose(problems: list[tuple[Problem, bool]], settings: ExtractSettings) -> 
 
 
 def _has_analysis(main_line: list[GoNode]) -> bool:
-    """Return True if any move of the game has KaTrain's comment or KaTrain's analysis data (KT)."""
+    """Return True if any move of the game has analysis data (KentoGo's KGA or KaTrain's KT) or KaTrain's comment."""
     for node in main_line[1:]:
-        if node.get_property("KT") is not None:
+        if has_analysis(node):
             return True
-        _, info = read_comment(node.get_property("C", ""))
+        _, info = read_comment(_comment_rest(node))
         if info is not None:
             return True
     return False
@@ -467,8 +470,8 @@ def _undone_moves(main_line: list[GoNode]) -> Iterator[tuple[GoNode, tuple[Move,
         for sibling in node.parent.children:
             if id(sibling) in on_main_line:
                 continue
-            _, info = read_comment(sibling.get_property("C", ""))
-            if info is not None and info.teaching_undo:
+            _, info = read_comment(_comment_rest(sibling))
+            if (info is not None and info.teaching_undo) or _taken_back(sibling):
                 yield sibling, before
 
 
@@ -491,14 +494,14 @@ def _make_problem_from_node(
     if move is None or move.color != game.my_color:
         return None
     ai = split_ai_comment(str(node.get_property("C", "")))
-    notes, info = read_comment(ai.rest)
+    notes, info = read_comment(split_kentogo_comment(ai.rest).rest)
     info = _with_analysis_data(info, node, move, game)
     number = len(before) + 1
     if not _is_problem(move, info, number, settings):
         return None
     start = game.start
     position = Position(start.size, start.komi, start.rules, start.setup, before, move.color)
-    problem = _make_problem(position, game.sgf_path, number, move, info, notes)
+    problem = _make_problem(position, game.sgf_path, number, move, info, notes, game.sequence_source)
     losses = _candidate_losses(node.parent, move.color, game)
     problem = replace(problem, candidate_losses=losses, ai_comment=ai.move_text, game_line=_game_line(node, problem))
     problem = _with_opponent_move(problem, node, game, settings)
@@ -579,17 +582,22 @@ def _is_problem(move: Move, info: KatrainMoveInfo | None, number: int, settings:
 
 
 def _analysis(node: GoNode | None, version: str) -> dict | None:
-    """Return KaTrain's analysis data of a node, or None if it has none.
+    """Return the analysis data of a node (KentoGo's KGA, else KaTrain's KT), or None if it has none.
 
     Broken or too new data counts as none, because the problem works without it.
     """
-    values = node.get_list_property("KT") if node is not None else None
-    if not values:
-        return None
-    try:
-        return decode_kt(values, version)
-    except ValueError:
-        return None
+    return read_analysis(node, version)
+
+
+def _comment_rest(node: GoNode) -> str:
+    """Return the comment of a node without the AI commentary and KentoGo's text (the notes and KaTrain's text)."""
+    return split_kentogo_comment(split_ai_comment(str(node.get_property("C", ""))).rest).rest
+
+
+def _taken_back(node: GoNode) -> bool:
+    """True if KentoGo's analysis data says that KaTrain took the node's move back in a teaching game."""
+    analysis = read_kentogo_analysis(node)
+    return analysis is not None and bool(analysis.get("taken_back"))
 
 
 def _with_analysis_data(info: KatrainMoveInfo | None, node: GoNode, move: Move, game: _Game) -> KatrainMoveInfo | None:
@@ -641,7 +649,7 @@ def _candidate_losses(parent: GoNode | None, color: str, game: _Game) -> tuple[t
 
 
 def _make_problem(
-    position: Position, sgf_path: str, number: int, move: Move, info: KatrainMoveInfo, notes: str
+    position: Position, sgf_path: str, number: int, move: Move, info: KatrainMoveInfo, notes: str, source: str
 ) -> Problem:
     """Make a problem from a mistake and KaTrain's evaluation of it.
 
@@ -652,6 +660,7 @@ def _make_problem(
         move: The mistake.
         info: KaTrain's evaluation of the mistake.
         notes: The user's notes on the mistake.
+        source: Whose analysis the best sequence comes from (SOURCE_KATRAIN or SOURCE_KENTOGO).
 
     Returns:
         The problem.
@@ -659,7 +668,7 @@ def _make_problem(
     best_move = Move.from_gtp(info.best_move, move.color) if info.best_move else None
     variations = ()
     if info.pv:
-        variations = (Variation(moves_from_gtp(info.pv, info.pv_color), "katrain"),)
+        variations = (Variation(moves_from_gtp(info.pv, info.pv_color), source),)
     return Problem(
         problem_id=problem_id_of(position),
         sgf_path=sgf_path,

@@ -71,7 +71,7 @@ class LoadingStage:
     """One KataGo to wait for.
 
     Attributes:
-        text_key: The text that tells what is loaded ("loading_main" or "loading_compare").
+        text_key: The text that tells what is loaded (such as "loading_main").
         key: KataGo's command line (its loading time is kept for it).
         is_ready: Returns True when KataGo is ready.
         has_failed: Returns True when KataGo will not get ready (it could not start, or it stopped).

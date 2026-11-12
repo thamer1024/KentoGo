@@ -12,6 +12,11 @@ Set-Location (Join-Path $PSScriptRoot "..\..")
 uv sync --extra ai --group build
 if ($LASTEXITCODE -ne 0) { throw "uv sync failed" }
 
+# Newer NVIDIA display drivers put the folders of CUDA in PATH. PyInstaller looks for the DLLs of the
+# program in PATH too, and could take one from there, which needs CUDA and TensorRT. KentoGo does not use
+# them, so those folders are left out of PATH while the program is made (only in this script).
+$env:PATH = ($env:PATH -split ";" | Where-Object { $_ -and $_ -notmatch "NVIDIA|CUDA|TensorRT|cuDNN" }) -join ";"
+
 uv run --no-sync pyinstaller --noconfirm --clean --distpath dist --workpath build packaging\windows\kentogo.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 

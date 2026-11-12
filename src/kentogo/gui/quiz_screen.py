@@ -38,13 +38,11 @@ from kivy.uix.scrollview import ScrollView
 from kentogo.answers import save_answer
 from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.tactics import tactics
-from kentogo.common.types import Move
 from kentogo.gui import texts, theme
 from kentogo.gui.board_view import (
     MARK_ACTUAL,
     MARK_ANSWER,
     MARK_BEST,
-    MARK_COMPARE,
     BoardView,
     collect_marks,
     make_board_view,
@@ -53,7 +51,7 @@ from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.dialogs import show_message
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
-from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Problem
+from kentogo.mistakes.problem import Problem
 from kentogo.quiz.best_move_value import BestMoveValue
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quick_areas import QuickAreas
@@ -281,7 +279,7 @@ class QuizScreen(BoxLayout):
     def next_variation(self) -> None:
         """Switch to the next sequence (only after the answer, and not while KataGo is calculating)."""
         if self.run.next_variation():
-            self._show_result(self.session)  # The comparison model's sequence has its own result.
+            self._show_result(self.session)  # The line of the losses tells about the shown sequence.
             self._refresh()
 
     def _prepare_standings(self) -> None:
@@ -331,10 +329,10 @@ class QuizScreen(BoxLayout):
         """Save the answers that KataGo is still judging, without losses (called when the app closes)."""
         self.run.save_unfinished()
 
-    def _save(self, session: QuizSession, max_visits: int | None, comparison_model: bool) -> None:
+    def _save(self, session: QuizSession, max_visits: int | None) -> None:
         """Save an answer to the history (the quiz calls it once for each answer), if there is a history."""
         if self.history is not None:
-            save_answer(self.history, session, max_visits, comparison_model)
+            save_answer(self.history, session, max_visits)
             self._show_history_error()
 
     def _show_history_error(self) -> None:
@@ -354,15 +352,12 @@ class QuizScreen(BoxLayout):
     def _show_result(self, session: QuizSession) -> None:
         """Show the result of the answer, with the moves as they are on the shown board.
 
-        Until KataGo has judged the answer, the reason is shown (see QuizRun.waiting_reason). While
-        the comparison model's sequence is shown, its result is shown instead. While another
+        Until KataGo has judged the answer, the reason is shown (see QuizRun.waiting_reason). While another
         sequence is shown, the line of the losses tells about its first move (see QuizSession.sequence_loss).
         """
         reason = self.run.waiting_reason(session)
         waiting = texts.lazy(reason[0], **reason[1]) if reason is not None else str
         problem, result = session.shown_problem, session.displayed_result
-        compare_best = session.shown_move(session.compare_best) if session.compare_best else None
-        by_compare, compare_loss = session.showing_compare, session.compare_best_loss
         found = session.sequence_loss()
         sequence = (session.shown_move(found[0]), found[1]) if found is not None else None
         tactics = _best_move_tactics(session)
@@ -372,9 +367,6 @@ class QuizScreen(BoxLayout):
                 problem,
                 result,
                 waiting(),
-                compare_best=compare_best,
-                by_compare=by_compare,
-                compare_best_loss=compare_loss,
                 sequence=sequence,
                 show_verdict=session.shows_verdict,
                 tactics=tactics,
@@ -419,8 +411,7 @@ class QuizScreen(BoxLayout):
             set_text(self.notes_label, str)
             return
         set_text(self.sequence_label, lambda: self._sequence_text(session))
-        # The AI commentary is not shown with the comparison model's sequence (another AI's view).
-        ai_comment = problem.ai_comment if session.shows_ai_comment else ""
+        ai_comment = problem.ai_comment
         set_text(
             self.notes_label,
             lambda: texts.notes_text(problem.notes, ai_comment=ai_comment),
@@ -510,15 +501,12 @@ class QuizScreen(BoxLayout):
         problem = session.shown_problem
         marks = {}
         if session.phase == ANSWERED:
-            compare_best = session.shown_move(session.compare_best) if session.compare_best else None
             # Moves on the same point get rings inside each other, in this order from the outside.
             marks = collect_marks(
                 [
                     (session.shown_result.answer, MARK_ANSWER),
                     (problem.actual_move, MARK_ACTUAL),
                     (problem.best_move, MARK_BEST),
-                    (compare_best, MARK_COMPARE),
-                    *_compare_marks(session),
                 ]
             )
         view = make_board_view(problem.position, session.shown_sequence(), marks)
@@ -527,15 +515,6 @@ class QuizScreen(BoxLayout):
             return replace(view, ownership=standing.end.ownership)
         areas = self.quick_areas.shown() if self.quick_areas is not None else None
         return replace(view, ownership=areas) if areas is not None else view
-
-
-def _compare_marks(session: QuizSession) -> list[tuple[Move, str]]:
-    """Return the marks of the comparison model's sequence while it is shown: its first and last shown moves."""
-    choice = session.choice
-    shown = session.shown_sequence()
-    if choice is None or choice.source != SOURCE_KATAGO_COMPARE or not shown:
-        return []
-    return [(shown[0], MARK_COMPARE), (shown[-1], MARK_COMPARE)]
 
 
 def _best_move_tactics(session: QuizSession) -> tuple[str, ...]:

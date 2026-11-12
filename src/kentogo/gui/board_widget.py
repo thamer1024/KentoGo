@@ -18,7 +18,7 @@ from kivy.uix.widget import Widget
 from kentogo.common.types import GTP_COLUMNS
 from kentogo.gui import theme
 from kentogo.gui.board_geometry import BoardGeometry, star_points
-from kentogo.gui.board_view import MARK_ACTUAL, MARK_ANSWER, MARK_BEST, MARK_COMPARE, BoardView, mark_outline
+from kentogo.gui.board_view import MARK_ACTUAL, MARK_ANSWER, MARK_BEST, BoardView, mark_outline
 
 # The mark of territory in the territory counting practice: a square in the owner's color
 # (its size as a part of the spacing).
@@ -43,7 +43,6 @@ MARK_COLORS = {
     MARK_ANSWER: (0.1, 0.35, 0.95, 1),
     MARK_ACTUAL: (0.9, 0.1, 0.1, 1),
     MARK_BEST: (0.05, 0.65, 0.2, 1),
-    MARK_COMPARE: (0.72, 0.15, 0.85, 1),  # Purple: not like the other marks, and easy to see on the board.
 }
 
 

@@ -99,10 +99,6 @@ which model is loading and, from the second start on, about how long it will sti
 loading times are kept in `~/.kentogo/katago_start_times.json`). You can close the dialog and go
 on; a question to KataGo then waits until it is ready.
 
-**About the comparison model.** The comparison model is not used for now: its KataGo is not
-started, even when "Also use the comparison model" is on in the settings, and its sequence is not
-shown after an answer. The setting is kept in case it comes back.
-
 ### The sequences after your answer
 
 After you answer, Tab switches between these sequences (the line at the top shows their order):
@@ -256,6 +252,9 @@ the other way round).
     at each start, so it starts a little slower.
   - `dist\KentoGo` (start `KentoGo.exe` in it), also as `dist\KentoGo-windows.zip`: a folder,
     which starts faster.
+
+  CUDA and TensorRT are not needed. Newer NVIDIA display drivers put the folders of CUDA in PATH;
+  the script leaves them out while it makes the program, so that none of their DLLs are taken in.
 - macOS: in the KentoGo folder, run
 
   ```
