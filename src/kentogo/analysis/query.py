@@ -3,10 +3,14 @@
 Written for KentoGo with the same contents as KaTrain 1.20.0's KataGoEngine.request_analysis
 (katrain/core/engine.py), which is a method of KaTrain's engine class and cannot be copied
 unchanged: the moves and the placed stones from the start of the game to the node, the rules,
-komi and board size, the visits, the ownership and the policy, and KaTrain's settings
-(scores from black's side and wide root noise), and KaTrain's time limit (maxTime) when it is set:
-KaTrain sets it for the first analysis of a game, but not for its re-analysis.
+komi and board size, the visits, the policy, and KaTrain's settings (scores from black's side and
+wide root noise), and KaTrain's time limit (maxTime) when it is set: KaTrain sets it for the first
+analysis of a game, but not for its re-analysis.
 KaTrain's own key for continuous analysis ("_kt_continuous") is not sent to KataGo, so it is not here.
+Unlike KaTrain, the areas (includeOwnership, and includeMovesOwnership after each candidate move) are never
+asked: KentoGo does not keep them, and they make KataGo's answers large and the analysis slower.
+The policy is asked: it gives the first instinct of the moves that can become problems (see
+analysis.sgf_writer).
 """
 
 from __future__ import annotations
@@ -28,14 +32,12 @@ class QuerySettings:
         visits: KataGo's maxVisits.
         wide_root_noise: KaTrain's engine setting "wide_root_noise".
         priority: KataGo's priority of the query (KaTrain: -100 for a game, -1000000 for re-analysis).
-        ownership: Ask for the ownership (KaTrain's engine setting "_enable_ownership", on by default).
         max_time: The most seconds of the analysis (KataGo's maxTime, KaTrain's "max_time"); 0 means no limit.
     """
 
     visits: int
     wide_root_noise: float
     priority: int
-    ownership: bool = True
     max_time: float = 0.0
 
 
@@ -43,7 +45,7 @@ def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
     """Return the query that analyzes the position before a node with only the node's move allowed.
 
     It is the query of the node before (see node_query), with KataGo's allowMoves for the first move,
-    and without the ownership and the policy, which the answer does not need.
+    and without the policy, which the answer does not need.
     """
     query = node_query(node.parent, settings)
     if query is None:
@@ -53,25 +55,8 @@ def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
     return {
         **query,
         "allowMoves": allowed,
-        "includeOwnership": False,
-        "includeMovesOwnership": False,
         "includePolicy": False,
     }
-
-
-def query_after(node: GoNode, settings: QuerySettings, moves: list[tuple[str, str]]) -> dict | None:
-    """Return the query of a node with more moves played after it (such as a pass, or the best move).
-
-    Args:
-        node: The node.
-        settings: How it is analyzed.
-        moves: The moves after the node: (player, GTP point or "pass").
-    """
-    query = node_query(node, settings)
-    if query is None:
-        return None
-    played = [*query["moves"], *[[player, point] for player, point in moves]]
-    return {**query, "moves": played, "analyzeTurns": [len(played)]}
 
 
 def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
@@ -96,8 +81,8 @@ def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
         "komi": node.komi,
         "boardXSize": size_x,
         "boardYSize": size_y,
-        "includeOwnership": settings.ownership,
-        "includeMovesOwnership": settings.ownership,
+        "includeOwnership": False,
+        "includeMovesOwnership": False,
         "includePolicy": True,
         "initialStones": [[stone.player, stone.gtp()] for stone in stones],
         "initialPlayer": node.initial_player,

@@ -161,6 +161,14 @@ class QuizRun:
         self.start(self.index + 1)
         return True
 
+    def leave(self) -> None:
+        """Leave the quiz (back to the top screen): save the answers KataGo is still judging, without losses,
+        and make KataGo stop reading when it still calculates for the problem asked now (see stop_katago)."""
+        calculating = self.calculating
+        self.save_unfinished()
+        if calculating:
+            self.stop_katago()
+
     def stop_katago(self) -> None:
         """Ask KataGo to stop reading all queries, when it can (KataGo's "terminate_all")."""
         terminate_all = getattr(self.judging.engine, "terminate_all", None)

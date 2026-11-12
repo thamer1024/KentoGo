@@ -1,7 +1,7 @@
 """KentoGo's own text in the comment of a node, apart from the user's notes and KaTrain's text.
 
-KentoGo writes its analysis of a move into the comment in its own form (see analysis.kentogo_comment),
-not in KaTrain's (KaTrain's text ends with KaTrain's marker, see record.katrain_comment). It is one
+Older versions of KentoGo wrote their analysis of a move into the comment in their own form (KentoGo no
+longer writes comments, see analysis.sgf_writer, but the text is still found in the games), not in KaTrain's (KaTrain's text ends with KaTrain's marker, see record.katrain_comment). It is one
 part of the comment, after the user's notes and KaTrain's text, joined with the same separator:
 
     <the user's notes>
@@ -11,8 +11,8 @@ part of the comment, after the user's notes and KaTrain's text, joined with the 
     <KENTOGO_HEADER>
     <KentoGo's text>
 
-The part starts with KENTOGO_HEADER, so it is found again (and written again when the game is
-analyzed again) without a marker inside the text. split_kentogo_comment takes it out, so that the rest
+The part starts with KENTOGO_HEADER, so it is found again (and removed when the game is analyzed
+again) without a marker inside the text. split_kentogo_comment takes it out, so that the rest
 is read as before (the user's notes and KaTrain's text, see record.katrain_comment.read_comment).
 """
 

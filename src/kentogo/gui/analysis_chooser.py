@@ -20,7 +20,6 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.utils import escape_markup
 
-from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.analysis_run import FolderGame, FolderGames, GameChoice
 from kentogo.gui import texts, theme
 from kentogo.gui.check_box import MaterialCheckBox
@@ -50,14 +49,11 @@ class GameRow(BoxLayout):
 class AnalysisChooser(Popup):
     """The dialog that lists the games of the analysis's folder, to choose the ones to analyze."""
 
-    def __init__(
-        self, games: FolderGames, analysis: AnalysisSettings, on_start: Callable[[list[Path]], None], **kwargs
-    ):
+    def __init__(self, games: FolderGames, on_start: Callable[[list[Path]], None], **kwargs):
         """Make the dialog and list the games.
 
         Args:
             games: The games of the folder (see analysis_run.list_games).
-            analysis: The settings of the analysis (which games are checked at first).
             on_start: Called with the chosen games when the start button is pressed (the dialog is closed first).
             **kwargs: Kivy's popup arguments.
         """
@@ -71,7 +67,7 @@ class AnalysisChooser(Popup):
             separator_color=theme.BUTTON_COLOR,
             **kwargs,
         )
-        self.choice = GameChoice(games, analysis)
+        self.choice = GameChoice(games)
         self._on_start = on_start
         self.rows: list[GameRow] = []
         self.list_box = GridLayout(cols=1, spacing=dp(2), size_hint_y=None)

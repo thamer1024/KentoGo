@@ -100,7 +100,7 @@ class PromptWords:
     reply_sequence_line: str
     notes_line: str
     katrain_line: str
-    kentogo_line: str  # {text}: the comment of KentoGo's analysis.
+    instinct_line: str  # {rank}, {probability}, {best}, {best_probability}: the move's first instinct.
     before_diagram: str
     zoom_diagram: str
     after_diagram: str
@@ -252,7 +252,7 @@ JAPANESE_WORDS = PromptWords(
     reply_sequence_line="- 相手の手番での予想手順: {sequence}",
     notes_line="- 私のメモ: {notes}",
     katrain_line="- KaTrainの元コメント:\n{text}",
-    kentogo_line="- KentoGoの解析のコメント:\n{text}",
+    instinct_line="- 第一感（KataGoの方策）: 打った手は{rank}位（{probability:.1%}）、1位は{best}（{best_probability:.1%}）",
     before_diagram="- 直前の盤面図:",
     zoom_diagram="- 拡大図:",
     after_diagram="- 予想手順の後の盤面図:",
@@ -415,7 +415,10 @@ and the counts not to exceed"
     reply_sequence_line="- Predicted sequence for the opponent: {sequence}",
     notes_line="- My notes: {notes}",
     katrain_line="- KaTrain's comment:\n{text}",
-    kentogo_line="- The comment of KentoGo's analysis:\n{text}",
+    instinct_line=(
+        "- First instinct (KataGo's policy): the move played ranks {rank} ({probability:.1%}); "
+        "the first is {best} ({best_probability:.1%})"
+    ),
     before_diagram="- Board before the move:",
     zoom_diagram="- Zoomed board:",
     after_diagram="- Board after the predicted sequence:",

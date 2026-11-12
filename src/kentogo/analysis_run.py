@@ -4,24 +4,22 @@ The command line (analysis_cli) and the top screen's "KataGoで棋譜解析" (gu
 Each game file is copied to the backup folder before it is written.
 
 The command line analyzes the games given to it (analyze_games): a game whose nodes all have
-analysis data is skipped, unless it is analyzed again (the setting reanalyze), as in KaTrain.
-A game analyzed by KaTrain (it has no KGM[KentoGo]) is skipped too, unless the user says yes to
+analysis data is skipped, as in KaTrain. A game analyzed by KaTrain (it has no KGM[KentoGo]) is skipped too, unless the user says yes to
 analyzing it again for KentoGo (redo_kentogo): then KentoGo reads every position itself and writes
 its own analysis data (KGA); KaTrain's analysis data (KT) is left as it is (see analysis.game_analysis).
 
 The settings screen lists the games of the folder (list_games) and the user checks the ones to
 analyze (see gui.analysis_chooser); every checked game is analyzed (analyze_chosen_games), whatever
 analysis it has. The games analyzed by KentoGo are not listed until the user asks for them, and
-only the games not analyzed yet are checked at first (with "analyze again", the games analyzed by
-KaTrain too).
+only the games not analyzed yet are checked at first.
 What happens is told to a listener: the start of each game, the progress of its steps, and how it ended.
 A run can be stopped: it stops after the game that is being analyzed.
+How long each game took, step by step, is told on the console and kept in a log (see analysis_timing).
 """
 
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -29,11 +27,11 @@ from pathlib import Path
 
 from pysgf import GoNode
 
-from kentogo.analysis.analysis_settings import AnalysisSettings
-from kentogo.analysis.analyze import DeepTargets, analyze_game
+from kentogo.analysis.analyze import DeepTargets, analyze_game, first_visits
 from kentogo.analysis.game_analysis import Engine, EngineValues, GameAnalysis
 from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
+from kentogo.analysis_timing import GameTiming, StepClock, log_timing, timing_record
 from kentogo.app_settings import AppSettings
 from kentogo.common.sgf import load_game
 from kentogo.common.types import opponent
@@ -48,6 +46,8 @@ from kentogo.version import app_version
 WRITTEN = "written"  # Analyzed and written (some nodes may have failed: see the detail).
 SKIPPED = "skipped"  # Every node already had analysis data.
 FAILED = "failed"  # The game could not be read or written.
+
+DETECTION_SHARE = 0.5  # A move is read deeply when it lost this share of a problem's loss (see deep_targets).
 
 
 @dataclass(frozen=True)
@@ -103,15 +103,12 @@ class FolderGame:
     path: Path
     state: str
 
-    def checked_first(self, analysis: AnalysisSettings) -> bool:
+    def checked_first(self) -> bool:
         """True if the game is checked when the list is shown.
 
         A game not analyzed yet is checked, and so is a file that cannot be read (its run tells why).
-        A game analyzed by KaTrain is checked only when "analyze again" is on; a game analyzed by
-        KentoGo never is.
+        A game analyzed by KaTrain or by KentoGo is not.
         """
-        if self.state == GAME_KATRAIN:
-            return analysis.reanalyze
         return self.state in (GAME_NEW, GAME_BROKEN)
 
 
@@ -147,11 +144,11 @@ class GameChoice:
     listed are chosen.
     """
 
-    def __init__(self, games: FolderGames, analysis: AnalysisSettings):
+    def __init__(self, games: FolderGames):
         """Start with the games checked as FolderGame.checked_first says, and the games analyzed by KentoGo hidden."""
         self.games = games
         self.with_kentogo = False
-        self._checked = {game.path: game.checked_first(analysis) for game in games.games}
+        self._checked = {game.path: game.checked_first() for game in games.games}
 
     def listed(self) -> tuple[FolderGame, ...]:
         """Return the games that are listed now."""
@@ -210,15 +207,12 @@ def game_state(path: Path) -> str:
     return GAME_KENTOGO if analyzed_by_kentogo(root) else GAME_KATRAIN
 
 
-def needs_kentogo_analysis(root: GoNode, analysis: AnalysisSettings) -> bool:
+def needs_kentogo_analysis(root: GoNode) -> bool:
     """True if the game is analyzed, but by KaTrain (it has no KGM[KentoGo]).
 
     Such a game is skipped unless the user says yes to analyzing it again for KentoGo.
-    With reanalyze, every game is analyzed again anyway, so this is False.
     """
-    if analysis.reanalyze or not is_analyzed(root):
-        return False
-    return not analyzed_by_kentogo(root)
+    return is_analyzed(root) and not analyzed_by_kentogo(root)
 
 
 def analyzed_by_kentogo(root: GoNode) -> bool:
@@ -246,6 +240,10 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
     common.handicap); at most the analysis's deep_max_moves of them, the opponent's moves at
     most half of them (see analysis.analyze.chosen_deep_candidates). When the user's color is not found
     from the names, the moves of both colors are taken as the user's.
+
+    The losses of the first analysis are rough (it reads few visits), so a move is read deeply already when
+    it lost DETECTION_SHARE of those losses: a mistake that the first analysis found a little smaller is not
+    missed. The deep reading then gives its loss, and only a move that lost enough becomes a problem.
     """
     extract = settings.quiz.extract
     mine = extract.smallest_loss()
@@ -256,19 +254,27 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
         ranks=(str(root.get_property("BR", "")), str(root.get_property("WR", ""))),
         file_name=str(path),
     )
-    losses = {"B": mine, "W": mine} if color is None else {color: mine, opponent(color): extract.punish_opponent_loss}
+    theirs = extract.punish_opponent_loss
+    losses = {"B": mine, "W": mine} if color is None else {color: mine, opponent(color): theirs}
+    losses = {key: value * DETECTION_SHARE for key, value in losses.items()}
     visits = settings.analysis.deep_visits or settings.engine.max_visits
     mine = frozenset({"B", "W"} if color is None else {color})
     decided = Selection.from_quiz(extract).is_decided
     handicap = bool(root.get_list_property("AB", []) or root.get_list_property("AW", []))
     return DeepTargets(
-        losses, visits, decided, settings.analysis.deep_max_moves, mine, extract.punish_my_loss, handicap
+        losses,
+        visits,
+        decided,
+        settings.analysis.deep_max_moves,
+        mine,
+        extract.punish_my_loss * DETECTION_SHARE,
+        handicap,
     )
 
 
-def write_settings(analysis: AnalysisSettings) -> WriteSettings:
-    """Return what the writing of the analysis needs: the settings and KentoGo's version."""
-    return WriteSettings(analysis, app_version() or "dev")
+def write_settings() -> WriteSettings:
+    """Return what the writing of the analysis needs: KentoGo's version."""
+    return WriteSettings(app_version() or "dev")
 
 
 def analyze_games(
@@ -289,7 +295,7 @@ def analyze_games(
         stop: When it is set, the run stops after the game that is being analyzed.
         redo_kentogo: Analyze again for KentoGo the games for which needs_kentogo_analysis is True (the user said yes).
     """
-    write = write_settings(settings.analysis)
+    write = write_settings()
     return _analyze_each(
         games, listener, stop, lambda path: analyze_one(engine, path, settings, listener, write, redo_kentogo)
     )
@@ -306,7 +312,7 @@ def analyze_chosen_games(
 
     The arguments are those of analyze_games.
     """
-    write = write_settings(settings.analysis)
+    write = write_settings()
     return _analyze_each(games, listener, stop, lambda path: analyze_chosen(engine, path, settings, listener, write))
 
 
@@ -344,12 +350,11 @@ def analyze_one(
     Returns:
         (outcome, detail, the number of nodes that KataGo could not analyze).
     """
-    analysis = settings.analysis
     try:
         root = load_game(path)
     except Exception as error:  # A broken file must not stop the others.
         return FAILED, f"cannot be read: {error}", 0
-    if is_analyzed(root) and not analysis.reanalyze and not (redo_kentogo and needs_kentogo_analysis(root, analysis)):
+    if is_analyzed(root) and not (redo_kentogo and needs_kentogo_analysis(root)):
         return SKIPPED, "every node already has analysis data", 0
     return _analyze_and_write(engine, path, root, settings, listener, write)
 
@@ -372,19 +377,59 @@ def analyze_chosen(
 def _analyze_and_write(
     engine: Engine, path: Path, root: GoNode, settings: AppSettings, listener: AnalysisListener, write: WriteSettings
 ) -> tuple[str, str, int]:
-    """Analyze a game that has been read, back up its file and write it (returns what analyze_one returns)."""
+    """Analyze a game that has been read, back up its file and write it (returns what analyze_one returns).
+
+    How long it took is told and kept (see analysis_timing).
+    """
     analysis = settings.analysis
-    started = time.monotonic()
+    size_before = path.stat().st_size if path.exists() else 0
+    clock = StepClock()
     targets = deep_targets(settings, root, path)
-    game = analyze_game(engine, root, analysis, engine_values(settings), listener.progress, targets)
+    game = analyze_game(engine, root, analysis, engine_values(settings), _both(listener.progress, clock), targets)
+    analyzed = clock.clock()
+    visits = (_first_visits(settings), targets.visits)
     write_analysis(game, write)
     try:
         copy = back_up(path, backup_folder(path.parent, analysis.backup_folder), datetime.now())
         write_game(path, root.sgf())
     except OSError as error:
+        _log(path, FAILED, clock, analyzed, game, visits, (size_before, 0), write.version)
         return FAILED, f"cannot be written: {error}", game.failed
-    detail = f"written in {time.monotonic() - started:.0f} s (backup: {copy})" + _failures(game)
+    seconds = _log(path, WRITTEN, clock, analyzed, game, visits, (size_before, path.stat().st_size), write.version)
+    detail = f"written in {seconds:.0f} s (backup: {copy})" + _failures(game)
     return WRITTEN, detail, game.failed
+
+
+def _both(progress: Callable[[str, int, int], None], clock: StepClock) -> Callable[[str, int, int], None]:
+    """Return a progress that tells the listener and the clock."""
+
+    def both(step: str, done: int, total: int) -> None:
+        clock.progress(step, done, total)
+        progress(step, done, total)
+
+    return both
+
+
+def _log(
+    path: Path,
+    outcome: str,
+    clock: StepClock,
+    analyzed: float,
+    game: GameAnalysis,
+    visits: tuple[int, int],
+    sizes: tuple[int, int],
+    version: str,
+) -> float:
+    """Tell and keep how long a game took (see analysis_timing). Returns its seconds in all."""
+    timing = GameTiming(path.name, outcome, clock, analyzed, clock.clock(), game, visits, sizes, version)
+    record = timing_record(timing, datetime.now())
+    log_timing(record)
+    return record["seconds"]["total"]
+
+
+def _first_visits(settings: AppSettings) -> int:
+    """Return the visits of each position in the first analysis (see analysis.analyze.first_visits)."""
+    return first_visits(settings.analysis)
 
 
 def _failures(game: GameAnalysis) -> str:

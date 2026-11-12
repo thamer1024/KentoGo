@@ -47,7 +47,7 @@ from kentogo.record.katrain_kt import (
     evaluate_played_move,
     relative_candidate_losses,
 )
-from kentogo.record.kentogo_analysis import read_analysis
+from kentogo.record.kentogo_analysis import Instinct, read_analysis
 
 # The sizes of losses that are counted for the whole game (the same as the user's script).
 LOSS_SIZES = (20, 12, 10, 8, 6, 3)
@@ -110,7 +110,7 @@ class MoveMaterial:
         katrain_text: The text that KaTrain wrote for the move, as it is (score, policy rank, and so on).
         taken_back: True if KaTrain took the move back in a teaching game (it is in a branch, not in the game).
         facts: The shapes, cutting points and aimed groups around the move (see commentary.move_facts).
-        kentogo_text: The comment that KentoGo's analysis wrote for the move ("" if there is none).
+        instinct: The move's first instinct (see record.kentogo_analysis.Instinct), or None.
     """
 
     number: int
@@ -130,7 +130,7 @@ class MoveMaterial:
     katrain_text: str
     taken_back: bool = False
     facts: MoveFacts | None = None
-    kentogo_text: str = ""
+    instinct: Instinct | None = None
 
 
 @dataclass(frozen=True)
@@ -314,7 +314,7 @@ def _move_material(
         katrain_text=move.katrain_text,
         taken_back=taken_back,
         facts=_facts(record, number, board, move.move, pv, reply),
-        kentogo_text=move.kentogo_text,
+        instinct=move.instinct,
     )
 
 

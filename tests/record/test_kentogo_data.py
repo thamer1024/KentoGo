@@ -1,9 +1,8 @@
-"""Tests for kentogo.record.kentogo_data (KentoGo's own analysis data, the KGD property)."""
+"""Tests for kentogo.record.kentogo_data (the container of KentoGo's data in an SGF property)."""
 
 import pytest
-from pysgf import GoGame
 
-from kentogo.record.kentogo_data import FORMAT_VERSION, KGD_PROPERTY, Grid, decode_kgd, encode_kgd, read_kgd, write_kgd
+from kentogo.record.kentogo_data import FORMAT_VERSION, Grid, decode_kgd, encode_kgd
 
 OWNERSHIP = Grid(tuple((index % 21 - 10) / 10 for index in range(361)))
 
@@ -25,19 +24,6 @@ def test_several_grids_and_lists_keep_their_order():
     assert decoded["end"].values == (0.25, 0.25, 0.25)
 
 
-def test_a_node_keeps_the_data_through_an_sgf_file():
-    """The property survives writing and reading the SGF text, as when KaTrain saves the game again."""
-    root = GoGame.parse_sgf("(;SZ[19];B[pd];W[dd])")
-    move = root.nodes_in_tree[2]
-    write_kgd(move, {"kind": "move", "areas": OWNERSHIP, "later": {"added": True}})
-    again = GoGame.parse_sgf(root.sgf()).nodes_in_tree[2]
-    data = read_kgd(again)
-    assert data["kind"] == "move" and data["later"] == {"added": True} and len(data["areas"].values) == 361
-    assert read_kgd(again.parent) is None
-    write_kgd(again, None)
-    assert KGD_PROPERTY not in again.properties
-
-
 def test_the_data_stays_small():
     """A board of numbers takes about 2 bytes a point (KaTrain's KT keeps two such boards for every node)."""
     values = encode_kgd({"areas": OWNERSHIP, "best": OWNERSHIP})
@@ -48,7 +34,3 @@ def test_the_data_stays_small():
 def test_broken_data_is_not_read(values):
     with pytest.raises(ValueError):
         decode_kgd(values)
-    node = GoGame.parse_sgf("(;SZ[9];B[ee])").nodes_in_tree[1]
-    if values:
-        node.properties[KGD_PROPERTY] = values
-    assert read_kgd(node) is None

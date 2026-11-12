@@ -4,14 +4,17 @@ KentoGo writes its analysis of a game (see analysis.analyze) in its own property
 KT: the KT property and its format are KaTrain's, so KentoGo only reads them, in the games that
 KaTrain analyzed (see record.katrain_kt).
 
-The data of a node is about the position after its move, as KataGo read it:
-- "root": KataGo's values of the position (scoreLead and winrate from black's side, visits, ...).
+The data of a node is about the position after its move, as KataGo read it (only what the problems need,
+see analysis.sgf_writer):
+- "root": KataGo's values of the position (scoreLead and winrate from black's side, visits).
 - "moves": the candidate next moves by their GTP point, each with KataGo's values
-  (scoreLead and winrate after the move, visits, order, pv, ...).
+  (scoreLead and winrate after the move, visits, order, and pv for KataGo's best move).
+- "taken_back" and "instinct": about the node's own move (KaTrain took it back in a teaching game; its
+  first instinct, see analysis.sgf_writer._instinct).
 - "ownership" and "policy": KataGo's areas and policy (row by row from the top; the policy has the
-  pass last), or none when they were not kept.
+  pass last). KentoGo no longer writes them, but they are read in the files of older versions.
 
-It is kept in the same container as KentoGo's other data (KGD, see record.kentogo_data): a JSON object
+It is kept in KentoGo's container (see record.kentogo_data): a JSON object
 with its format version, the board-sized lists of numbers as Grid objects in a second value, both
 compressed. Readers look only at the keys they know.
 
@@ -20,6 +23,8 @@ KaTrain's KT (a game analyzed by KaTrain, or by an older KentoGo that wrote KT).
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from kentogo.record.katrain_kt import SUPPORTED_VERSION, decode_kt
 from kentogo.record.kentogo_data import Grid, decode_kgd, encode_kgd
@@ -56,6 +61,36 @@ def decode_kga(values: list[str]) -> dict:
         grid = data.get(key)
         data[key] = grid.values if isinstance(grid, Grid) else None
     return data
+
+
+@dataclass(frozen=True)
+class Instinct:
+    """The first instinct of a move: its place in KataGo's policy of the position before it.
+
+    Attributes:
+        rank: The move's rank in the policy (1 is KataGo's first instinct; 0 when it was not found).
+        probability: The move's probability in the policy (0 to 1).
+        best: The policy's first move (GTP).
+        best_probability: Its probability (0 to 1).
+    """
+
+    rank: int
+    probability: float
+    best: str
+    best_probability: float
+
+
+def read_instinct(node) -> Instinct | None:
+    """Return the first instinct of a node's move, kept in its KGA (a move that can become a problem), or None."""
+    values = (read_kentogo_analysis(node) or {}).get("instinct")
+    if not isinstance(values, dict):
+        return None
+    try:
+        return Instinct(
+            int(values["rank"]), float(values["probability"]), str(values["best"]), float(values["best_probability"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def has_analysis(node) -> bool:

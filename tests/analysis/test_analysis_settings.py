@@ -13,45 +13,39 @@ KATRAIN_CONFIG = {
         "save_marks": True,
         "save_analysis": False,  # Not copied: KentoGo always writes the analysis data.
     },
-    "general": {"lang": "jp", "load_fast_analysis": True},
+    "general": {"lang": "jp", "load_fast_analysis": False},  # Not copied: the first analysis always uses fast_visits.
 }
 
 
-def test_defaults_are_katrains():
+def test_defaults():
     settings = AnalysisSettings()
-    assert settings.eval_thresholds == (12.0, 6.0, 3.0, 1.5, 0.5, 0.0)
-    assert settings.reanalyze_threshold == 3.0  # KaTrain's "mistakes only" limit by default.
-    assert (settings.reanalyze, settings.mistakes_only, settings.move_from, settings.move_to) == (False, False, 0, 0)
+    assert (settings.fast_visits, settings.retries, settings.deep_visits, settings.deep_max_moves) == (4, 2, 0, 6)
 
 
 def test_copied_from_katrain():
     settings = AnalysisSettings.from_katrain(KATRAIN_CONFIG)
-    assert (settings.fast, settings.fast_visits) == (True, 8)
-    assert settings.save_feedback == (True, True, True, False, False, False)
-    assert (settings.eval_show_ai, settings.save_marks, settings.language) == (False, True, "jp")
+    assert settings.fast_visits == 8  # KaTrain's comment settings are not copied.
     assert AnalysisSettings.from_katrain({}) == AnalysisSettings()
 
 
 def test_through_the_settings_file_and_back():
-    settings = AnalysisSettings(games_folder="/games", reanalyze=True, mistakes_only=True, move_from=30, move_to=150)
+    settings = AnalysisSettings(games_folder="/games", fast_visits=200, retries=1, deep_visits=3000)
     values = settings.to_dict()
-    assert values["eval_thresholds"] == [12.0, 6.0, 3.0, 1.5, 0.5, 0.0]  # A list in JSON.
     assert AnalysisSettings.from_dict(values) == settings
-    assert AnalysisSettings.from_dict({"reanalyze_threshold": 4}).reanalyze_threshold == 4.0  # An int as a float.
-    old = {"katrain_compatible": True, "max_time": 10.0}  # The settings of KaTrain's way, no longer used.
-    assert AnalysisSettings.from_dict(old) == AnalysisSettings() and "max_time" not in AnalysisSettings().to_dict()
+    old = {"katrain_compatible": True, "max_time": 10.0, "fast": False}  # Settings no longer used.
+    old |= {"eval_thresholds": [12, 6], "save_feedback": [True], "save_marks": True, "language": "jp"}  # Comments.
+    old |= {"reanalyze": True, "reanalyze_visits": 900, "mistakes_only": True, "move_from": 30, "move_to": 150}
+    old |= {"reanalyze_threshold": 4, "area_readings": True, "end_reading": True, "pass_readings": True}
+    old |= {"settled_lines": True, "settle_radius": 3, "settle_change": 0.5, "settle_step": 1, "settle_max_moves": 9}
+    assert AnalysisSettings.from_dict(old) == AnalysisSettings() and not set(old) & set(AnalysisSettings().to_dict())
 
 
 @pytest.mark.parametrize(
     "values",
     [
-        {"fast": "yes"},
-        {"move_from": -1},
+        {"fast_visits": "many"},
+        {"retries": -1},
         {"fast_visits": 0},
-        {"eval_thresholds": [3, 6, 12, 0]},  # Not the biggest first.
-        {"eval_thresholds": [], "save_feedback": []},  # No classes.
-        {"save_feedback": [True, False]},  # Not the same length as the thresholds.
-        {"save_feedback": "all"},
     ],
 )
 def test_wrong_values(values):
@@ -73,11 +67,3 @@ def test_the_most_moves_read_deeply():
     assert AnalysisSettings.from_dict({"deep_max_moves": 0}).deep_max_moves == 0
     with pytest.raises(ValueError):
         AnalysisSettings.from_dict({"deep_max_moves": -1})
-
-
-def test_the_readings_for_later_features_are_off_by_default():
-    """The readings with a pass and the sequences until the place settles take long: they are off at first."""
-    settings = AnalysisSettings()
-    assert (settings.pass_readings, settings.settled_lines) == (False, False)
-    on = AnalysisSettings.from_dict({"pass_readings": True, "settled_lines": True})
-    assert (on.pass_readings, on.settled_lines) == (True, True)

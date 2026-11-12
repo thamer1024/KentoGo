@@ -323,7 +323,7 @@ class KentoGoApp(App):
             self.engines = None
 
     def _leave_quiz(self) -> None:
-        """Leave the quiz: save the answers KataGo is still judging, and go back to the top screen."""
+        """Leave the quiz: save the answers KataGo is still judging, stop its reading, and go back to the top screen."""
         if self.quiz is not None:
             self.quiz.close()
             self.quiz = None

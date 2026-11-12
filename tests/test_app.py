@@ -70,13 +70,13 @@ def test_load_settings_makes_the_file(tmp_path):
 
 
 def test_load_settings_copies_the_analysis_settings_from_katrain(tmp_path):
-    """The settings of the analysis of games are copied from KaTrain's trainer and general settings."""
+    """The settings of the analysis of games are copied from KaTrain's settings (not those of the comments)."""
     katrain_config = tmp_path / "config.json"
     trainer = {"eval_thresholds": [10, 5, 2, 1, 0], "save_feedback": [True, True, True, False, False]}
     values = {"engine": {"fast_visits": 20}, "trainer": trainer, "general": {"lang": "jp"}}
     katrain_config.write_text(json.dumps(values), encoding="utf-8")
     analysis = load_settings(tmp_path / "settings.json", katrain_config).analysis
-    assert (analysis.fast_visits, analysis.eval_thresholds, analysis.language) == (20, (10.0, 5.0, 2.0, 1.0, 0.0), "jp")
+    assert analysis.fast_visits == 20
 
 
 def test_load_settings_without_katrain(tmp_path):

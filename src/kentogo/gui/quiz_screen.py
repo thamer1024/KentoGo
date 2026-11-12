@@ -317,12 +317,13 @@ class QuizScreen(BoxLayout):
             self._refresh()
 
     def close(self) -> None:
-        """Leave the screen: save the answers KataGo is still judging, and stop listening to the keys."""
+        """Leave the screen: save the answers KataGo is still judging, stop KataGo's reading, and stop listening to
+        the keys (see quiz_run.QuizRun.leave)."""
         if self.quick_areas is not None:
             self.quick_areas.stop()
         if self.best_value is not None:
             self.best_value.stop()
-        self.save_unfinished()
+        self.run.leave()
         Window.unbind(on_key_down=self._on_key_down)
 
     def save_unfinished(self) -> None:

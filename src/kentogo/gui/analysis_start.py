@@ -70,7 +70,7 @@ def _choose_games(counting: Popup, settings: AppSettings, analysis: FolderAnalys
     if problem:
         show_message(texts.text("analysis_title"), problem)
         return
-    AnalysisChooser(games, settings.analysis, lambda chosen: _start(settings, analysis, chosen)).open()
+    AnalysisChooser(games, lambda chosen: _start(settings, analysis, chosen)).open()
 
 
 def _start(settings: AppSettings, analysis: FolderAnalysis, chosen: list[Path]) -> None:

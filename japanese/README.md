@@ -132,6 +132,8 @@ uv run kentogo --test-quiz punish   # 相手の大きなミスを咎められな
 
 設定、回答の履歴、整地練習の結果は `~/.kentogo`（Windows では `C:\Users\<名前>\.kentogo`）に保存します。
 プログラム版にはコンソールがないため、メッセージは `~/.kentogo/kentogo.log` に書き出します。
+KataGoで棋譜解析に1局ずつどれだけ時間がかかったか（手順ごと）は、1局を1行の JSON にして
+`~/.kentogo/analysis_timing.jsonl` に追記し、コンソールにも `KENTOGO_ANALYSIS_TIMING ` に続けて出します。
 
 ## 整地練習
 

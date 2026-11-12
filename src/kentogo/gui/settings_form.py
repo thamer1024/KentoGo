@@ -39,12 +39,7 @@ GROUP_JUDGE = "judge"
 GROUP_REVIEW = "review"
 GROUP_SEICHI = "seichi"
 GROUP_COMMENTARY = "commentary"
-GROUP_ANALYSIS = "analysis"  # The analysis of games: the mode, the folders and the first analysis.
-GROUP_REANALYSIS = "reanalysis"  # Analyzing again (KaTrain's "Re-analyze game").
-GROUP_ANALYSIS_COMMENTS = "analysis_comments"  # The comments written into the games.
-
-# The languages of KentoGo's comments (see analysis.kentogo_comment), by KaTrain's codes as in the settings.
-ANALYSIS_LANGUAGES = ("en", "jp")
+GROUP_ANALYSIS = "analysis"  # The analysis of games: the folders, the visits and the retries.
 
 
 @dataclass(frozen=True)
@@ -124,28 +119,10 @@ FIELDS = (
     FieldSpec("max_tokens", "commentary", KIND_INT, GROUP_COMMENTARY, name="ai_max_tokens"),
     FieldSpec("games_folder", "analysis", KIND_FOLDER, GROUP_ANALYSIS, name="analysis_games_folder"),
     FieldSpec("backup_folder", "analysis", KIND_FOLDER, GROUP_ANALYSIS, name="analysis_backup_folder"),
-    FieldSpec("fast", "analysis", KIND_BOOL, GROUP_ANALYSIS, name="analysis_fast"),
     FieldSpec("fast_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
     FieldSpec("deep_visits", "analysis", KIND_INT, GROUP_ANALYSIS),
     FieldSpec("deep_max_moves", "analysis", KIND_INT, GROUP_ANALYSIS),
-    FieldSpec("area_readings", "analysis", KIND_BOOL, GROUP_ANALYSIS),
-    FieldSpec("end_reading", "analysis", KIND_BOOL, GROUP_ANALYSIS),
-    FieldSpec("pass_readings", "analysis", KIND_BOOL, GROUP_ANALYSIS),
-    FieldSpec("settled_lines", "analysis", KIND_BOOL, GROUP_ANALYSIS),
-    FieldSpec("settle_radius", "analysis", KIND_INT, GROUP_ANALYSIS),
-    FieldSpec("settle_change", "analysis", KIND_FLOAT, GROUP_ANALYSIS),
-    FieldSpec("settle_step", "analysis", KIND_INT, GROUP_ANALYSIS),
-    FieldSpec("settle_max_moves", "analysis", KIND_INT, GROUP_ANALYSIS),
-    FieldSpec("reanalyze", "analysis", KIND_BOOL, GROUP_REANALYSIS),
-    FieldSpec("reanalyze_visits", "analysis", KIND_INT, GROUP_REANALYSIS),
-    FieldSpec("mistakes_only", "analysis", KIND_BOOL, GROUP_REANALYSIS),
-    FieldSpec("move_from", "analysis", KIND_INT, GROUP_REANALYSIS),
-    FieldSpec("move_to", "analysis", KIND_INT, GROUP_REANALYSIS),
-    FieldSpec("reanalyze_threshold", "analysis", KIND_FLOAT, GROUP_REANALYSIS),
-    FieldSpec("retries", "analysis", KIND_INT, GROUP_REANALYSIS),
-    FieldSpec("language", "analysis", KIND_CHOICE, GROUP_ANALYSIS_COMMENTS, ANALYSIS_LANGUAGES, "analysis_language"),
-    FieldSpec("eval_show_ai", "analysis", KIND_BOOL, GROUP_ANALYSIS_COMMENTS),
-    FieldSpec("save_marks", "analysis", KIND_BOOL, GROUP_ANALYSIS_COMMENTS),
+    FieldSpec("retries", "analysis", KIND_INT, GROUP_ANALYSIS),
 )
 
 
@@ -168,7 +145,7 @@ PAGE_GROUPS = {
     PAGE_REVIEW: (GROUP_REVIEW,),
     PAGE_SEICHI: (GROUP_SEICHI,),
     PAGE_COMMENTARY: (GROUP_COMMENTARY,),
-    PAGE_ANALYSIS: (GROUP_ANALYSIS, GROUP_REANALYSIS, GROUP_ANALYSIS_COMMENTS),
+    PAGE_ANALYSIS: (GROUP_ANALYSIS,),
 }
 
 

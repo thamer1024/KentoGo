@@ -58,14 +58,12 @@ from kentogo.gui.dialogs import bind_dialog_keys, confirm, show_message
 from kentogo.gui.settings_form import (
     FIELDS,
     GROUP_ANALYSIS,
-    GROUP_ANALYSIS_COMMENTS,
     GROUP_COMMENTARY,
     GROUP_ENGINE,
     GROUP_GENERAL,
     GROUP_JUDGE,
     GROUP_KATAGO,
     GROUP_QUIZ,
-    GROUP_REANALYSIS,
     GROUP_REVIEW,
     GROUP_SEICHI,
     KIND_BOOL,
@@ -226,14 +224,10 @@ class SettingsPopup(Popup):
         body.add_widget(_two_columns(self._settings_box(GROUP_GENERAL), self._settings_box(GROUP_ENGINE)))
 
     def _add_analysis_page(self, body: GridLayout) -> None:
-        """Add the widgets of the analysis page: what the page is for, the mode and the first analysis,
-        the re-analysis, and the comments."""
+        """Add the widgets of the analysis page: what the page is for, and the settings."""
         body.add_widget(_intro(texts.text("analysis_page_intro")))
-        headers = _two_columns(_header(texts.text("analysis_settings")), _header(texts.text("reanalysis_settings")))
-        body.add_widget(headers)
-        body.add_widget(_two_columns(self._settings_box(GROUP_ANALYSIS), self._settings_box(GROUP_REANALYSIS)))
-        body.add_widget(_header(texts.text("analysis_comment_settings"), halign="left"))
-        body.add_widget(self._settings_box(GROUP_ANALYSIS_COMMENTS))
+        body.add_widget(_header(texts.text("analysis_settings"), halign="left"))
+        body.add_widget(self._settings_box(GROUP_ANALYSIS))
         hint = fitting_label(dp(60))
         hint.text = texts.text("analysis_settings_hint")
         body.add_widget(hint)
@@ -305,8 +299,8 @@ class SettingsPopup(Popup):
     def _use_preset(self, preset: Preset) -> None:
         """Save the settings with the numbers of visits of a preset (the saved settings, not the inputs, are changed)."""
         engine = apply_preset(self.settings.engine, preset)
-        analysis = replace(  # The analysis of games: KaTrain's fast analysis first, then the deep reading.
-            self.settings.analysis, fast=True, fast_visits=preset.fast_visits, deep_visits=preset.deep_visits
+        analysis = replace(  # The analysis of games: the first analysis of every position, then the deep reading.
+            self.settings.analysis, fast_visits=preset.fast_visits, deep_visits=preset.deep_visits
         )
         self._write(replace(self.settings, engine=engine, analysis=analysis))
 

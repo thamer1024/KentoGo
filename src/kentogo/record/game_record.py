@@ -27,7 +27,7 @@ from kentogo.common.types import Move, Position
 from kentogo.record.ai_comment import split_ai_comment
 from kentogo.record.katrain_comment import KatrainMoveInfo, read_comment, split_comment
 from kentogo.record.katrain_kt import evaluate_played_move
-from kentogo.record.kentogo_analysis import read_kentogo_analysis
+from kentogo.record.kentogo_analysis import Instinct, read_instinct, read_kentogo_analysis
 from kentogo.record.kentogo_comment import split_kentogo_comment
 
 
@@ -43,7 +43,8 @@ class MoveRecord:
             and of the position before it (a game that KentoGo analyzed has no text in KaTrain's form);
             None if there is neither.
         katrain_text: The text that KaTrain wrote for the move, as it is ("" if there is none).
-        kentogo_text: The text that KentoGo's analysis wrote for the move ("" if there is none).
+        instinct: The move's first instinct (see record.kentogo_analysis.Instinct), kept for a move that can
+            become a problem in a game that KentoGo analyzed; None otherwise.
         kentogo_evaluation: True if the evaluation (katrain) comes from KentoGo's analysis data, not KaTrain's text.
         ai_text: The AI commentary on the move ("" if there is none).
         ai_review: The AI review of the whole game, on the last move ("" if there is none).
@@ -57,7 +58,7 @@ class MoveRecord:
     notes: str = ""
     katrain: KatrainMoveInfo | None = None
     katrain_text: str = ""
-    kentogo_text: str = ""
+    instinct: Instinct | None = None
     kentogo_evaluation: bool = False
     ai_text: str = ""
     ai_review: str = ""
@@ -221,7 +222,7 @@ def read_move_record(node: GoNode, number: int) -> MoveRecord | None:
         notes,
         info,
         katrain_text,
-        kentogo.text,
+        read_instinct(node),
         kentogo_evaluation and info is not None,
         ai.move_text,
         ai.review_text,

@@ -18,7 +18,7 @@ Japanese, or English with the language of the answer (see commentary.language).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from kentogo.commentary import diagram
 from kentogo.commentary.fact_lines import fact_lines, group_text, move_text, placed_move_text
@@ -151,7 +151,7 @@ def _move_facts(material: GameMaterial, move: MoveMaterial, words: PromptWords) 
         *_reply_lines(move, material.size, words),
         *([words.notes_line.format(notes=move.notes)] if move.notes else []),
         *([words.katrain_line.format(text=move.katrain_text)] if move.katrain_text else []),
-        *([words.kentogo_line.format(text=move.kentogo_text)] if move.kentogo_text else []),
+        *([words.instinct_line.format(**asdict(move.instinct))] if move.instinct else []),
         words.before_diagram,
         _whole_diagram(material, move),
         words.zoom_diagram,

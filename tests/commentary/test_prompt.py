@@ -9,6 +9,7 @@ from kentogo.commentary.prompt_text import PromptText, default_prompt_text
 from kentogo.commentary.prompt_words import ENGLISH_WORDS, JAPANESE_WORDS
 from kentogo.common.types import Move
 from kentogo.record.game_record import BoardState
+from kentogo.record.kentogo_analysis import Instinct
 
 BEFORE = BoardState({(1, 0): "B", (0, 0): "W"}, {"B": 0, "W": 0})
 AFTER = BoardState({(1, 0): "B", (0, 1): "B", (2, 2): "W"}, {"B": 1, "W": 0})
@@ -120,12 +121,14 @@ def test_default_english_prompt():
 
 
 def test_a_game_analyzed_by_kentogo_names_kentogo():
-    """The intro, the heading, the note of the losses and the comment line name KentoGo's analysis."""
-    material = replace(MATERIAL, kentogo=True, moves=(replace(MATERIAL.moves[0], kentogo_text="損失: 6.0目"),))
+    """The intro, the heading and the note of the losses name KentoGo's analysis; the first instinct is told."""
+    instinct = Instinct(152, 0.00004, "R17", 0.9893)
+    material = replace(MATERIAL, kentogo=True, moves=(replace(MATERIAL.moves[0], instinct=instinct),))
     intro = replace(TEXT, intro="下のデータは,{analyzer}で解析した私の実戦です.")
     text = build_prompt(material, PLAYER, intro).user
     assert text.startswith("下のデータは,KentoGo(KataGo)で解析した私の実戦です.")
     assert "# KentoGoの解析データ" in text and "KentoGoの解析の損失目数で数えた" in text
-    assert "- KentoGoの解析のコメント:\n損失: 6.0目" in text and "KaTrain" not in text.split("# 回答の形式")[0]
+    assert "- 第一感（KataGoの方策）: 打った手は152位（0.0%）、1位はR17（98.9%）" in text
+    assert "KaTrain" not in text.split("# 回答の形式")[0]
     katrain = build_prompt(MATERIAL, PLAYER, intro).user
     assert katrain.startswith("下のデータは,KaTrain(KataGo)で解析した") and "# KaTrainの解析データ" in katrain

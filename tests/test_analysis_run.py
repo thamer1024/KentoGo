@@ -93,6 +93,21 @@ def test_each_game_is_written_skipped_or_failed(tmp_path):
     assert (folder / "backup").is_dir()
 
 
+def test_the_time_of_each_game_is_logged():
+    """A written game gets one record in the timing log, with its steps (see analysis_timing)."""
+    import json
+
+    from kentogo import analysis_timing
+
+    folder = Path(analysis_timing.LOG_PATH).parent / "games"
+    folder.mkdir()
+    (folder / "a.sgf").write_text(GAME, encoding="utf-8")
+    analyze_games(FakeEngine(), [folder / "a.sgf"], AppSettings(), Recorder().listener())
+    [record] = [json.loads(line) for line in analysis_timing.LOG_PATH.read_text(encoding="utf-8").splitlines()]
+    assert record["file"] == "a.sgf" and record["outcome"] == WRITTEN and record["nodes"] == 3
+    assert record["steps"][0]["step"] == "first" and record["bytes"]["before"] == len(GAME)
+
+
 def test_a_run_stops_after_the_current_game(tmp_path):
     folder = games(tmp_path)
     stop = threading.Event()
@@ -175,22 +190,15 @@ def test_a_chosen_run_stops_after_the_current_game(tmp_path):
 
 
 def test_only_the_games_not_analyzed_are_checked_first():
-    """With "analyze again", the games analyzed by KaTrain are checked too; those analyzed by KentoGo never are."""
-    plain, again = AnalysisSettings(), AnalysisSettings(reanalyze=True)
-    for state, first, with_again in [
-        (GAME_NEW, True, True),
-        (GAME_BROKEN, True, True),
-        (GAME_KATRAIN, False, True),
-        (GAME_KENTOGO, False, False),
-    ]:
-        game = FolderGame(Path(f"{state}.sgf"), state)
-        assert (game.checked_first(plain), game.checked_first(again)) == (first, with_again), state
+    """The games not analyzed yet and the broken files are checked; those analyzed by KaTrain or KentoGo are not."""
+    for state, first in [(GAME_NEW, True), (GAME_BROKEN, True), (GAME_KATRAIN, False), (GAME_KENTOGO, False)]:
+        assert FolderGame(Path(f"{state}.sgf"), state).checked_first() == first, state
 
 
 def choice_of_four() -> tuple[GameChoice, list[FolderGame]]:
     """A choice of four games, one of each state, the games analyzed by KentoGo hidden."""
     four = [FolderGame(Path(f"{state}.sgf"), state) for state in (GAME_NEW, GAME_KATRAIN, GAME_KENTOGO, GAME_BROKEN)]
-    return GameChoice(FolderGames(Path("games"), Path("backup"), tuple(four)), AnalysisSettings()), four
+    return GameChoice(FolderGames(Path("games"), Path("backup"), tuple(four))), four
 
 
 def test_the_games_analyzed_by_kentogo_are_listed_only_when_asked():
@@ -238,15 +246,15 @@ def test_deep_targets_come_from_the_quiz_settings():
     root = GoGame.parse_sgf("(;SZ[9]PB[hama]PW[AI];B[ee])")
     targets = analysis_run.deep_targets(settings, root, Path("game.sgf"))
     assert (targets.losses, targets.visits, targets.my_colors) == (
-        {"B": 5.0, "W": 15.0},
+        {"B": 2.5, "W": 7.5},
         500,
         {"B"},
-    )  # The last stage; the engine's visits.
+    )  # Half of the last stage and of the punishment loss (the first analysis is rough); the engine's visits.
     unknown = GoGame.parse_sgf("(;SZ[9]PB[someone]PW[other];B[ee])")
     deep = AppSettings(quiz=QuizSettings(extract=extract), analysis=AnalysisSettings(deep_visits=3000))
     assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets(
-        {"B": 5.0, "W": 5.0}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=5.0
-    )  # 6 moves of a game at most; an opponent's move when the reply lost 5 points (the quiz's punish_my_loss).
+        {"B": 2.5, "W": 2.5}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=2.5
+    )  # 6 moves of a game at most; an opponent's move when the reply lost half of the quiz's punish_my_loss.
     assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)
 
 

@@ -24,7 +24,7 @@ from kentogo.record.katrain_kt import KENTOGO_MODE, KENTOGO_MODE_PROPERTY, decod
 from kentogo.record.kentogo_analysis import KGA_PROPERTY, read_kentogo_analysis
 
 GAME_PRIORITY = -100  # KaTrain's PRIORITY_GAME_ANALYSIS.
-REANALYSIS_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game".
+DEEP_PRIORITY = -1_000_000  # KaTrain's priority of "Re-analyze game", used for the deep reading.
 Progress = Callable[[str, int, int], None]  # (step, answers received, queries sent).
 
 
@@ -61,11 +61,9 @@ class GameAnalysis:
         visits: The visits asked for each node (KaTrain's analysis_visits_requested).
         failed_nodes: The nodes that KataGo could not analyze (after the retries).
         loaded: The nodes whose analysis comes from saved analysis data (by id(node)).
-        deep_nodes: The nodes whose moves were read deeply and can become problems (see analysis.analyze);
-            KentoGo's own data (KGD) is written for them.
-        deep_visits: The visits of the deep reading.
-        readings: KentoGo's own readings of the deep nodes, by id(node) and then by name
-            (see analysis.kentogo_reading).
+        deep_nodes: The nodes whose moves were read deeply and can become problems (see analysis.analyze).
+        problem_nodes: The nodes whose moves lost enough to become problems (see analysis.analyze.deep_candidates);
+            their positions keep the candidate moves in the file (see analysis.sgf_writer).
         old_kentogo_kt: True if the KT of the game was written by an older KentoGo (it is removed when written).
     """
 
@@ -75,8 +73,7 @@ class GameAnalysis:
     failed_nodes: list[GoNode] = field(default_factory=list)
     loaded: set[int] = field(default_factory=set)
     deep_nodes: list[GoNode] = field(default_factory=list)
-    deep_visits: int = 0
-    readings: dict[int, dict[str, dict]] = field(default_factory=dict)
+    problem_nodes: list[GoNode] = field(default_factory=list)
     old_kentogo_kt: bool = False
 
     @property

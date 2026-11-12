@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from kentogo.katago.locate import EngineCommand
-from kentogo.katago.process import KataGoProcess
+from kentogo.katago.process import MAX_RESTARTS, KataGoProcess
 
 FAKE_KATAGO = Path(__file__).with_name("fake_katago.py")
 TIMEOUT = 10
@@ -95,14 +95,86 @@ def test_answers_in_a_different_order(katago):
     assert slow.wait()["moves"] == [["B", "A1"]]
 
 
-def test_waiting_queries_fail_when_katago_stops(katago):
-    """When KataGo stops, the waiting queries get an error with KataGo's error output."""
+def wait_for_a_new_process(katago, old) -> None:
+    """Wait until KataGo has been started again (another process than old)."""
+    deadline = time.monotonic() + TIMEOUT
+    while (katago._process is old or not katago.is_running) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert katago._process is not old and katago.is_running
+
+
+def test_katago_is_started_again_when_it_stops(katago):
+    """When KataGo stops by itself, it is started again: a waiting control action gets an error, and the next
+    query is answered."""
     waiting = Answers()
     katago.query({"action": "slow"}, waiting)
+    old = katago._process
     katago.query({"action": "crash"}, Answers())
-    error = waiting.wait()
-    assert "error" in error
-    assert not katago.is_running
+    assert "error" in waiting.wait()
+    wait_for_a_new_process(katago, old)
+    answers = Answers()
+    katago.query({"moves": [["B", "D4"]]}, answers)
+    assert answers.wait()["moves"] == [["B", "D4"]]
+
+
+def test_a_waiting_analysis_is_sent_again_to_the_new_katago(katago):
+    """An analysis that waited when KataGo stopped is sent to the new KataGo, and gets its answer there."""
+    held = Answers()
+    katago.query({"hold": True, "moves": [["B", "C3"]]}, held)
+    old = katago._process
+    katago.query({"action": "crash"}, Answers())
+    wait_for_a_new_process(katago, old)
+    katago.query({"moves": []}, Answers())  # The new KataGo holds the query sent again until the next one.
+    final = held.wait()
+    assert final["moves"] == [["B", "C3"]] and "error" not in final
+
+
+def test_a_katago_that_cannot_start_is_not_started_again_and_again():
+    """After MAX_RESTARTS starts without an answer, KataGo is given up: the next query is an error."""
+    process = KataGoProcess(EngineCommand((sys.executable, "-c", "import sys; sys.exit(1)"), False, 10))
+    process.start()
+    try:
+        deadline = time.monotonic() + TIMEOUT
+        while process._process is not None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert process._restarts == MAX_RESTARTS and not process.is_running
+        with pytest.raises(RuntimeError):
+            process.query({"moves": []}, Answers())
+    finally:
+        process.close()
+
+
+def test_a_katago_that_hangs_is_started_again():
+    """KataGo writes nothing while an analysis waits: it is started again and the analysis is sent again once.
+    It hangs again on the same analysis, which then gets an error; the next analysis is answered."""
+    process = KataGoProcess(EngineCommand((sys.executable, str(FAKE_KATAGO)), False, 10), 0.5, 0.05)
+    process.start()
+    try:
+        assert process.wait_until_ready(TIMEOUT)
+        frozen = Answers()
+        first = process._process
+        process.query({"freeze": True}, frozen)
+        error = frozen.wait()  # Started again twice: the analysis was sent again only once.
+        assert "error" in error and process._process is not first
+        wait_for_a_new_process(process, first)
+        answers = Answers()
+        process.query({"moves": [["W", "E5"]]}, answers)
+        assert answers.wait()["moves"] == [["W", "E5"]]
+    finally:
+        process.close()
+
+
+def test_a_long_quiet_time_without_a_waiting_analysis_is_no_hang():
+    """KataGo may write nothing while nothing waits (between problems): it is not started again."""
+    process = KataGoProcess(EngineCommand((sys.executable, str(FAKE_KATAGO)), False, 10), 0.2, 0.05)
+    process.start()
+    try:
+        assert process.wait_until_ready(TIMEOUT)
+        first = process._process
+        time.sleep(0.6)
+        assert process._process is first and process._restarts == 0
+    finally:
+        process.close()
 
 
 def test_close_fails_waiting_queries(katago):
@@ -131,12 +203,9 @@ def test_error_output_is_kept(katago):
 
 
 def test_wait_until_ready(katago):
-    """Waiting ends when KataGo says that it is ready; a stopped or unstarted KataGo is not ready."""
+    """Waiting ends when KataGo says that it is ready; a closed or unstarted KataGo is not ready."""
     assert katago.wait_until_ready(TIMEOUT)
-    katago.query({"action": "crash"}, Answers())
-    deadline = time.monotonic() + TIMEOUT
-    while katago.is_running and time.monotonic() < deadline:
-        time.sleep(0.01)
+    katago.close()
     assert not katago.wait_until_ready(TIMEOUT)
     assert not KataGoProcess(EngineCommand(("katago",), False, 10)).wait_until_ready(0.01)
 

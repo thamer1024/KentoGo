@@ -24,7 +24,7 @@ def test_a_comment_without_kentogos_part_is_unchanged():
     assert split_kentogo_comment(comment) == split_kentogo_comment(comment).__class__("", comment)
 
 
-def test_the_game_record_has_kentogos_text_apart_from_the_notes():
+def test_the_game_record_reads_the_notes_without_kentogos_old_text():
+    """The text that older versions of KentoGo wrote is not part of the notes."""
     root = GoGame.parse_sgf(f"(;SZ[9];B[cc]C[my note\n{SEPARATOR}\n{KENTOGO}])")
-    move = read_game_record(root).moves[0]
-    assert (move.notes, move.kentogo_text) == ("my note", "損失: 3.0目\n最善手: D4")
+    assert read_game_record(root).moves[0].notes == "my note"

@@ -27,7 +27,9 @@ the deep reading of the moves that can become problems (DEEP_POSITIONS positions
 deep_max_moves moves, four readings each), which gives their losses. These are analysis settings, and a
 preset sets them too. A user who can wait longer sets more visits on the analysis page. On a computer
 without a GPU the visits are then few, and the losses less exact; the fewest visits are MIN_FAST_VISITS
-and MIN_DEEP_VISITS, so such a computer takes longer than GAME_SECONDS.
+and MIN_DEEP_VISITS, so such a computer takes longer than GAME_SECONDS. The first analysis never reads
+fewer than MIN_FAST_VISITS, whatever the settings say (see analysis.analyze.first_visits): with fewer,
+KataGo's score of a move is too rough to find the mistakes that can become problems.
 
 A preset changes only the numbers of visits. The paths of KataGo and its models stay as they are.
 When the user does not know the kind of computer, KataGo's speed is measured instead, and the
@@ -77,7 +79,7 @@ GAME_SECONDS = 120  # The analysis of a game should take about this long (see th
 GAME_POSITIONS = 290  # About 250 moves of a game analyzed first, and about 40 played moves read again.
 DEEP_POSITIONS = 24  # 6 moves read deeply (the analysis's deep_max_moves), 4 readings each.
 FIRST_SHARE = 0.5  # The share of the time of the first analysis; the rest is the deep reading.
-MIN_FAST_VISITS = 5  # The fewest visits of the first analysis (KataGo's first idea alone is not a judgement).
+MIN_FAST_VISITS = 50  # The fewest visits of the first analysis (fewer cannot find the mistakes reliably).
 MIN_DEEP_VISITS = 50  # The fewest visits of the deep reading.
 
 

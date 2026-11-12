@@ -213,20 +213,19 @@ def test_loss_stages_on_the_form():
 def test_analysis_and_punishment_inputs():
     """The analysis page and the punishment problems of the quiz page are read into their settings."""
     values = form_values(SETTINGS)
-    assert values["analysis_language"] == "en" and "katrain_compatible" not in values
+    assert "analysis_language" not in values and "katrain_compatible" not in values  # KentoGo writes no comments.
     values.update(
         {
             "analysis_games_folder": "/other",
-            "move_to": "150",
+            "deep_max_moves": "8",
             "retries": "3",
-            "analysis_language": "jp",
             "problem_kind": "punish",
             "punish_opponent_loss": "20",
         }
     )
     settings = settings_from_form(values, SETTINGS)
     analysis = settings.analysis
-    assert (analysis.games_folder, analysis.move_to) == ("/other", 150)
-    assert (analysis.retries, analysis.language) == (3, "jp")
+    assert (analysis.games_folder, analysis.deep_max_moves) == ("/other", 8)
+    assert analysis.retries == 3
     assert (settings.quiz.problem_kind, settings.quiz.extract.punish_opponent_loss) == ("punish", 20.0)
     assert settings.quiz.games_folder == "/games"  # The quiz's own games folder is another input.

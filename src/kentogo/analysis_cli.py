@@ -6,10 +6,9 @@ It is for checking the analysis before its screens are made. The settings come f
     uv run python -m kentogo.analysis_cli                       # the games folder of the settings
     uv run python -m kentogo.analysis_cli GAME.sgf FOLDER ...   # some games or folders
     uv run python -m kentogo.analysis_cli --dry-run             # only tell what would be done
-    uv run python -m kentogo.analysis_cli --reanalyze --mistakes-only --visits 2000
 
 Each game file is copied to the backup folder before it is written. A game whose nodes all
-have analysis data is skipped, unless it is analyzed again (--reanalyze), as in KaTrain.
+have analysis data is skipped, as in KaTrain.
 The games analyzed by KaTrain are counted first, and the user is asked (y/n) whether they are
 analyzed again for KentoGo (see analysis_run.needs_kentogo_analysis).
 The progress is shown on the console.
@@ -48,16 +47,9 @@ from kentogo.settings_file import SETTINGS_PATH, load_settings
 
 STEP_NAMES = {
     "first": "analysis",
-    "again": "re-analysis",
     "played": "played moves",
     "deep": "deep reading",
-    "tenuki": "tenuki readings",
-    "lines": "lines until settled",
-    "end": "last position",
 }
-# A rough size of KentoGo's own data (KGD) of one move read deeply, when all its parts are written
-# (the areas and the sequences of the played move and the best move, and more); to be measured.
-ROUGH_KGD_BYTES = 6000
 KENTOGO_QUESTION = (
     "KataGoで解析済みです（{count} 局。KentoGoの方法の解析ではありません）。KentoGo用にもう一度解析しますか？ y/n: "
 )
@@ -68,12 +60,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m kentogo.analysis_cli", description=__doc__.splitlines()[0])
     parser.add_argument("paths", type=Path, nargs="*", help="SGF files or folders (default: the games folder)")
     parser.add_argument("--settings", type=Path, default=SETTINGS_PATH, help="the settings file")
-    parser.add_argument("--fast", action="store_true", default=None, help="analyze first with fast_visits")
-    parser.add_argument("--reanalyze", action="store_true", default=None, help="analyze again (KaTrain's re-analysis)")
-    parser.add_argument("--mistakes-only", action="store_true", default=None, help="analyze again only the mistakes")
-    parser.add_argument("--from", dest="move_from", type=int, help="analyze again from this move")
-    parser.add_argument("--to", dest="move_to", type=int, help="analyze again up to this move")
-    parser.add_argument("--visits", type=int, help="the visits of the re-analysis")
     parser.add_argument("--backup", help="the backup folder")
     parser.add_argument("--dry-run", action="store_true", help="only tell what would be done")
     return parser.parse_args(argv)
@@ -98,13 +84,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if arguments.dry_run:
         return show_plan(games, settings)
-    waiting = sum(_needs_kentogo_analysis(path, analysis) for path in games)
+    waiting = sum(_needs_kentogo_analysis(path) for path in games)
     return analyze_all(games, settings, bool(waiting) and ask_kentogo_redo(waiting))
 
 
-def _needs_kentogo_analysis(path: Path, analysis: AnalysisSettings) -> bool:
+def _needs_kentogo_analysis(path: Path) -> bool:
     try:
-        return needs_kentogo_analysis(load_game(path), analysis)
+        return needs_kentogo_analysis(load_game(path))
     except Exception:  # A broken file is told when it is analyzed.
         return False
 
@@ -132,18 +118,7 @@ def settings_with_options(settings: AnalysisSettings, arguments: argparse.Namesp
     Raises:
         ValueError: If a value is not allowed.
     """
-    options = {
-        "fast": arguments.fast,
-        "reanalyze": arguments.reanalyze,
-        "mistakes_only": arguments.mistakes_only,
-        "move_from": arguments.move_from,
-        "move_to": arguments.move_to,
-        "reanalyze_visits": arguments.visits,
-        "backup_folder": arguments.backup,
-    }
-    changed = replace(settings, **{key: value for key, value in options.items() if value is not None})
-    if arguments.mistakes_only or arguments.move_from or arguments.move_to or arguments.visits is not None:
-        changed = replace(changed, reanalyze=True)  # These options are about the re-analysis.
+    changed = settings if arguments.backup is None else replace(settings, backup_folder=arguments.backup)
     changed.check()
     return changed
 
@@ -151,7 +126,6 @@ def settings_with_options(settings: AnalysisSettings, arguments: argparse.Namesp
 def show_plan(games: list[Path], settings: AppSettings) -> int:
     """Tell, for each game, how many nodes it has, how many already have analysis data, and which moves
     would be read deeply (known from the saved analysis data; a game without it is analyzed first)."""
-    analysis = settings.analysis
     for number, path in enumerate(games, 1):
         try:
             root = load_game(path)
@@ -160,10 +134,10 @@ def show_plan(games: list[Path], settings: AppSettings) -> int:
             continue
         nodes = root.nodes_in_tree
         saved = sum(1 for node in nodes if has_analysis(node))
-        if needs_kentogo_analysis(root, analysis):
+        if needs_kentogo_analysis(root):
             action = "ask (analyzed by KaTrain: analyze again for KentoGo?)"
         else:
-            action = "skip (analyzed)" if is_analyzed(root) and not analysis.reanalyze else "analyze"
+            action = "skip (analyzed)" if is_analyzed(root) else "analyze"
         print(f"[{number}/{len(games)}] {path.name}: {len(nodes)} nodes, {saved} with analysis data -> {action}")
         if saved:
             print("  " + deep_plan_text(root, path, settings))
@@ -171,17 +145,16 @@ def show_plan(games: list[Path], settings: AppSettings) -> int:
 
 
 def deep_plan_text(root: GoNode, path: Path, settings: AppSettings) -> str:
-    """Return which moves the saved analysis data would have read deeply, and a rough size of their data."""
+    """Return which moves the saved analysis data would have read deeply."""
     targets = deep_targets(settings, root, path)
     game = GameAnalysis(root)
     load_saved_analyses(game)
     nodes = chosen_deep_candidates(game, targets)
     limits = ", ".join(f"{color} {loss:g}+" for color, loss in sorted(targets.losses.items()))
     moves = ", ".join(f"{node.depth}{node.move.player}" for node in nodes) or "none"
-    size = len(nodes) * ROUGH_KGD_BYTES // 1000
     return (
-        f"deep reading ({targets.visits} visits; loss {limits}): {len(nodes)} moves: {moves}; "
-        f"KentoGo data about {size} KB (file now {path.stat().st_size // 1000} KB)"
+        f"deep reading ({targets.visits} visits; loss {limits}): {len(nodes)} moves: {moves} "
+        f"(file now {path.stat().st_size // 1000} KB)"
     )
 
 

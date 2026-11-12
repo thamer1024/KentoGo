@@ -148,6 +148,8 @@ them KentoGo analyzed.
 The settings, the history of answers and the results of the counting practice are kept in
 `~/.kentogo` (on Windows, `C:\Users\<name>\.kentogo`). The programs have no console: their
 messages are written to `~/.kentogo/kentogo.log`.
+How long the analysis of each game took, step by step, is written as one line of JSON per game to
+`~/.kentogo/analysis_timing.jsonl`, and to the console after `KENTOGO_ANALYSIS_TIMING `.
 
 ## Counting practice
 

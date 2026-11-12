@@ -336,6 +336,26 @@ def test_the_next_problem_at_once_while_katago_judges():
     assert first.result.correct is None and saved.answers == [("p1", None, None)]
 
 
+def test_leaving_the_quiz_while_katago_judges_stops_katago():
+    """Back to the top screen: the answer still judged is saved without losses, and KataGo stops reading."""
+    main = StoppingEngine()
+    run, _, saved = make_run([problem("p1"), problem("p2")], Judging(main, MAIN))
+    run.answer(point("R4"))
+    first = run.session
+    run.leave()
+    assert saved.answers == [("p1", None, None)] and main.stopped == 1
+    judge(main, 0, answer_score=1.5)  # A late answer is not used.
+    assert first.result.correct is None and saved.answers == [("p1", None, None)]
+
+
+def test_leaving_the_quiz_without_calculations_does_not_stop_katago():
+    """Back to the top screen when nothing is calculated: KataGo is not told to stop, and nothing is saved."""
+    main = StoppingEngine()
+    run, _, saved = make_run([problem("p1")], Judging(main, MAIN))
+    run.leave()
+    assert main.stopped == 0 and saved.answers == []
+
+
 def test_the_next_problem_without_calculations_does_not_stop_katago():
     main = StoppingEngine()
     run, _, _ = make_run([problem("p1"), problem("p2")], Judging(main, MAIN))

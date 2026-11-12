@@ -1,7 +1,5 @@
 """Tests for kentogo.analysis.analyze, game_analysis, node_analysis and query (the analysis of a game)."""
 
-from dataclasses import replace
-
 from pysgf import GoGame
 
 from kentogo.analysis.analysis_settings import AnalysisSettings
@@ -10,21 +8,15 @@ from kentogo.analysis.game_analysis import EngineValues
 from kentogo.analysis.node_analysis import ADDITIONAL_MOVE_ORDER, apply_answer, empty_analysis, update_move_analysis
 from kentogo.analysis.played_moves import played_move_loss
 from kentogo.analysis.query import QuerySettings, node_query
+from kentogo.katago.presets import MIN_FAST_VISITS
 from kentogo.record.katrain_kt import encode_kt
 from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
 
 # Black's move 3 has two branches: A5 loses 5.5 points, D2 is fine.
 GAME = "(;SZ[5]KM[0.5]RU[Chinese];B[cc];W[bb](;B[aa])(;B[db]))"
 SCORES = {(): 0.0, ("C3",): 1.0, ("C3", "B4"): 0.5, ("C3", "B4", "A5"): -5.0, ("C3", "B4", "D4"): 0.6}
-# KentoGo's readings around A5 (see analysis.kentogo_reading): passing costs black 3.5 points, white can
-# leave A5 (passing after it costs nothing), but not the best move E5 (passing after it costs 3.5 points).
-READINGS = {
-    ("C3", "B4", "pass"): -3.0,
-    ("C3", "B4", "E5"): 0.5,
-    ("C3", "B4", "A5", "pass"): -5.0,
-    ("C3", "B4", "E5", "pass"): 4.0,
-}
 VALUES = EngineValues(max_visits=500, wide_root_noise=0.04)
+FIRST = AnalysisSettings(fast_visits=VALUES.max_visits)  # The first analysis with the engine's visits.
 
 
 class FakeEngine:
@@ -46,7 +38,7 @@ class FakeEngine:
             point = request["allowMoves"][0]["moves"][0]
             score = SCORES[(*moves, point)] - 1.0
         else:
-            point, score = "E5", {**SCORES, **READINGS}.get(moves, 0.0)  # 0 for the lines (see settled_lines).
+            point, score = "E5", SCORES.get(moves, 0.0)
         candidate = {"move": point, "order": 0, "visits": request["maxVisits"], "scoreLead": score, "pv": [point, "A1"]}
         callback({"id": "x", "isDuringSearch": True, "rootInfo": {}, "moveInfos": []})  # Not used.
         callback(
@@ -86,13 +78,14 @@ def played(engine: FakeEngine) -> list[dict]:
 def test_every_node_is_analyzed_with_katrains_query():
     engine = FakeEngine()
     steps = []
-    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step))
+    game = analyze_game(engine, root(), FIRST, VALUES, lambda *step: steps.append(step))
     queries = by_moves(engine)
     assert set(queries) == set(SCORES)  # The branches too.
     query = queries[("C3", "B4", "A5")]
     assert (query["maxVisits"], query["priority"], query["rules"], query["komi"]) == (500, -100, "chinese", 0.5)
     assert query["overrideSettings"] == {"reportAnalysisWinratesAs": "BLACK", "wideRootNoise": 0.04}  # No time limit.
-    assert (query["includePolicy"], query["includeOwnership"], query["analyzeTurns"]) == (True, True, [3])
+    assert (query["includePolicy"], query["includeOwnership"], query["analyzeTurns"]) == (True, False, [3])
+    assert query["includeMovesOwnership"] is False  # The areas are never asked.
     assert ("first", 5, 5) in steps and steps[-1] == ("played", 4, 4)
     mistake = game.nodes[3]
     assert "pv" not in game.analysis(mistake)["root"]  # The answer is kept in its own node only.
@@ -102,19 +95,21 @@ def test_the_first_analysis_has_katrains_time_limit_and_the_deep_reading_none():
     """The first analysis and the played moves are read with max_time (as KaTrain opens a game); the deep reading is not."""
     engine = FakeEngine()
     values = EngineValues(max_visits=500, wide_root_noise=0.04, max_time=8.0)
-    analyze_game(engine, root(), AnalysisSettings(), values, lambda *_: None, DeepTargets({"B": 5.0}, 2000))
+    analyze_game(engine, root(), FIRST, values, lambda *_: None, DeepTargets({"B": 5.0}, 2000))
     limits = {(query["maxVisits"], query["overrideSettings"].get("maxTime")) for query in engine.queries}
     assert limits == {(500, 8.0), (2000, None)}
-    again = FakeEngine()
-    analyze_game(again, root(), AnalysisSettings(reanalyze=True, reanalyze_visits=900), values, lambda *_: None)
-    limits = {(query["maxVisits"], query["overrideSettings"].get("maxTime")) for query in again.queries}
-    assert limits == {(500, 8.0), (900, None)}  # The analysis again has no limit, as KaTrain's re-analysis.
+    assert {query["priority"] for query in analyses(engine) if query["maxVisits"] == 2000} == {-1_000_000}
 
 
 def test_fast_visits():
+    """Every position is read first with fast_visits, not the engine's visits (the played moves too), but never
+    with fewer than MIN_FAST_VISITS: a low setting is raised to it."""
     engine = FakeEngine()
-    analyze_game(engine, root(), AnalysisSettings(fast=True, fast_visits=8), VALUES, lambda *_: None)
-    assert {query["maxVisits"] for query in engine.queries} == {8}  # The played moves too.
+    analyze_game(engine, root(), AnalysisSettings(fast_visits=80), VALUES, lambda *_: None)
+    assert {query["maxVisits"] for query in engine.queries} == {80}
+    low = FakeEngine()
+    analyze_game(low, root(), AnalysisSettings(fast_visits=8), VALUES, lambda *_: None)
+    assert {query["maxVisits"] for query in low.queries} == {MIN_FAST_VISITS}
 
 
 SAVED = {"moves": {}, "root": {"scoreLead": 1.0, "winrate": 0.5, "visits": 9}, "completed": True}
@@ -131,7 +126,7 @@ def test_saved_analysis_data_is_used_as_it_is():
     """A node with KentoGo's analysis data (KGA, or an older KentoGo's KT) is not analyzed again, as in KaTrain."""
     for root in (with_saved(SAVED, KGA_PROPERTY), with_saved(SAVED, "KT", "KentoGo")):
         engine = FakeEngine()
-        game = analyze_game(engine, root, AnalysisSettings(), VALUES, lambda *_: None)
+        game = analyze_game(engine, root, FIRST, VALUES, lambda *_: None)
         assert ("C3",) not in by_moves(engine) and len(analyses(engine)) == 4
         assert game.analysis(game.nodes[1])["root"]["visits"] == 9
 
@@ -139,27 +134,14 @@ def test_saved_analysis_data_is_used_as_it_is():
 def test_katrains_own_analysis_data_is_read_again():
     """KaTrain's KT (a game without KGM[KentoGo]) is not used: KentoGo reads the position itself."""
     engine = FakeEngine()
-    analyze_game(engine, with_saved(SAVED, "KT"), AnalysisSettings(), VALUES, lambda *_: None)
+    analyze_game(engine, with_saved(SAVED, "KT"), FIRST, VALUES, lambda *_: None)
     assert ("C3",) in by_moves(engine)
-
-
-def test_reanalysis_of_the_mistakes_only():
-    """The node of the mistake and the node before it (its child lost points) are analyzed again."""
-    engine = FakeEngine()
-    settings = AnalysisSettings(reanalyze=True, mistakes_only=True)
-    steps = []
-    analyze_game(engine, root(), settings, VALUES, lambda *step: steps.append(step))
-    again = analyses(engine)[5:]
-    assert sorted(len(query["moves"]) for query in again) == [2, 3]
-    assert {query["maxVisits"] for query in again} == {1000}  # The fewest visits (500) plus max_visits.
-    assert {query["priority"] for query in again} == {-1_000_000}
-    assert ("again", 2, 2) in steps
 
 
 def test_a_failed_query_is_asked_again_and_the_others_are_kept():
     """A failed node is asked again (retries times), and the nodes that still fail are kept."""
     once = FakeEngine(failing=("C3", "B4"), times=1)
-    assert analyze_game(once, root(), AnalysisSettings(), VALUES, lambda *_: None).failed == 0
+    assert analyze_game(once, root(), FIRST, VALUES, lambda *_: None).failed == 0
     assert len(analyses(once)) == 6
     always = FakeEngine(failing=("C3", "B4"))
     game = analyze_game(always, root(), AnalysisSettings(retries=2), VALUES, lambda *_: None)
@@ -195,41 +177,10 @@ def test_query_with_placed_stones():
     assert (query["initialPlayer"], query["moves"], query["rules"]) == ("W", [["W", "C3"]], "japanese")
 
 
-def test_mistakes_are_analyzed_again_from_the_threshold():
-    """A loss of exactly reanalyze_threshold counts ("or more")."""
-    settings = AnalysisSettings(reanalyze=True, mistakes_only=True, reanalyze_threshold=5.5)
-    engine = FakeEngine()
-    analyze_game(engine, root(), settings, VALUES, lambda *_: None)
-    assert sorted(len(query["moves"]) for query in analyses(engine)[5:]) == [2, 3]
-    high = FakeEngine()
-    analyze_game(high, root(), replace(settings, reanalyze_threshold=5.6), VALUES, lambda *_: None)
-    assert analyses(high)[5:] == []
-
-
-def test_the_range_covers_the_positions_of_its_moves():
-    """Move 2 needs the positions after moves 1 and 2; the ends may be given in any order."""
-    engine = FakeEngine()
-    settings = AnalysisSettings(reanalyze=True, reanalyze_visits=50, move_from=2, move_to=2)
-    analyze_game(engine, root(), settings, VALUES, lambda *_: None)
-    assert sorted(len(query["moves"]) for query in analyses(engine)[5:]) == [1, 2]
-    reversed_range = FakeEngine()
-    settings = AnalysisSettings(reanalyze=True, reanalyze_visits=50, move_from=3, move_to=2)
-    analyze_game(reversed_range, root(), settings, VALUES, lambda *_: None)
-    assert sorted(len(query["moves"]) for query in analyses(reversed_range)[5:]) == [1, 2, 3, 3]
-
-
-def test_reanalysis_counts_the_visits_of_saved_data():
-    """Saved analysis data counts with its visits (KaTrain counts it as 0, so it would not read more deeply)."""
-    saved = {"moves": {}, "root": {"scoreLead": 1.0, "winrate": 0.5, "visits": 900}, "completed": True}
-    engine = FakeEngine()
-    analyze_game(engine, with_saved(saved, KGA_PROPERTY), AnalysisSettings(reanalyze=True), VALUES, lambda *_: None)
-    assert {query["maxVisits"] for query in analyses(engine)[4:]} == {1000}  # The fewest: 500 asked.
-
-
 def test_each_played_move_is_read_in_the_position_before_it():
     """The played move is read with only it allowed, as deeply as the position."""
     engine = FakeEngine()
-    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None)
+    game = analyze_game(engine, root(), FIRST, VALUES, lambda *_: None)
     queries = played(engine)
     assert sorted(len(query["moves"]) for query in queries) == [0, 1, 2, 2]  # The position before each move.
     assert {query["maxVisits"] for query in queries} == {500}
@@ -255,7 +206,7 @@ def test_a_played_move_read_well_enough_is_not_read_again():
             return super().query(request, callback)
 
     engine = KnowsA5()
-    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None)
+    game = analyze_game(engine, root(), FIRST, VALUES, lambda *_: None)
     assert [query["allowMoves"][0]["moves"] for query in played(engine)] == [["C3"], ["B4"], ["D4"]]  # Not A5.
     assert played_move_loss(game, game.nodes[3]) == 4.5
 
@@ -268,7 +219,7 @@ def test_saved_data_of_katrain_is_read_again():
     for mark, expected in (("", 4), ("KGM[KentoGo]", 3)):
         engine = FakeEngine()
         game_text = text.replace("RU[Chinese]", "RU[Chinese]" + mark)
-        analyze_game(engine, GoGame.parse_sgf(game_text), AnalysisSettings(), VALUES, lambda *_: None)
+        analyze_game(engine, GoGame.parse_sgf(game_text), FIRST, VALUES, lambda *_: None)
         assert len(played(engine)) == expected
 
 
@@ -277,12 +228,12 @@ def test_moves_that_can_become_problems_are_read_deeply():
     engine = FakeEngine()
     targets = DeepTargets({"B": 5.0, "W": 1.0}, 2000)
     steps = []
-    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *step: steps.append(step), targets)
+    game = analyze_game(engine, root(), FIRST, VALUES, lambda *step: steps.append(step), targets)
     deep = [query for query in engine.queries if query["maxVisits"] == 2000]
     positions = [query for query in deep if "allowMoves" not in query and by_moves_of(query) in SCORES]
-    assert sorted(len(query["moves"]) for query in positions) == [2, 3]  # The last position only with end_reading.
+    assert sorted(len(query["moves"]) for query in positions) == [2, 3]
     assert [query["allowMoves"][0]["moves"] for query in deep if "allowMoves" in query] == [["A5"]]
-    assert [node.depth for node in game.deep_nodes] == [3] and game.deep_visits == 2000  # White gained.
+    assert [node.depth for node in game.deep_nodes] == [3]  # White gained.
     assert ("deep", 2, 2) in steps
     assert played_move_loss(game, game.nodes[3]) == 6.5
 
@@ -295,7 +246,7 @@ def allowed(engine: FakeEngine, visits: int) -> list[list[str]]:
 def test_only_the_played_moves_that_may_be_read_deeply_are_read():
     """With deep reading, a played move is read only when it lost at least 2/3 of the smallest loss of its color."""
     engine = FakeEngine()
-    analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"B": 5.0, "W": 1.0}, 2000))
+    analyze_game(engine, root(), FIRST, VALUES, lambda *_: None, DeepTargets({"B": 5.0, "W": 1.0}, 2000))
     assert allowed(engine, 500) == [["A5"]]  # Not C3, B4 and D4, which gained or lost little.
 
 
@@ -304,7 +255,7 @@ def test_a_played_move_below_the_share_keeps_the_loss_known_so_far():
     for smallest, read, loss in ((8.0, [["A5"]], 6.5), (9.0, [], 5.5)):
         engine = FakeEngine()
         targets = DeepTargets({"B": smallest}, 2000)
-        game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, targets)
+        game = analyze_game(engine, root(), FIRST, VALUES, lambda *_: None, targets)
         assert allowed(engine, 500) == read and played_move_loss(game, game.nodes[3]) == loss
 
 
@@ -314,7 +265,7 @@ def test_only_the_biggest_losses_are_read_deeply():
     for most in (0, 2, 1):
         engine = FakeEngine()
         targets = DeepTargets({"B": -1.0, "W": -1.0}, 2000, max_moves=most)
-        game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, targets)
+        game = analyze_game(engine, root(), FIRST, VALUES, lambda *_: None, targets)
         found[most] = (allowed(engine, 2000), len(game.deep_nodes))
     assert found[0] == ([["C3"], ["A5"], ["D4"]], 3)  # No limit.
     assert found[2] == ([["A5"], ["D4"]], 2)  # A5 lost 6.5 points, D4 0.9, C3 0.
@@ -327,7 +278,7 @@ def deep_moves_of(mine: set[str], most: int, reply_loss: float) -> list[list[str
     targets = DeepTargets(
         {"B": -2.0, "W": -2.0}, 2000, max_moves=most, my_colors=frozenset(mine), reply_loss=reply_loss
     )
-    analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, targets)
+    analyze_game(engine, root(), FIRST, VALUES, lambda *_: None, targets)
     return allowed(engine, 2000)
 
 
@@ -363,7 +314,7 @@ def test_a_move_that_loses_less_when_read_deeply_is_not_kept():
 
 def test_no_deep_reading_without_targets_or_for_a_color_not_given():
     engine = FakeEngine()
-    assert analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None).deep_nodes == []
+    assert analyze_game(engine, root(), FIRST, VALUES, lambda *_: None).deep_nodes == []
     game = analyze_game(FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"W": 0}, 900))
     assert [node.move.player for node in game.deep_nodes] == []  # White's B4 gained 1.5 points (a loss below 0).
 
@@ -390,40 +341,6 @@ def test_a_move_in_a_decided_position_is_not_read_deeply():
             FakeEngine(), root(), AnalysisSettings(), VALUES, lambda *_: None, open_game
         ).deep_nodes
     ] == [3]
-
-
-def test_no_readings_for_later_features_by_default():
-    """Without the settings of the readings, a deep move gets no more readings (the quiz reads the areas itself)."""
-    engine = FakeEngine()
-    game = analyze_game(engine, root(), AnalysisSettings(), VALUES, lambda *_: None, DeepTargets({"B": 5}, 2000))
-    assert [node.depth for node in game.deep_nodes] == [3] and game.readings == {}
-    assert [query for query in engine.queries if by_moves_of(query) in READINGS] == []
-
-
-def test_kentogo_readings_of_a_deep_move():
-    """The tenuki readings of A5 are kept with KataGo's values, from black's side, with the deep visits."""
-    engine = FakeEngine()
-    steps = []
-    settings = AnalysisSettings(area_readings=True, end_reading=True, pass_readings=True, settled_lines=True)
-    game = analyze_game(engine, root(), settings, VALUES, lambda *step: steps.append(step), DeepTargets({"B": 5}, 2000))
-    readings = game.readings[id(game.nodes[3])]
-    assert set(readings) == {
-        "pass_before",
-        "pass_after_played",
-        "best_after",
-        "pass_after_best",
-        "played_line",
-        "best_line",
-        "punish_line",  # A5 is the last move: no reply.
-        "end_of_game",
-    }
-    assert readings["pass_before"]["scoreLead"] == -3.0 and readings["pass_before"]["next"] == "E5"
-    assert readings["pass_after_played"]["scoreLead"] == -5.0  # White can leave A5: it threatens nothing.
-    assert readings["pass_after_best"]["scoreLead"] == 4.0  # White cannot leave E5.
-    assert len(readings["best_after"]["ownership"]) == 25 and "ownership" not in readings["pass_before"]
-    tenuki = [query for query in engine.queries if by_moves_of(query) in READINGS]
-    assert len(tenuki) == 4 and {query["maxVisits"] for query in tenuki} == {2000}
-    assert ("tenuki", 1, 4) in steps and ("tenuki", 4, 4) in steps  # One count for all the readings.
 
 
 class LeftAgainEngine(FakeEngine):
@@ -459,7 +376,7 @@ def test_an_opponents_move_that_only_left_the_same_point_again_is_not_read_deepl
     for first_best in ("E1", "E5"):
         engine = LeftAgainEngine(first_best)
         targets = DeepTargets({"B": 3.0, "W": 100.0}, 2000, my_colors=frozenset({"W"}), reply_loss=2.0)
-        analyze_game(engine, GoGame.parse_sgf(game_text), AnalysisSettings(), VALUES, lambda *_: None, targets)
+        analyze_game(engine, GoGame.parse_sgf(game_text), FIRST, VALUES, lambda *_: None, targets)
         found[first_best] = allowed(engine, 2000)
     assert ["A5"] in found["E1"]
     assert found["E5"] == []

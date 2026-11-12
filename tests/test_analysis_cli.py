@@ -51,14 +51,14 @@ def folder(tmp_path, monkeypatch):
 
 
 def test_options_replace_the_settings():
-    arguments = analysis_cli.parse_arguments(["--mistakes-only", "--from", "30", "--to", "150", "--backup", "/b"])
-    settings = analysis_cli.settings_with_options(AnalysisSettings(), arguments)
-    assert (settings.reanalyze, settings.mistakes_only, settings.move_from, settings.move_to) == (True, True, 30, 150)
-    assert settings.backup_folder == "/b"
-    unchanged = analysis_cli.settings_with_options(AnalysisSettings(fast=True), analysis_cli.parse_arguments([]))
-    assert unchanged == AnalysisSettings(fast=True)
+    arguments = analysis_cli.parse_arguments(["--backup", "/b"])
+    assert analysis_cli.settings_with_options(AnalysisSettings(), arguments).backup_folder == "/b"
+    unchanged = analysis_cli.settings_with_options(AnalysisSettings(fast_visits=99), analysis_cli.parse_arguments([]))
+    assert unchanged == AnalysisSettings(fast_visits=99)
     with pytest.raises(ValueError):
-        analysis_cli.settings_with_options(AnalysisSettings(), analysis_cli.parse_arguments(["--from", "-1"]))
+        analysis_cli.settings_with_options(AnalysisSettings(fast_visits=0), analysis_cli.parse_arguments([]))
+    with pytest.raises(SystemExit):  # The options of the analysis again are gone.
+        analysis_cli.parse_arguments(["--reanalyze"])
 
 
 def test_analyze_the_games_folder(folder, capsys):
@@ -79,7 +79,7 @@ def test_an_analyzed_game_is_skipped_and_the_dry_run_changes_nothing(folder, cap
     assert analysis_cli.main(["--settings", str(settings), "--dry-run"]) == 0
     output = capsys.readouterr().out
     assert "3 nodes, 3 with analysis data -> skip (analyzed)" in output
-    assert "loss B 3+, W 3+): 0 moves: none; KentoGo data about 0 KB" in output  # Nobody lost 3 points.
+    assert "loss B 1.5+, W 1.5+): 0 moves: none (file now" in output  # Half of 3 points: none lost it.
     assert analysis_cli.main(["--settings", str(settings)]) == 0
     assert "skipped" in capsys.readouterr().out
     assert (games / "game.sgf").read_text(encoding="utf-8") == written

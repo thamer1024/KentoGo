@@ -8,6 +8,7 @@ from kentogo.katago.presets import (
     GAME_POSITIONS,
     GAME_SECONDS,
     MAC_PRESETS,
+    MIN_FAST_VISITS,
     MIN_VISITS,
     PC_PRESETS,
     PRESETS,
@@ -52,12 +53,14 @@ def test_every_preset_has_its_name_and_examples():
 
 
 def test_every_preset_analyzes_a_game_in_about_two_minutes():
-    """With a GPU or a fast Mac, the first analysis and the deep reading of a game take about GAME_SECONDS."""
+    """With a GPU or a fast Mac, the first analysis and the deep reading of a game take about GAME_SECONDS.
+
+    A slower computer gets at least MIN_FAST_VISITS in the first analysis, so it takes longer."""
     for preset in PRESETS:
         assert (preset.fast_visits, preset.deep_visits) == analysis_visits_for(preset.speed)
         seconds = (preset.fast_visits * GAME_POSITIONS + preset.deep_visits * DEEP_POSITIONS) / preset.speed
-        if preset.speed >= 100:
+        if preset.speed >= 300:
             assert abs(seconds - GAME_SECONDS) <= 0.1 * GAME_SECONDS, preset.key
     assert analysis_visits_for(600) == (120, 1500)  # A base M5.
-    assert analysis_visits_for(10) == (5, 50)  # The fewest visits: a computer without a GPU takes longer.
+    assert analysis_visits_for(10) == (MIN_FAST_VISITS, 50)  # The fewest visits: a computer without a GPU takes longer.
     assert deep_visits_for(1200) == 4800  # Before the speed is known (the first start).
