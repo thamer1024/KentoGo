@@ -73,6 +73,17 @@ def test_the_areas_follow_the_board(tmp_path):
     assert areas.shown()[(0, 0)] == -0.7
 
 
+def test_the_lead_of_the_shown_position_follows_the_colors(tmp_path):
+    """The rough lead is black's; with the colors swapped, it is from the other side; unknown before it is read."""
+    for transform, lead in ((BoardTransform(), 1.0), (BoardTransform(0, swap_colors=True), -1.0)):
+        session, engine = make_session(tmp_path, transform), HeldEngine()
+        areas = QuickAreas(session)
+        areas.ask(engine, None, lambda: None)
+        assert areas.shown_lead() is None
+        engine.answer(0, 0.7)
+        assert areas.shown_lead() == lead
+
+
 def test_nothing_is_read_before_the_answer_or_without_katago(tmp_path):
     session = make_session(tmp_path)
     fresh = QuizSession(session.problem, ScoringPolicy(), BoardTransform())

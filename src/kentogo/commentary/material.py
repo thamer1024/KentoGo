@@ -32,6 +32,7 @@ from dataclasses import dataclass
 
 from pysgf import GoNode
 
+from kentogo.commentary.move_facts import GameMoves, GroupInfo, MoveFacts, all_groups, groups_in_atari, move_facts
 from kentogo.common import sgf
 from kentogo.common.board import Board, IllegalMoveError, Point
 from kentogo.common.types import Move, Position, moves_from_gtp, opponent
@@ -53,21 +54,6 @@ LOSS_SIZES = (20, 12, 10, 8, 6, 3)
 CANDIDATES_PER_MOVE = 5  # How many candidate moves are given for each move.
 NEARBY_DISTANCE = 3  # Groups with a stone this close to the move or the best move are described.
 NEARBY_GROUPS = 8  # At most this many groups are described, the closest first.
-
-
-@dataclass(frozen=True)
-class GroupInfo:
-    """A group of stones near a move.
-
-    Attributes:
-        color: "B" or "W".
-        stones: The points of the stones, sorted.
-        liberties: The number of liberties.
-    """
-
-    color: str
-    stones: tuple[Point, ...]
-    liberties: int
 
 
 @dataclass(frozen=True)
@@ -123,6 +109,7 @@ class MoveMaterial:
         notes: The user's notes on the move ("" if there are none).
         katrain_text: The text that KaTrain wrote for the move, as it is (score, policy rank, and so on).
         taken_back: True if KaTrain took the move back in a teaching game (it is in a branch, not in the game).
+        facts: The shapes, cutting points and aimed groups around the move (see commentary.move_facts).
     """
 
     number: int
@@ -141,6 +128,7 @@ class MoveMaterial:
     notes: str
     katrain_text: str
     taken_back: bool = False
+    facts: MoveFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -303,6 +291,7 @@ def _move_material(
     best = Move.from_gtp(best_gtp, move.move.color) if best_gtp else None
     steps, after = _play_sequence(board, pv)
     previous = record.move_at(number - 1)
+    reply = None if taken_back else _reply(record, number)
     return MoveMaterial(
         number=number,
         played=move.move,
@@ -316,11 +305,23 @@ def _move_material(
         nearby=_nearby_groups(board, [move.move, best]),
         candidates=_candidates(node.parent, move.move.color, version, kentogo),
         score_after=_score(node, version),
-        reply=None if taken_back else _reply(record, number),
+        reply=reply,
         notes=move.notes,
         katrain_text=move.katrain_text,
         taken_back=taken_back,
+        facts=_facts(record, number, board, move.move, pv, reply),
     )
+
+
+def _facts(
+    record: GameRecord, number: int, board: Board, played: Move, pv: tuple[Move, ...], reply: OpponentReply | None
+) -> MoveFacts:
+    """Work out the shapes around a mistake (number is its move number, and board the board before it)."""
+    previous = record.move_at(number - 1)
+    before_last = _board(record, record.state(number - 2)) if previous is not None else None
+    opponent_best = Move.from_gtp(reply.best_move, reply.move.color) if reply and reply.best_move else None
+    game = GameMoves(previous.move if previous else None, reply.move if reply else None, opponent_best)
+    return move_facts(before_last, board, played, pv, game)
 
 
 def _board(record: GameRecord, state: BoardState) -> Board:
@@ -342,19 +343,14 @@ def _play_sequence(board: Board, moves: tuple[Move, ...]) -> tuple[tuple[PvStep,
     board = board.copy()
     steps = []
     for move in moves:
-        atari_before = {group.stones for group in _groups_in_atari(board)}
+        atari_before = {group.stones for group in groups_in_atari(board)}
         try:
             captured = board.play(move)
         except IllegalMoveError:
             break
-        new_atari = tuple(group for group in _groups_in_atari(board) if group.stones not in atari_before)
+        new_atari = tuple(group for group in groups_in_atari(board) if group.stones not in atari_before)
         steps.append(PvStep(move, tuple(sorted(captured)), new_atari))
     return tuple(steps), BoardState(board.stones(), dict(board.captures))
-
-
-def _groups_in_atari(board: Board) -> tuple[GroupInfo, ...]:
-    """Return all groups on the board that have only one liberty."""
-    return tuple(group for group in _all_groups(board) if group.liberties == 1)
 
 
 def _nearby_groups(board: Board, moves: list[Move | None]) -> tuple[GroupInfo, ...]:
@@ -367,36 +363,37 @@ def _nearby_groups(board: Board, moves: list[Move | None]) -> tuple[GroupInfo, .
     def distance(group: GroupInfo) -> int:
         return min((max(abs(x - cx), abs(y - cy)) for x, y in group.stones for cx, cy in centers), default=99)
 
-    groups = [group for group in _all_groups(board) if distance(group) <= NEARBY_DISTANCE]
+    groups = [group for group in all_groups(board) if distance(group) <= NEARBY_DISTANCE]
     closest = sorted(groups, key=distance)[:NEARBY_GROUPS]
     return tuple(group for group in groups if group in closest)
-
-
-def _all_groups(board: Board) -> list[GroupInfo]:
-    """Return every group on the board, in the order of their first stone."""
-    seen: set[Point] = set()
-    groups = []
-    for point, color in sorted(board.stones().items()):
-        if point in seen:
-            continue
-        stones = board.group_at(point)
-        seen |= stones
-        groups.append(GroupInfo(color, tuple(sorted(stones)), len(board.liberties(stones))))
-    return groups
 
 
 def _candidates(
     parent: GoNode | None, color: str, version: str, kentogo: bool = False
 ) -> tuple[tuple[str, float], ...]:
-    """Return the candidate moves before a move with their losses, the smallest loss first.
+    """Return the candidate moves before a move with their losses, the smallest loss first (then in KataGo's order).
 
     In a game analyzed by KentoGo (kentogo), the losses are from the best candidate, as the quiz reads them.
     """
     analysis = _analysis(parent, version)
     losses_of = relative_candidate_losses if kentogo else candidate_losses
     losses = losses_of(analysis, color) if analysis else {}
-    ordered = sorted(losses.items(), key=lambda item: (item[1], item[0]))
+    orders = _orders(analysis) if analysis else {}
+    # Losses that are written the same (to 0.1 point) keep KataGo's order, so that the best move is not put after them.
+    ordered = sorted(losses.items(), key=lambda item: (round(item[1], 1), orders.get(item[0], len(orders)), item[0]))
     return tuple(ordered[:CANDIDATES_PER_MOVE])
+
+
+def _orders(analysis: dict) -> dict[str, int]:
+    """Return KataGo's order of each candidate move (GTP point), so that moves with the same loss keep KataGo's order."""
+    moves = analysis.get("moves") or {}
+    if not isinstance(moves, dict):
+        return {}
+    return {
+        point.upper(): values["order"]
+        for point, values in moves.items()
+        if isinstance(values, dict) and isinstance(values.get("order"), int)
+    }
 
 
 def _score(node: GoNode, version: str) -> float | None:

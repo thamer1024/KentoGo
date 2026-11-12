@@ -16,7 +16,7 @@ user does not want to wait: KataGo then stops reading for this problem (see Quiz
 Keys: Space and the right arrow play the sequence forward, Shift+Space and the left arrow play
 it back, Tab switches to the next sequence, and Enter goes to the next problem. After the answer,
 the board shows the areas of whatever move is shown, from a shallow reading (see quiz.quick_areas),
-and at the last move of each sequence (but the game's continuation) the exact standing is told,
+and the rough standing of that move is told; at the last move of each sequence the exact standing is told,
 with its areas on the board (see quiz.standings). The settings are changed from the top screen. The panel shows how
 many times the problem was asked before and the last result.
 """
@@ -493,7 +493,16 @@ class QuizScreen(BoxLayout):
         standing = standings.at_end() if standings is not None else None
         if standing is not None:
             lines.append(texts.standing_text(standing, len(moves)))
+        elif not at_end:
+            lines += self._rough_standing_lines(session)
         return "\n".join(lines)
+
+    def _rough_standing_lines(self, session: QuizSession) -> list[str]:
+        """Return the rough standing of the shown position, a few moves into a sequence (none before it is read)."""
+        lead = self.quick_areas.shown_lead() if self.quick_areas is not None else None
+        if lead is None or session.replay_step == 0:
+            return []
+        return [texts.rough_standing_text(lead, session.replay_step)]
 
     def _board_view(self) -> BoardView:
         """Make the view of the board for the current state of the session."""

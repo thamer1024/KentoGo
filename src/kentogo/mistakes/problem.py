@@ -16,6 +16,7 @@ SOURCE_KATRAIN = "katrain"  # KaTrain's best sequence, read from the game file (
 SOURCE_KATAGO_ANSWER = "katago"  # KataGo's sequence after the answer.
 SOURCE_KATAGO_ACTUAL = "katago_actual"  # KataGo's sequence after the game move.
 SOURCE_KATAGO_COMPARE = "katago_compare"  # The comparison model's best sequence in the position.
+SOURCE_GAME = "game"  # The game move and the moves played after it, as the game record has them.
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,8 @@ class Problem:
         opponent_best: The best move in the position before that move (GTP), or None if unknown.
         punishment: "punish" when the user missed the chance to punish the opponent's big mistake,
             "shared" when both missed the same point, or "" (see mistakes.extract.PunishmentChance).
+        game_line: The game move and the moves played after it in the game, or () if the game has none
+            after it (or the move was taken back).
     """
 
     problem_id: str
@@ -73,6 +76,7 @@ class Problem:
     opponent_loss: float | None = None
     opponent_best: str | None = None
     punishment: str = ""
+    game_line: tuple[Move, ...] = ()
 
 
 def problem_id_of(position: Position) -> str:

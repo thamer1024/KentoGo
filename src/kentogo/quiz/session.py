@@ -34,6 +34,7 @@ from dataclasses import dataclass, replace
 from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.problem import (
+    SOURCE_GAME,
     SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
     SOURCE_KATAGO_COMPARE,
@@ -284,7 +285,7 @@ class QuizSession:
         return self.compare_result is not None and choice is not None and choice.source == SOURCE_KATAGO_COMPARE
 
     def sequence_at_end(self) -> Variation | None:
-        """Return the shown sequence when it is shown to its last move and it is not the game's continuation.
+        """Return the shown sequence when it is shown to its last move.
 
         The territory and the standing can be shown there (see katago.estimate). None otherwise.
         """
@@ -292,7 +293,7 @@ class QuizSession:
         variation = self.variation
         if self.phase != ANSWERED or choice is None or variation is None or not variation.moves:
             return None
-        if choice.source == SOURCE_KATAGO_ACTUAL or self.replay_step != len(variation.moves):
+        if self.replay_step != len(variation.moves):
             return None
         return variation
 
@@ -384,16 +385,19 @@ class QuizSession:
     def choices(self) -> tuple[SequenceChoice, ...]:
         """All sequences to show after the answer, in the order that Tab goes through them.
 
-        KataGo's sequence after the answer, the sequences in the SGF file, the comparison model's
-        sequence (another AI), and last KataGo's sequence after the game move. KataGo's sequences
-        are there only when they are added, expected or offered.
+        KataGo's sequence after the answer, the game's own moves after the game move, KataGo's sequence
+        after the game move, the sequences in the SGF file, and last the sequence from the comparison
+        model's move (another AI). KataGo's sequences are there only when they are added, expected or offered.
         """
+        game_line = self.problem.game_line
+        game = (SequenceChoice(SOURCE_GAME, Variation(game_line, SOURCE_GAME)),) if game_line else ()
         sgf = tuple(SequenceChoice(variation.source, variation) for variation in self.problem.variations)
         return (
             *self._katago_choice(SOURCE_KATAGO_ANSWER),
+            *game,
+            *self._katago_choice(SOURCE_KATAGO_ACTUAL),
             *sgf,
             *self._katago_choice(SOURCE_KATAGO_COMPARE),
-            *self._katago_choice(SOURCE_KATAGO_ACTUAL),
         )
 
     def _katago_choice(self, source: str) -> tuple[SequenceChoice, ...]:
@@ -441,13 +445,15 @@ class QuizSession:
         """True while the result of the answer (correct or wrong) is shown: with the answer's own sequence.
 
         Without KataGo there is no sequence after the answer, so the result is shown with the first
-        sequence instead (the one shown right after answering).
+        sequence instead (the one shown right after answering), but not with the ones after the game move.
         """
         choice = self.choice
         if choice is None or choice.source == SOURCE_KATAGO_ANSWER:
             return True
         katago_answer = SOURCE_KATAGO_ANSWER in self._added or SOURCE_KATAGO_ANSWER in self._status
-        return not katago_answer and self.variation_index == 0
+        after_game_move = (SOURCE_GAME, SOURCE_KATAGO_ACTUAL)
+        first = next((i for i, other in enumerate(self.choices) if other.source not in after_game_move), 0)
+        return not katago_answer and self.variation_index == first
 
     @property
     def variation(self) -> Variation | None:

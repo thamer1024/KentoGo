@@ -68,7 +68,14 @@ TEXTS = {
     "tactic_connect": "ツギ",
     "tactic_escape": "逃げ出し",
     "tactic_ladder": "シチョウ",
-    "tactic_cut": "切り",
+    "tactic_cut": "キリ",
+    "tactic_pon_nuki": "ポン抜き",
+    "tactic_empty_triangle": "アキ三角",
+    "tactic_self_atari": "自分の石がアタリ",
+    "tactic_wedge": "ワリコミ",
+    "tactic_sagari": "サガリ",
+    "tactic_ikken": "一間トビ",
+    "tactic_keima": "ケイマ",
     "tactic_tsuke": "ツケ",
     "tactic_hane": "ハネ",
     "tactic_nobi": "ノビ",
@@ -88,18 +95,21 @@ TEXTS = {
     "compare_move_loss": "[color=d070f0]比較用モデルの手 {move}：{loss:.1f}目損（実戦より {gain:.1f}目損）[/color]",
     "sequence": "[color=f2c94c][b]表示中：{name}[/b][/color]\n{explanation}\n手順 {index} / {count}　　{step} / {total} 手目",
     "source_katrain": "最善手の手順（KaTrain）",
-    "source_katago": "あなたの手の続き（KataGoの予想）",
-    "source_katago_actual": "実戦の手の続き（KataGoの予想）",
-    "source_katago_compare": "比較用モデルの最善手順",
+    "source_katago": "あなたの手の続き（相手は最強の応手）",
+    "source_katago_actual": "実戦の手の続き（相手は最強の応手）",
+    "source_game": "実戦の手（棋譜の進行）",
+    "source_katago_compare": "比較用モデルの第一手の続き（相手は最強の応手）",
     "explain_katrain": "KaTrainが棋譜に残した、この局面の最善手からの手順です。",
-    "explain_katago": "あなたが打った手の後、KataGoが予想する進行です。",
-    "explain_katago_actual": "実戦で打った手の後、KataGoが予想する進行です。",
-    "explain_katago_compare": "比較用モデル（通常モデルなど）が考える、この局面の最善手からの手順です。",
+    "explain_katago": "あなたが打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
+    "explain_katago_actual": "実戦で打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
+    "explain_game": "実戦で打った手と、その後に対局で実際に打たれた手です。",
+    "explain_katago_compare": "比較用モデル（通常モデルなど）の最善手から、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
     "switch_sequence": "手順を切り替え（Tab）",
     # Short names of the sequences, for the line that shows the order of Tab.
-    "short_katrain": "棋譜(KaTrain)",
+    "short_katrain": "KaTrainの手",
     "short_katago": "あなたの手",
-    "short_katago_actual": "実戦の手",
+    "short_game": "実戦",
+    "short_katago_actual": "最強応手",
     "short_katago_compare": "比較用モデル",
     "estimate_button": "地と形勢 (T)",
     "estimate_button_on": "地と形勢：表示中 (T)",
@@ -107,6 +117,7 @@ TEXTS = {
     "estimate_no_engine": "KataGoが使えないため、地と形勢を計算できません。",
     "estimate_failed": "地と形勢を計算できませんでした：{reason}",
     "quick_standing": "形勢（概算）：{leader} {ahead:.1f}目リード",
+    "rough_standing": "形勢の目安：{leader} {ahead:.1f}目リード（{moves}手後・浅い読み）",
     "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）\n実戦の同じ手数と比べて：{player} {gain:+.1f}目",
     "compare_running": "比較用モデルで解析しています…",
     "compare_no_sequence": "比較用モデルが手順を返しませんでした",
@@ -645,6 +656,7 @@ TEXTS = {
     "comment_bullet": "・",
     "comment_situation": "局面",
     "comment_category": "分類",
+    "comment_what_to_see": "打つ前に見るべきだったこと",
     "comment_what_happened": "何が起きたか",
     "comment_aim": "最善手と予想手順の狙い",
     "comment_lesson": "教訓",
@@ -1036,6 +1048,11 @@ def count_check_text(check: CountCheck, komi: float) -> str:
 def quick_standing_text(lead: float) -> str:
     """Return the rough standing of a position read shallowly (see katago.quick_reading)."""
     return text("quick_standing", leader=color_name("B" if lead >= 0 else "W"), ahead=abs(lead))
+
+
+def rough_standing_text(lead: float, moves: int) -> str:
+    """Return the rough standing of a position some moves into a sequence (black's lead, see quiz.quick_areas)."""
+    return text("rough_standing", leader=color_name("B" if lead >= 0 else "W"), ahead=abs(lead), moves=moves)
 
 
 def standing_text(standing: Standing, moves: int) -> str:

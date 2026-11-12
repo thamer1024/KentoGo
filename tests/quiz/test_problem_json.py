@@ -87,3 +87,12 @@ def test_opponent_move_and_older_copies():
     for key in ("opponent_loss", "opponent_best", "punishment"):
         del older[key]
     assert (problem_from_dict(older).opponent_loss, problem_from_dict(older).punishment) == (None, "")
+
+
+def test_game_line_and_older_copies():
+    """The moves of the game after the problem come back; older copies have none."""
+    problem = replace(PROBLEM, game_line=(Move.from_gtp("A19", "B"), Move.from_gtp("D16", "W")))
+    assert problem_from_dict(json.loads(json.dumps(problem_to_dict(problem)))) == problem
+    older = problem_to_dict(PROBLEM)
+    del older["game_line"]
+    assert problem_from_dict(older).game_line == ()

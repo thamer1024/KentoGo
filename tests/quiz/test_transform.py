@@ -91,6 +91,7 @@ def test_problem_is_changed_but_keeps_its_id_and_notes():
         points_lost=5.0,
         variations=(Variation((Move.from_gtp("D4", "W"), Move.from_gtp("Q4", "B")), "katrain"),),
         notes="D4 is better",
+        game_line=(Move.from_gtp("A1", "W"), Move.from_gtp("B2", "B")),
     )
     transform = BoardTransform(4)
     changed = transform.problem(problem)
@@ -98,6 +99,7 @@ def test_problem_is_changed_but_keeps_its_id_and_notes():
     assert changed.actual_move == transform.move(problem.actual_move, SIZE)
     assert changed.best_move == transform.move(problem.best_move, SIZE)
     assert changed.variations[0].moves == transform.moves(problem.variations[0].moves, SIZE)
+    assert changed.game_line == transform.moves(problem.game_line, SIZE)
     assert changed.position.moves == transform.moves(problem.position.moves, SIZE)
 
 

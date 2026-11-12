@@ -50,13 +50,17 @@ def test_prompt_parts():
 def test_move_facts():
     """Each move has the facts worked out by KentoGo and the diagrams."""
     text = build_prompt(MATERIAL, PLAYER, TEXT).user
-    assert "## 第3手目(黒番)\n- 実戦の手: 黒G7,損失: 6.0目\n- AIの最善手: A2\n- 相手の直前の手: 白A1" in text
+    head = (
+        "## 第3手目(黒番)\n- 実戦の手: 黒G7(右上隅,3線),損失: 6.0目\n- AIの最善手: 黒A2(左下隅,1線)\n"
+        "- 相手の直前の手: 白A1(左下隅,1線)"
+    )
+    assert head in text
     assert "- 候補手(損失の小さい順): A2(0.0目),G7(6.0目)" in text
     assert "- この手の後の形勢: 白が約4.0目リード" in text
     assert "予想手順の1手目 黒A2: 白の石 A1(1子)を取る" in text
     assert "予想手順の2手目 白C3: 黒の石 A2,B1(2子)がアタリになる" in text
     assert "  白の石 A1(1子): ダメ1" in text
-    assert "- 相手の手番での最善手: D4(相手の実戦の手の損失 2.0目)" in text
+    assert "- 相手の手番での最善手(相手が一番打ちたかった点): 白D4(中央,4線)(相手の実戦の手の損失 2.0目)" in text
     assert "- 私のメモ: my note\n- KaTrainの元コメント:\nMove 3: B G7\nPolicy rank 8" in text
     assert "- 拡大図:" in text and "- 予想手順の後の盤面図:" in text
 
@@ -96,7 +100,11 @@ def test_english_prompt():
         "- Opponent in this game: one rank below me\n\n# Rules (most important)"
     )
     assert "- Write all the texts of the JSON in German." in prompt.user
-    assert "## Move 3 (Black)\n- Move played: Black G7, loss: 6.0 points\n- AI's best move: A2" in prompt.user
+    head = (
+        "## Move 3 (Black)\n- Move played: Black G7 (top right corner, line 3), loss: 6.0 points\n"
+        "- AI's best move: Black A2 (bottom left corner, line 1)"
+    )
+    assert head in prompt.user
     assert "Move 1 of the predicted sequence, Black A2: captures White stones A1 (count: 1)" in prompt.user
     assert "| 6+ points | 1 | 5 | 11 |" in prompt.user and "黒" not in prompt.user
     assert prompt.for_paste().endswith(ENGLISH_WORDS.paste_reminder)

@@ -35,7 +35,7 @@ class CommentLabels:
 
     Attributes:
         bullet: The mark at the start of each line of a field and of each count of losses.
-        situation, category, what_happened, aim, lesson: The labels of the fields of a move.
+        situation, category, what_to_see, what_happened, aim, lesson: The labels of the fields of a move.
         category_counts, main_issue, next_focus, loss_comparison: The labels of the fields of the review.
         move_line: The first line of a move: {played} (actual or taken_back), {move}, {best} and {loss}.
         actual: A move played in the game.
@@ -57,6 +57,7 @@ class CommentLabels:
     bullet: str = "・"
     situation: str = "局面"
     category: str = "分類"
+    what_to_see: str = "打つ前に見るべきだったこと"
     what_happened: str = "何が起きたか"
     aim: str = "最善手と予想手順の狙い"
     lesson: str = "教訓"

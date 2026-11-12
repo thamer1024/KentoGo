@@ -7,6 +7,7 @@ import pytest
 from kentogo.common.board import IllegalMoveError
 from kentogo.common.types import Move, Position
 from kentogo.mistakes.problem import (
+    SOURCE_GAME,
     SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
     SOURCE_KATAGO_COMPARE,
@@ -161,7 +162,7 @@ def sources(quiz: QuizSession) -> list[tuple[str, str]]:
 
 
 def test_katago_sequences_are_in_a_fixed_order():
-    """Tab order: after the answer, the SGF file's sequences, the comparison model, and last after the game move."""
+    """Tab order: after the answer, after the game move, the SGF file's sequences, and last the comparison model."""
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
@@ -169,17 +170,17 @@ def test_katago_sequences_are_in_a_fixed_order():
     quiz.expect(SOURCE_KATAGO_COMPARE)
     assert sources(quiz) == [
         ("katago", WAITING),
+        (SOURCE_KATAGO_ACTUAL, WAITING),
         ("katrain", ""),
         ("katago", ""),  # The SGF file's own second sequence.
         (SOURCE_KATAGO_COMPARE, WAITING),
-        (SOURCE_KATAGO_ACTUAL, WAITING),
     ]
     # The sequence after the answer is shown first, while KataGo is still calculating it.
     assert quiz.variation_index == 0 and quiz.variation is None and quiz.shown_sequence() == ()
     quiz.apply_evaluation(1.0, 9.0, (gtp("C3", "W"), gtp("D3")), actual_sequence=(gtp("B18", "W"),))
     assert quiz.variation == Variation((gtp("R4"), gtp("C3", "W"), gtp("D3")), "katago")
-    assert quiz.choices[4].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
-    assert quiz.choices[3].status == WAITING  # The comparison model is still calculating.
+    assert quiz.choices[1].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
+    assert quiz.choices[4].status == WAITING  # The comparison model is still calculating.
     assert quiz.replay_step == 0
 
 
@@ -323,7 +324,7 @@ def test_the_loss_of_the_shown_sequences_first_move():
 
 
 def test_the_end_of_a_sequence_is_where_the_territory_can_be_shown():
-    """Only at the last move of a sequence that is not the game's continuation."""
+    """Only at the last move of a sequence (the one after the game move too)."""
     quiz = QuizSession(PROBLEM, ScoringPolicy())
     quiz.answer(gtp("Q4"))
     assert quiz.sequence_at_end() is None  # The start of KaTrain's sequence.
@@ -331,10 +332,11 @@ def test_the_end_of_a_sequence_is_where_the_territory_can_be_shown():
         quiz.step_forward()
     assert quiz.sequence_at_end() == PROBLEM.variations[0]
     quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ACTUAL)
-    quiz.select_variation(len(quiz.choices) - 1)
-    quiz.step_forward()
+    quiz.select_variation(0)
     quiz.step_forward()
     assert quiz.choice.source == SOURCE_KATAGO_ACTUAL and quiz.sequence_at_end() is None
+    quiz.step_forward()
+    assert quiz.sequence_at_end() == quiz.choice.variation
 
 
 def test_the_ai_commentary_is_not_shown_with_the_comparison_model():
@@ -368,3 +370,19 @@ def test_the_verdict_goes_with_the_answers_sequence():
     assert quiz.shows_verdict
     quiz.select_variation(sources.index("katrain"))
     assert not quiz.shows_verdict
+
+
+def test_the_games_own_moves_come_after_the_answers_sequence():
+    """Tab order: after the answer, the game's own moves, after the game move (strongest replies), then KaTrain's."""
+    game_line = (gtp("A19"), gtp("B18", "W"), gtp("C17"))
+    quiz = QuizSession(replace(PROBLEM, game_line=game_line), ScoringPolicy())
+    quiz.answer(gtp("R4"))
+    quiz.expect(SOURCE_KATAGO_ANSWER)
+    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    assert [choice.source for choice in quiz.choices][:4] == [
+        SOURCE_KATAGO_ANSWER,
+        SOURCE_GAME,
+        SOURCE_KATAGO_ACTUAL,
+        "katrain",
+    ]
+    assert quiz.choices[1].variation == Variation(game_line, SOURCE_GAME)

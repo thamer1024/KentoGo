@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 from kentogo.commentary.language import CATEGORIES, PROMPT_ENGLISH, PROMPT_JAPANESE
 from kentogo.commentary.targets import normalize_rank, rank_label
+from kentogo.common.places import CENTER
+from kentogo.common.shapes import CONNECT, CUT, HANE, IKKEN, KEIMA, KOSUMI, NOBI, SAGARI, TSUKE, WEDGE
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,30 @@ class PromptWords:
     atari: str  # {group}.
     step_line: str  # {number}, {move} and {events} (joined with list_separator).
     no_steps: str
+    shape_names: dict[str, str]  # The names of the shapes (common.shapes) with {stones}.
+    region_names: dict[str, str]  # The names of the regions (common.places).
+    placed_move: str  # A move with its place: {move}, {region} and {line}.
+    shape_separator: str
+    no_shape: str
+    capture_effect: str  # {group}.
+    pon_nuki_effect: str  # {group}.
+    ko_effect: str  # {group}.
+    atari_effect: str  # {group}.
+    ladder_effect: str
+    empty_triangle_effect: str
+    self_atari_effect: str
+    last_move_shape: str  # {move} and {shape}, and the same for the lines below.
+    played_shape: str
+    best_shape: str
+    game_heading: str
+    game_line: str
+    pv_heading: str
+    pv_line: str  # {number}, {move} and {shape}.
+    next_near: str  # {color}, {move} and {distance}.
+    next_far: str
+    cuts_line: str  # {color}, {before}, {game} and {pv}.
+    cuts_none: str
+    aimed_heading: str
     nearby_heading: str
     nearby_line: str  # {group} and {liberties}.
     group: str  # {color}, {points} and {count}.
@@ -116,17 +142,18 @@ JAPANESE_WORDS = PromptWords(
   "moves": [
     {{
       "move": 手数(数字),
-      "situation": "その時の状況を一言(序盤/戦い/ヨセ など)",
+      "situation": "その時の状況を一言(序盤/右下の戦い/ヨセ など,場所の名前を入れる)",
       "category": "{categories} から一つ.英語の名前をそのまま書く",
-      "what_happened": "実戦の手と最善手の差(損失目数など)と,相手が打った手・相手の最善手と予想手順から読み取れること(2から3文)",
-      "aim": "最善手から予想手順を数手ずつ追い,石がどうつながり,地や石の強弱がどう変わるか.先手か後手かも書く(3から5文)",
-      "lesson": "次に同じ場面で使える一文.合う格言があれば添える(無理に付けない)"
+      "what_to_see": "打つ前に見るべきだったこと.相手の直前の手の形と狙い,相手が一番打ちたかった点,狙われていた自分の石(1から2文)",
+      "what_happened": "実戦の手と最善手の差(損失目数)と,実戦の手で相手に何をさせたか(2から3文)",
+      "aim": "最善手の形の名前と目的.予想手順を2から3のまとまりで追い,石のつながり,地,石の強弱がどう変わるか.先手か後手か(3から5文)",
+      "lesson": "次に同じ場面で,打つ前に自分に問いかける一文(例:「〜を確かめてから打ちます」).合う格言があれば添える(無理に付けない)"
     }}
   ],
   "summary": {{
     "category_counts": "分類の集計(例: 急場の見逃し 2,響かない手 2,読み違い 1)",
-    "main_issue": "今の私の一番の課題を一つ",
-    "next_focus": "次の対局で意識することを一つだけ",
+    "main_issue": "今の私の一番の課題を一つ.複数の手に共通する形や考え方の癖として書く",
+    "next_focus": "次の対局で意識することを一つだけ.対局中に使えるチェックの一言にする",
     "loss_comparison": "[この対局の損失の回数]を目標とする回数・超えてはいけない回数と比べて一言"
   }}
 }}
@@ -157,12 +184,61 @@ JAPANESE_WORDS = PromptWords(
     atari="{group}がアタリになる",
     step_line="  予想手順の{number}手目 {move}: {events}",
     no_steps="  予想手順の中に,石を取る手やアタリにする手はない.",
+    shape_names={
+        CONNECT: "ツギ({stones}をつなぐ)",
+        CUT: "キリ({stones}を切る)",
+        WEDGE: "ワリコミ({stones}の間)",
+        HANE: "ハネ({stones}から)",
+        NOBI: "ノビ({stones}から)",
+        SAGARI: "サガリ({stones}から)",
+        TSUKE: "ツケ({stones}に)",
+        KOSUMI: "コスミ({stones}から)",
+        IKKEN: "一間トビ({stones}から)",
+        KEIMA: "ケイマ({stones}から)",
+    },
+    region_names={
+        "top_left_corner": "左上隅",
+        "top_right_corner": "右上隅",
+        "bottom_left_corner": "左下隅",
+        "bottom_right_corner": "右下隅",
+        "top_left": "左上",
+        "top_right": "右上",
+        "bottom_left": "左下",
+        "bottom_right": "右下",
+        "left_side": "左辺",
+        "right_side": "右辺",
+        "top_side": "上辺",
+        "bottom_side": "下辺",
+        CENTER: "中央",
+    },
+    placed_move="{move}({region},{line}線)",
+    shape_separator="、",
+    no_shape="決まった形の名前なし",
+    capture_effect="抜き({group}を取る)",
+    pon_nuki_effect="ポン抜き({group}を取る)",
+    ko_effect="コウを取る({group}を取る)",
+    atari_effect="アテ({group}がアタリ)",
+    ladder_effect="シチョウ(アタリにした石はシチョウで取れる)",
+    empty_triangle_effect="アキ三角になる",
+    self_atari_effect="自分の石がアタリになる",
+    last_move_shape="  [形] 相手の直前の手 {move}: {shape}",
+    played_shape="  [形] 実戦の手 {move}: {shape}",
+    best_shape="  [形] 最善手 {move}: {shape}",
+    game_heading="  [実戦の進行] 実戦の手と,相手の次の手(実戦):",
+    game_line="  {move}: {shape}",
+    pv_heading="  [予想手順の各手の形]",
+    pv_line="  {number}手目 {move}: {shape}",
+    next_near="  [予想手順の相手の次の手] {color}は最善手の近く({distance}路)の{move}に打つ.",
+    next_far="  [予想手順の相手の次の手] {color}は手を抜いて{move}に打つ(最善手から{distance}路).",
+    cuts_line="  [切られる点]({color}の石.拡大図の範囲) 直前: {before} / 実戦の進行の後: {game} / 予想手順の後: {pv}",
+    cuts_none="なし",
+    aimed_heading="  [狙われていた自分の石](実戦の手の後,相手が一番打ちたかった点の近く):",
     nearby_heading="- 実戦の手と最善手の近くの石(直前の局面):",
     nearby_line="  {group}: ダメ{liberties}",
     group="{color}の石 {points}({count}子)",
     reply_none="- 相手の次の手: なし(終局)",
     reply_line="- 相手の次の手(実戦): {move}",
-    reply_best_line="- 相手の手番での最善手: {best}{loss}",
+    reply_best_line="- 相手の手番での最善手(相手が一番打ちたかった点): {best}{loss}",
     reply_loss="(相手の実戦の手の損失 {loss:.1f}目)",
     reply_sequence_line="- 相手の手番での予想手順: {sequence}",
     notes_line="- 私のメモ: {notes}",
@@ -205,20 +281,23 @@ Do not break lines inside strings.
   "moves": [
     {{
       "move": move number (a number),
-      "situation": "the situation at that time in a few words (opening / fight / endgame and so on)",
+      "situation": "the situation at that time in a few words, with the name of the place \
+(opening / fight at the bottom right / endgame and so on)",
       "category": "one of {categories}, written as its English name",
-      "what_happened": "the difference between the move played and the best move (the loss and so on), \
-and what the opponent's move, the opponent's best move and the predicted sequence show (2 to 3 sentences)",
-      "aim": "follow the predicted sequence from the best move a few moves at a time: how the stones connect, \
-and how the territory and the strength of the groups change. Say whether it ends in sente or gote (3 to 5 sentences)",
-      "lesson": "one sentence I can use in the same kind of position next time. \
-Add a fitting proverb if there is one (do not force it)"
+      "what_to_see": "what I should have looked at before playing: the shape and aim of the opponent's previous move, \
+the point the opponent most wanted to play, and my stones that were aimed at (1 to 2 sentences)",
+      "what_happened": "the difference between the move played and the best move (the loss), \
+and what the move played let the opponent do (2 to 3 sentences)",
+      "aim": "the name of the shape and the aim of the best move. Follow the predicted sequence in two or three parts: \
+how the stones connect, and how the territory and the strength of the groups change. Sente or gote (3 to 5 sentences)",
+      "lesson": "one question to ask myself before playing in the same kind of position next time \
+(for example: 'I check ... before I play'). Add a fitting proverb if there is one (do not force it)"
     }}
   ],
   "summary": {{
     "category_counts": "the count of each category (for example: missed urgent point 2, no pressure 2, misread 1)",
-    "main_issue": "my biggest issue now, only one",
-    "next_focus": "only one thing to keep in mind in my next game",
+    "main_issue": "my biggest issue now, only one, written as a habit of shape or thinking shared by several moves",
+    "next_focus": "only one thing to keep in mind in my next game, as a short check I can use during the game",
     "loss_comparison": "one sentence comparing [Counts of losses in this game] with the target counts \
 and the counts not to exceed"
   }}
@@ -258,12 +337,65 @@ and the counts not to exceed"
     atari="puts {group} in atari",
     step_line="  Move {number} of the predicted sequence, {move}: {events}",
     no_steps="  No move of the predicted sequence captures stones or puts stones in atari.",
+    shape_names={
+        CONNECT: "connect ({stones})",
+        CUT: "cut ({stones})",
+        WEDGE: "wedge (between {stones})",
+        HANE: "hane (from {stones})",
+        NOBI: "extend (from {stones})",
+        SAGARI: "descend (from {stones})",
+        TSUKE: "attach (to {stones})",
+        KOSUMI: "diagonal (from {stones})",
+        IKKEN: "one-space jump (from {stones})",
+        KEIMA: "knight's move (from {stones})",
+    },
+    region_names={
+        "top_left_corner": "top left corner",
+        "top_right_corner": "top right corner",
+        "bottom_left_corner": "bottom left corner",
+        "bottom_right_corner": "bottom right corner",
+        "top_left": "top left",
+        "top_right": "top right",
+        "bottom_left": "bottom left",
+        "bottom_right": "bottom right",
+        "left_side": "left side",
+        "right_side": "right side",
+        "top_side": "top side",
+        "bottom_side": "bottom side",
+        CENTER: "center",
+    },
+    placed_move="{move} ({region}, line {line})",
+    shape_separator=", ",
+    no_shape="no fixed shape name",
+    capture_effect="captures {group}",
+    pon_nuki_effect="pon-nuki (captures {group})",
+    ko_effect="takes a ko (captures {group})",
+    atari_effect="atari ({group} in atari)",
+    ladder_effect="ladder (the stones put in atari are captured in a ladder)",
+    empty_triangle_effect="makes an empty triangle",
+    self_atari_effect="puts its own stones in atari",
+    last_move_shape="  [Shape] Opponent's previous move {move}: {shape}",
+    played_shape="  [Shape] Move played {move}: {shape}",
+    best_shape="  [Shape] Best move {move}: {shape}",
+    game_heading="  [Game] The move played and the opponent's next move (in the game):",
+    game_line="  {move}: {shape}",
+    pv_heading="  [Shape of each move of the predicted sequence]",
+    pv_line="  Move {number} {move}: {shape}",
+    next_near="  [Opponent's next move in the predicted sequence] {color} plays {move}, near the best move "
+    "({distance} lines away).",
+    next_far="  [Opponent's next move in the predicted sequence] {color} plays elsewhere, at {move} "
+    "({distance} lines from the best move).",
+    cuts_line="  [Cutting points] ({color} stones, in the zoomed board) before: {before} / "
+    "after the game's moves: {game} / after the predicted sequence: {pv}",
+    cuts_none="none",
+    aimed_heading="  [My stones that were aimed at] (after the move played, near the point the opponent most wanted "
+    "to play):",
     nearby_heading="- Stones near the move played and the best move (before the move):",
     nearby_line="  {group}: {liberties} liberties",
     group="{color} stones {points} (count: {count})",
     reply_none="- Opponent's next move: none (end of the game)",
     reply_line="- Opponent's next move (in the game): {move}",
-    reply_best_line="- Best move for the opponent: {best}{loss}",
+    reply_best_line="- Best move for the opponent (the point the opponent most wanted to play): {best}{loss}",
     reply_loss=" (loss of the opponent's move in the game: {loss:.1f} points)",
     reply_sequence_line="- Predicted sequence for the opponent: {sequence}",
     notes_line="- My notes: {notes}",

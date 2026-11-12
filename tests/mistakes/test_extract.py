@@ -100,6 +100,13 @@ def test_problem_contents():
     assert [(m.color, m.gtp()) for m in sequence.moves] == [("B", "Q4"), ("W", "D16"), ("B", "C17")]
 
 
+def test_the_moves_of_the_game_after_a_problem_are_kept():
+    """The game move and the moves after it, at most GAME_LINE_MOVES (the game ends after move 7)."""
+    problems = extract(game()).problems
+    assert [m.gtp() for m in problems[1].game_line] == ["A19", "D16", "A18", "Q4", "A17"]
+    assert problems[0].game_line == ()  # The last move of the game has no moves after it.
+
+
 def test_notes_are_kept():
     """The user's notes on the mistake are kept in the problem."""
     problem = extract(game(notes="Claude: too small")).problems[1]

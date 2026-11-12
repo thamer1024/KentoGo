@@ -1,33 +1,47 @@
 """What a move does on the board, told from the stones alone (without KataGo): captures, ataris, ladders, shapes.
 
-Some of these are sure, as they follow from the rules (SURE): the move captures stones, takes a ko,
-puts one group or two groups of the opponent in atari, connects two of the player's groups, saves a
-group that was in atari, or starts a ladder that captures the group (read on the board to the end, see
-_ladder_captures). The others are only guesses (GUESSED): a cut, the name of the shape (tsuke, hane,
-nobi, kosumi), and a move far from the opponent's last move. A guess can be wrong, so the screens mark
-it with a question mark.
+Some of these are sure, as they follow from the rules (SURE): the move captures stones (a pon-nuki
+when it takes one stone from all four sides), takes a ko, puts one group or two groups of the opponent
+in atari, connects two of the player's groups, saves a group that was in atari, starts a ladder that
+captures the group (read on the board to the end, see _ladder_captures), makes an empty triangle, or
+puts its own stones in atari. The others are the names of the shape (cut, wedge, hane, sagari, nobi,
+tsuke, kosumi, ikken, keima; see common.shapes) and a move far from the opponent's last move: they
+follow fixed definitions, but a player may name a move otherwise, so the quiz screen marks them with a
+question mark (GUESSED).
 """
 
 from __future__ import annotations
 
 from kentogo.common.board import Board, IllegalMoveError, Point
+from kentogo.common.shapes import (
+    CONNECT,
+    CUT,
+    HANE,
+    IKKEN,
+    KEIMA,
+    KOSUMI,
+    NOBI,
+    SAGARI,
+    TSUKE,
+    WEDGE,
+    empty_triangle,
+    neighbors,
+    shapes_of,
+)
 from kentogo.common.types import Move, opponent
 
 CAPTURE = "capture"
+PON_NUKI = "pon_nuki"
 KO = "ko"
 ATARI = "atari"
 DOUBLE_ATARI = "double_atari"
-CONNECT = "connect"
 ESCAPE = "escape"
 LADDER = "ladder"
-CUT = "cut"
-TSUKE = "tsuke"
-HANE = "hane"
-NOBI = "nobi"
-KOSUMI = "kosumi"
+EMPTY_TRIANGLE = "empty_triangle"
+SELF_ATARI = "self_atari"
 FAR = "far"
-SURE = (CAPTURE, KO, ATARI, DOUBLE_ATARI, CONNECT, ESCAPE, LADDER)
-GUESSED = (CUT, TSUKE, HANE, NOBI, KOSUMI, FAR)
+SURE = (CAPTURE, PON_NUKI, KO, ATARI, DOUBLE_ATARI, CONNECT, ESCAPE, LADDER, EMPTY_TRIANGLE, SELF_ATARI)
+GUESSED = (CUT, WEDGE, HANE, SAGARI, NOBI, TSUKE, KOSUMI, IKKEN, KEIMA, FAR)
 
 FAR_DISTANCE = 5  # A move at least this far (in rows or columns) from the opponent's last move is far from it.
 LADDER_MOVES = 200  # The most moves of a ladder that are read.
@@ -52,15 +66,30 @@ def tactics(board: Board, move: Move, last_move: Move | None) -> tuple[str, ...]
         captured = after.play(move)
     except IllegalMoveError:
         return ()
-    sure = _captures(after, captured) + _ataris(board, after, move) + _own_groups(board, after, move)
-    return sure + _guesses(board, after, move, last_move, sure)
+    sure = _captures(after, captured, move) + _ataris(board, after, move) + _own_groups(board, after, move)
+    sure += _own_shape(after, move)
+    return sure + _guesses(board, move, last_move, sure)
 
 
-def _captures(after: Board, captured: list[Point]) -> tuple[str, ...]:
-    """Return KO when the move took a ko, CAPTURE when it took other stones."""
+def _captures(after: Board, captured: list[Point], move: Move) -> tuple[str, ...]:
+    """Return KO when the move took a ko, PON_NUKI when it took one stone from all sides, else CAPTURE."""
     if not captured:
         return ()
-    return (KO,) if after.ko_point is not None else (CAPTURE,)
+    if after.ko_point is not None:
+        return (KO,)
+    around = neighbors(after, captured[0])
+    # On the edge a stone has fewer than four sides: that is no pon-nuki.
+    if len(captured) == 1 and len(around) == 4 and all(after.stone_at(point) == move.color for point in around):
+        return (PON_NUKI,)
+    return (CAPTURE,)
+
+
+def _own_shape(after: Board, move: Move) -> tuple[str, ...]:
+    """Return EMPTY_TRIANGLE and SELF_ATARI when the move makes them."""
+    found = (EMPTY_TRIANGLE,) if empty_triangle(after, move.coord, move.color) else ()
+    if len(after.liberties(after.group_at(move.coord))) == 1:
+        found += (SELF_ATARI,)
+    return found
 
 
 def _ataris(before: Board, after: Board, move: Move) -> tuple[str, ...]:
@@ -89,31 +118,12 @@ def _own_groups(before: Board, after: Board, move: Move) -> tuple[str, ...]:
     return found
 
 
-def _guesses(before: Board, after: Board, move: Move, last_move: Move | None, sure: tuple[str, ...]) -> tuple[str, ...]:
-    """Return the guesses: a cut, the name of the shape, or a move far from the opponent's last move."""
-    found = (CUT,) if len(_neighbor_groups(after, move.coord, opponent(move.color))) >= 2 else ()
-    shape = _shape(before, move)
-    found += (shape,) if shape else ()
+def _guesses(before: Board, move: Move, last_move: Move | None, sure: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the names of the shape (without CONNECT, which is sure), or a move far from the last move."""
+    found = tuple(shape.name for shape in shapes_of(before, move) if shape.name != CONNECT)
     if not sure and not found and _is_far(move, last_move):
         found += (FAR,)
     return found
-
-
-def _shape(board: Board, move: Move) -> str:
-    """Return the name of the shape of a move with the stones next to it (HANE, TSUKE, NOBI, KOSUMI), or ""."""
-    point, color = move.coord, move.color
-    mine = [p for p in _neighbors(board, point) if board.stone_at(p) == color]
-    theirs = [p for p in _neighbors(board, point) if board.stone_at(p) == opponent(color)]
-    diagonal_mine = [p for p in _diagonals(board, point) if board.stone_at(p) == color]
-    if theirs and any(_next_to(a, b) for a in diagonal_mine for b in theirs):
-        return HANE
-    if theirs and not mine:
-        return TSUKE
-    if any(board.stone_at(q) == opponent(color) for p in mine for q in _neighbors(board, p)):
-        return NOBI
-    if diagonal_mine and not mine and not theirs:
-        return KOSUMI
-    return ""
 
 
 def _is_far(move: Move, last_move: Move | None) -> bool:
@@ -151,7 +161,7 @@ def _escapes(board: Board, stone: Point, defender: str) -> list[Move]:
     attackers = {
         frozenset(board.group_at(p))
         for s in group
-        for p in _neighbors(board, s)
+        for p in neighbors(board, s)
         if board.stone_at(p) == opponent(defender)
     }
     return [Move(defender, next(iter(board.liberties(g)))) for g in attackers if len(board.liberties(g)) == 1]
@@ -203,31 +213,9 @@ def _attack(board: Board, stone: Point, attacker: str, moves_left: int) -> int:
 
 def _neighbor_groups(board: Board, point: Point, color: str) -> set[frozenset[Point]]:
     """Return the groups of a color next to a point."""
-    return {board.group_at(p) for p in _neighbors(board, point) if board.stone_at(p) == color}
+    return {board.group_at(p) for p in neighbors(board, point) if board.stone_at(p) == color}
 
 
 def _liberty_count(board: Board, group: frozenset[Point]) -> int:
     """Return the liberties that the group of a group's first stone had on another board (the board before)."""
     return len(board.liberties(board.group_at(next(iter(group)))))
-
-
-def _neighbors(board: Board, point: Point) -> list[Point]:
-    """Return the points next to a point (up, down, left, right) on the board."""
-    x, y = point
-    return [(a, b) for a, b in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)) if _on(board, (a, b))]
-
-
-def _diagonals(board: Board, point: Point) -> list[Point]:
-    """Return the points diagonally next to a point on the board."""
-    x, y = point
-    return [(a, b) for a, b in ((x + 1, y + 1), (x + 1, y - 1), (x - 1, y + 1), (x - 1, y - 1)) if _on(board, (a, b))]
-
-
-def _next_to(a: Point, b: Point) -> bool:
-    """True if two points are next to each other (up, down, left or right)."""
-    return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
-
-
-def _on(board: Board, point: Point) -> bool:
-    """True if a point is on the board."""
-    return 0 <= point[0] < board.size and 0 <= point[1] < board.size

@@ -35,7 +35,7 @@ from kentogo.common import sgf
 from kentogo.record.ai_comment import compose_comment, split_ai_comment
 
 # The fields of the answer, in the order they are written (their labels are in CommentLabels).
-_MOVE_FIELDS = ("situation", "category", "what_happened", "aim", "lesson")
+_MOVE_FIELDS = ("situation", "category", "what_to_see", "what_happened", "aim", "lesson")
 _SUMMARY_FIELDS = ("category_counts", "main_issue", "next_focus", "loss_comparison")
 
 

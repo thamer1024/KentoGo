@@ -35,8 +35,8 @@ Free and open source, for Windows and macOS; it uses the KataGo you set up in Ka
 - **Counting practice.** Count the final position of your own games: remove the dead stones, fill
   in the prisoners and tidy the territories, then check your count. KentoGo can also show how
   the territories are tidied (as a reference: even when the count is right, a step can be wrong or unnatural).
-- **Game viewer.** Replay your games with the move KaTrain chose, a second model's line to
-  compare with, and the territory and the score at the end of each line.
+- **Game viewer.** Replay your games with the move KaTrain chose, and the territory and the score
+  at the end of each line.
 - **AI commentary (optional).** An AI such as ChatGPT, Claude, Gemini or DeepSeek can explain in
   words, not only in numbers, how your move differs from the move KaTrain chose: what each move
   aims at, and why one is better. Copy the prompt that KentoGo makes into the chat of any AI and
@@ -99,13 +99,55 @@ which model is loading and, from the second start on, about how long it will sti
 loading times are kept in `~/.kentogo/katago_start_times.json`). You can close the dialog and go
 on; a question to KataGo then waits until it is ready.
 
-**About the comparison model.** "Also use the comparison model" on the settings screen starts a
-second KataGo beside the main one. On some computers this makes KentoGo much slower, as the two
-share the processor or the GPU, and it needs more memory (each KataGo holds its model and its
-cache: several hundred MB to some GB). When it is turned on, the comparison model's KataGo is
-started as soon as the main one is ready, and it keeps running until KentoGo is closed, so that
-its sequences come without waiting for KataGo to start. Turn it on only if your computer has
-room for two KataGo processes.
+**About the comparison model.** The comparison model is not used for now: its KataGo is not
+started, even when "Also use the comparison model" is on in the settings, and its sequence is not
+shown after an answer. The setting is kept in case it comes back.
+
+### The sequences after your answer
+
+After you answer, Tab switches between these sequences (the line at the top shows their order):
+
+1. **Your move**: your answer, then the game goes on with you playing moves of your rank and the
+   opponent playing the strongest replies.
+2. **Game**: the move played in the game and the moves that were played after it, as the game
+   record has them.
+3. **Strongest replies**: the move played in the game, then you play moves of your rank and the
+   opponent plays the strongest replies. Compared with "Game", it shows how much the move could
+   have been punished.
+4. **KaTrain's move**: the sequence from the best move that KaTrain saved in the game record (and
+   the other branches of the game record, if there are any).
+
+How the sequences 1 and 3 are made:
+
+- Your moves are KataGo's human-like moves of your rank (the move a player of that rank would most
+  likely play). Your rank is the one in the game record (`BR`/`WR`), or else the rank you gave for
+  the AI commentary; when only the opponent's rank is known, that rank is used.
+- The opponent's moves are the main KataGo's best moves, reading "Visits for territory and standing"
+  (100 at first) for each move: a few seconds for a whole sequence. Raise that number
+  on the settings screen for stronger replies, or lower it for faster ones.
+- When neither rank is known, KataGo's own sequence is shown (both sides play its best moves).
+- The sequences are made about as long as KaTrain's (at least 15 moves), but no move is added after
+  5 seconds.
+
+While you play a sequence forward, the board shows the territory of each move, and the line below
+the sequence tells the rough standing of that move (a shallow reading). At the last move of a
+sequence, the exact standing is shown, with how it compares with the game after the same number of
+moves.
+
+### Trying the problems without saving the answers
+
+To try the problems of the games that KentoGo analyzed, without the daily limit and without saving
+the answers, start KentoGo from the source with `--test-quiz`:
+
+```
+uv run kentogo --test-quiz loss     # your own mistakes (the problems by the points lost)
+uv run kentogo --test-quiz punish   # the opponent's big mistakes that you did not punish
+```
+
+Every problem of that kind is asked at once, also those beyond the number of problems of a game.
+Only games analyzed by KentoGo ("Analyze games with KataGo" on the settings screen) are used.
+When there is no problem, KentoGo tells the folder it read, how many games it read and how many of
+them KentoGo analyzed.
 
 The settings, the history of answers and the results of the counting practice are kept in
 `~/.kentogo` (on Windows, `C:\Users\<name>\.kentogo`). The programs have no console: their

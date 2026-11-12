@@ -55,6 +55,7 @@ def problem_to_dict(problem: Problem) -> dict:
         "opponent_loss": problem.opponent_loss,
         "opponent_best": problem.opponent_best,
         "punishment": problem.punishment,
+        "game_line": [move_text(move) for move in problem.game_line],
     }
 
 
@@ -93,6 +94,7 @@ def problem_from_dict(values: dict) -> Problem:
         opponent_loss=values.get("opponent_loss"),
         opponent_best=values.get("opponent_best"),
         punishment=values.get("punishment", ""),
+        game_line=tuple(move_from_text(text) for text in values.get("game_line", [])),  # None in older copies.
     )
 
 

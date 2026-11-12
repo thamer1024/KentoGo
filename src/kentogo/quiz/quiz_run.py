@@ -48,10 +48,13 @@ from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import ANSWERED, OFFERED, WAITING, QuizSession
 from kentogo.quiz.transform import BoardTransform
 
-# The comparison model's sequence is made as long as the longest sequence in the SGF file (KaTrain's), at least
-# MIN_COMPARE_LINE moves, but no move is added after its own length once COMPARE_LINE_SECONDS have passed.
-MIN_COMPARE_LINE = 15
-COMPARE_LINE_SECONDS = 5.0
+# The sequences after the answer, after the game move and from the comparison model's move are made as long as
+# the longest sequence in the SGF file (KaTrain's), at least MIN_LINE moves, so that their ends can be compared;
+# but no move is added after KataGo's own length once LINE_SECONDS have passed.
+MIN_LINE = 15
+LINE_SECONDS = 5.0
+# The sequence from the comparison model's move is not offered for now (the user may want it back).
+SHOW_COMPARE_LINE = False
 
 # Why an answer is not judged yet: the key of a screen text and its values.
 REASON_EVALUATING = "evaluating"
@@ -215,7 +218,7 @@ class QuizRun:
             self._evaluate(session)
         else:
             self._judged_from_the_file(session)
-        if self.judging.compare_engine is not None:
+        if SHOW_COMPARE_LINE and self.judging.compare_engine is not None:
             session.offer(SOURCE_KATAGO_COMPARE)  # Calculated only when the user chooses it.
         return ""
 
@@ -321,10 +324,10 @@ class QuizRun:
         self.listener.changed(session)
 
     def _add_line(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str) -> None:
-        """Add KataGo's sequence after a move, with the opponent's human-like replies when it can (see human_line).
+        """Add the sequence after a move, with the user's human-like moves and the strongest replies when it can.
 
-        KataGo's own sequence is added at once (without telling the screen); a sequence with the human-like
-        replies is added when it is made, and the screen is told then.
+        KataGo's own sequence is added at once (without telling the screen); the sequence made with the
+        user's human-like moves (see human_line) is added when it is made, and the screen is told then.
         """
         engines = self._own_line_engines(session.problem)
         if engines is None or not sequence or (source == SOURCE_KATAGO_ACTUAL and session.result.answer == move):
@@ -337,29 +340,29 @@ class QuizRun:
             (move, *sequence),
             on_done=self.in_main(lambda line: self._predicted(session, move, line[1:], source)),
             on_error=self.in_main(lambda message: self._human_line_failed(session, move, sequence, source, message)),
+            extension=Extension(_aimed_length(session.problem), LINE_SECONDS),
         )
 
     def _own_line_engines(self, problem: Problem) -> LineEngines | None:
         """Return what the sequences after the answer and after the game move are made with (None: KataGo's own).
 
-        Both players play as humans of their ranks (the user of the opponent's rank when the user's is not known).
+        The user plays as a human of the user's rank (the opponent's when the user's is not known), and the
+        opponent plays the strongest replies (see _strongest_replies).
         """
         judging = self.judging
-        ranks = judging.player_ranks(problem)
-        my_profile = human_profile(ranks.mine or ranks.theirs)
-        return _line_engines(ranks, judging.engine, judging.engine, judging.settings, my_profile)
+        return _strongest_replies(judging.player_ranks(problem), judging.engine, judging.settings)
 
     def _compare_line_engines(self, problem: Problem) -> LineEngines | None:
-        """Return what the comparison model's sequence is made with: its best moves, and human-like replies.
+        """Return what the sequence from the comparison model's best move is made with.
 
-        Without the opponent's rank (or the main KataGo), the replies are the comparison model's best moves.
+        Only the first move is the comparison model's; then the user plays as a human and the opponent plays
+        the strongest replies, as after the answer, so that the sequences differ only in their first moves.
+        Without a rank (or the main KataGo), the comparison model plays both sides.
         """
         judging = self.judging
         if judging.compare_engine is None:
             return None
-        found = _line_engines(
-            judging.player_ranks(problem), judging.compare_engine, judging.engine, judging.compare_settings, ""
-        )
+        found = _strongest_replies(judging.player_ranks(problem), judging.engine, judging.settings)
         settings = judging.compare_settings
         alone = LineEngines(
             judging.compare_engine, judging.compare_engine, settings.estimate_visits, settings.wide_root_noise, ""
@@ -411,7 +414,7 @@ class QuizRun:
             evaluation.best_sequence,
             on_done=self.in_main(lambda line: self._keep_compare(session, evaluation, line)),
             on_error=self.in_main(lambda message: self._compare_line_failed(session, evaluation, message)),
-            extension=Extension(_aimed_length(session.problem), COMPARE_LINE_SECONDS),
+            extension=Extension(_aimed_length(session.problem), LINE_SECONDS),
         )
 
     def _keep_compare(self, session: QuizSession, evaluation: Evaluation, line: tuple[Move, ...]) -> None:
@@ -433,28 +436,25 @@ class QuizRun:
         self.listener.changed(session)
 
 
-def _line_engines(
-    ranks: PlayerRanks,
-    best: AnalysisEngine | None,
-    human: AnalysisEngine | None,
-    settings: EvaluationSettings,
-    my_profile: str,
+def _strongest_replies(
+    ranks: PlayerRanks, engine: AnalysisEngine | None, settings: EvaluationSettings
 ) -> LineEngines | None:
-    """Return what a sequence with human-like moves is made with, or None (no rank or no KataGo).
+    """Return what a sequence with the user's human-like moves and the strongest replies is made with.
+
+    The opponent plays the main KataGo's best moves, reading estimate_visits for each (a short reading,
+    so that a sequence is made in a few seconds). None without a rank or without the main KataGo.
 
     Args:
-        ranks: The ranks of the players.
-        best: The KataGo whose best moves the user plays when my_profile is "".
-        human: The KataGo with the human-like model (the main one).
-        settings: The settings of best (the visits of each of its moves are estimate_visits).
-        my_profile: The humanSLProfile of the user's moves, or "".
+        ranks: The ranks of the players (the user's, else the opponent's, is the user's human-like rank).
+        engine: The main KataGo (it has the human-like model).
+        settings: The settings of the main KataGo.
     """
-    profile = human_profile(ranks.theirs)
-    if not profile or human is None or best is None:
+    my_profile = human_profile(ranks.mine or ranks.theirs)
+    if not my_profile or engine is None:
         return None
-    return LineEngines(best, human, settings.estimate_visits, settings.wide_root_noise, profile, my_profile)
+    return LineEngines(engine, engine, settings.estimate_visits, settings.wide_root_noise, "", my_profile)
 
 
 def _aimed_length(problem: Problem) -> int:
-    """Return the length aimed at for the comparison model's sequence (see MIN_COMPARE_LINE)."""
-    return max([MIN_COMPARE_LINE, *(len(variation.moves) for variation in problem.variations)])
+    """Return the length aimed at for the sequences made with the user's human-like moves (see MIN_LINE)."""
+    return max([MIN_LINE, *(len(variation.moves) for variation in problem.variations)])

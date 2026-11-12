@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from kentogo.commentary.language import CATEGORIES
 from kentogo.commentary.prompt_words import category_by_name
 
-MOVE_FIELDS = ("situation", "category", "what_happened", "aim", "lesson")
+MOVE_FIELDS = ("situation", "category", "what_to_see", "what_happened", "aim", "lesson")
 SUMMARY_FIELDS = ("category_counts", "main_issue", "next_focus", "loss_comparison")
 
 PROBLEM_NOT_JSON = "not_json"  # Error: no JSON object could be read (detail has the reason).

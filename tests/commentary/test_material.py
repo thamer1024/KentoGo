@@ -176,3 +176,17 @@ def test_a_game_analyzed_by_katrain_keeps_its_numbers():
     """Without KGM[KentoGo], the loss is KaTrain's comment, and the candidates lose from the root's score."""
     move = kentogo_material("").moves[0]
     assert (move.points_lost, move.candidates) == (6.0, (("A2", 0.0), ("G7", 6.0)))
+
+
+def test_candidates_written_the_same_keep_katagos_order():
+    """A2 (KataGo's first) loses 0.01 and E5 0.0 against the root: both are written 0.0, so A2 stays first."""
+    before = {
+        "root": {"scoreLead": 2.0},
+        "moves": {
+            "A2": {"scoreLead": 1.99, "order": 0},
+            "E5": {"scoreLead": 2.3, "order": 1},
+            "G7": {"scoreLead": -4.0, "order": 2},
+        },
+    }
+    game = make_material(GoGame.parse_sgf(GAME.replace(kt(BEFORE_3), kt(before))), "B", ExtractSettings())
+    assert [point for point, _loss in game.moves[0].candidates] == ["A2", "E5", "G7"]

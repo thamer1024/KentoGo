@@ -63,6 +63,8 @@ from kentogo.record.players import detect_my_color
 REASON_UNKNOWN_COLOR = "unknown_color"  # The user's color was not found.
 REASON_NO_ANALYSIS = "no_analysis"  # The game has neither KaTrain's comments nor its analysis data (KT).
 
+GAME_LINE_MOVES = 15  # The game's own sequence of a problem has at least this many moves (when the game has them).
+
 
 @dataclass(frozen=True)
 class ExtractSettings:
@@ -498,12 +500,28 @@ def _make_problem_from_node(
     position = Position(start.size, start.komi, start.rules, start.setup, before, move.color)
     problem = _make_problem(position, game.sgf_path, number, move, info, notes)
     losses = _candidate_losses(node.parent, move.color, game)
-    problem = replace(problem, candidate_losses=losses, ai_comment=ai.move_text)
+    problem = replace(problem, candidate_losses=losses, ai_comment=ai.move_text, game_line=_game_line(node, problem))
     problem = _with_opponent_move(problem, node, game, settings)
     # A punishment problem is decided by the position before the opponent's mistake, as the mistake itself
     # makes the lead much bigger.
     before = node.parent.parent if problem.punishment and node.parent is not None else node.parent
     return problem, _is_decided(before, game, settings)
+
+
+def _game_line(node: GoNode, problem: Problem) -> tuple[Move, ...]:
+    """Return the move of a node and the moves played after it in the game, as long as the sequences are aimed.
+
+    The length is that of the longest sequence of the problem, at least GAME_LINE_MOVES (the same length as
+    the quiz's sequences, see quiz.quiz_run.MIN_LINE). A move without moves after it (a move taken back) has none.
+    """
+    length = max([GAME_LINE_MOVES, *(len(variation.moves) for variation in problem.variations)])
+    moves = []
+    while node is not None and len(moves) < length:
+        move = sgf.node_move(node)
+        if move is not None:
+            moves.append(move)
+        node = node.children[0] if node.children else None
+    return tuple(moves) if len(moves) >= 2 else ()
 
 
 def _with_opponent_move(problem: Problem, node: GoNode, game: _Game, settings: ExtractSettings) -> Problem:

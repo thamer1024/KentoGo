@@ -30,7 +30,14 @@ GAME = (
     ";W[df]"
     f";B[bh]C[{katrain(5, 'B', 'B2', 5.0, 'F5')}])"
 )
-FIELDS = {"situation": "戦い", "category": "misread", "what_happened": "a", "aim": "b", "lesson": "c"}
+FIELDS = {
+    "situation": "戦い",
+    "category": "misread",
+    "what_to_see": "s",
+    "what_happened": "a",
+    "aim": "b",
+    "lesson": "c",
+}
 SUMMARY = {"category_counts": "読み違い 3", "main_issue": "x", "next_focus": "y", "loss_comparison": "z"}
 NOW = datetime(2026, 10, 23, 16, 30, 0)
 
@@ -97,8 +104,8 @@ def test_texts(tmp_path):
     material = make_material(sgf.load_game(game_file(tmp_path)), "B")
     text = move_comment_text(material.moves[1], {**FIELDS, "lesson": ""})
     assert (
-        text
-        == "(実戦 G7 → 最善 D4,損失 6.0目)\n・局面: 戦い\n・分類: 読み違い\n・何が起きたか: a\n・最善手と予想手順の狙い: b"
+        text == "(実戦 G7 → 最善 D4,損失 6.0目)\n・局面: 戦い\n・分類: 読み違い\n・打つ前に見るべきだったこと: s\n"
+        "・何が起きたか: a\n・最善手と予想手順の狙い: b"
     )
     review = review_comment_text(material, "18k", SUMMARY)
     assert review.splitlines()[:5] == [

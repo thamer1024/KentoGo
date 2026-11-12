@@ -13,7 +13,14 @@ from kentogo.commentary.answer import (
     read_answer,
 )
 
-FIELDS = {"situation": "戦い", "category": "misread", "what_happened": "a", "aim": "b", "lesson": "c"}
+FIELDS = {
+    "situation": "戦い",
+    "category": "misread",
+    "what_to_see": "s",
+    "what_happened": "a",
+    "aim": "b",
+    "lesson": "c",
+}
 SUMMARY = {"category_counts": "読み違い 2", "main_issue": "x", "next_focus": "y", "loss_comparison": "z"}
 
 
@@ -66,3 +73,10 @@ def test_a_category_in_words_is_read_as_its_name():
     answer = read_answer(answer_text(moves), [3, 5, 7])
     assert [answer.moves[number]["category"] for number in (3, 5, 7)] == ["misread", "wrong_direction", "bad luck"]
     assert [(p.kind, p.move) for p in answer.problems] == [(PROBLEM_UNKNOWN_CATEGORY, 7)]
+
+
+def test_an_answer_without_what_to_see_is_only_warned():
+    """An answer to a prompt made before what_to_see was asked can still be written."""
+    fields = {name: value for name, value in FIELDS.items() if name != "what_to_see"}
+    answer = read_answer(json.dumps({"moves": [{"move": 3, **fields}], "summary": SUMMARY}), [3])
+    assert answer.ok and answer.moves[3]["what_to_see"] == ""

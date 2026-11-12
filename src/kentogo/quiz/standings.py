@@ -1,6 +1,7 @@
 """The territory and the standing at the end of each sequence of a problem, as KaTrain shows them.
 
-After the answer, each sequence that is not the game's continuation gets its standing by itself:
+After the answer, each sequence gets its standing by itself (the one after the game move too, as the
+opponent plays the strongest replies there, not the game's moves):
 KataGo is asked about the position at the end of the sequence (with the model of the sequence: the
 comparison model for its own sequence, else the main model), and about the game after the same number
 of moves, which is read from the SGF file (see prepare). Only the ends of the sequences are read, not
@@ -21,7 +22,7 @@ from pathlib import Path
 from kentogo.common import sgf
 from kentogo.katago.estimate import Standing, estimate_standing, played
 from kentogo.katago.evaluate import AnalysisModel, Models
-from kentogo.mistakes.problem import SOURCE_KATAGO_ACTUAL, SOURCE_KATAGO_COMPARE, Variation
+from kentogo.mistakes.problem import SOURCE_KATAGO_COMPARE, Variation
 from kentogo.quiz.session import ANSWERED, QuizSession
 from kentogo.record.game_record import read_game_record
 
@@ -102,11 +103,11 @@ class SequenceStandings:
                 self._estimate(variation, model, on_change, on_error)
 
     def _sequences(self) -> list[Variation]:
-        """Return the sequences that get a standing: those with moves that are not the game's continuation."""
+        """Return the sequences that get a standing: those with moves."""
         return [
             choice.variation
             for choice in self.session.choices
-            if choice.source != SOURCE_KATAGO_ACTUAL and choice.variation is not None and choice.variation.moves
+            if choice.variation is not None and choice.variation.moves
         ]
 
     def _estimate(self, variation: Variation, model: AnalysisModel, on_change: Changed, on_error: Failed) -> None:

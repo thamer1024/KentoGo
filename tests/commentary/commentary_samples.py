@@ -29,7 +29,14 @@ def analyzed_game(black: str = HUMAN, white: str = AI, komi: float = 6.5, extra:
 
 NOT_ANALYZED = f"(;GM[1]FF[4]SZ[9]KM[6.5]PB[{HUMAN}]PW[{AI}];B[ee];W[cg])"
 
-FIELDS = {"situation": "戦い", "category": "misread", "what_happened": "a", "aim": "b", "lesson": "c"}
+FIELDS = {
+    "situation": "戦い",
+    "category": "misread",
+    "what_to_see": "s",
+    "what_happened": "a",
+    "aim": "b",
+    "lesson": "c",
+}
 SUMMARY = {"category_counts": "読み違い 2", "main_issue": "x", "next_focus": "y", "loss_comparison": "z"}
 
 

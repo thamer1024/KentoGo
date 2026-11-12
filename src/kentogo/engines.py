@@ -30,6 +30,9 @@ from kentogo.quiz.quiz_run import Judging
 # The cache of the comparison model's KataGo: 2 ** 18 results, at most about 0.4 to 0.8 GB (KaTrain's
 # settings file has 2 ** 20, up to about 1.5 to 3 GB). It reads few positions, so it hardly gets slower.
 COMPARE_CACHE = {"nnCacheSizePowerOfTwo": 18}
+# The comparison model is not started for now, even when it is turned on in the settings: its sequence is
+# not shown after an answer (see quiz.quiz_run.SHOW_COMPARE_LINE). Its code is kept, in case it comes back.
+COMPARE_MODEL_STARTED = False
 
 
 def evaluation_settings(engine_settings: EngineSettings, max_visits: int) -> EvaluationSettings:
@@ -139,13 +142,14 @@ def start_engines(
     if problem:
         found.append(Notice("notice_katago_failed", {"reason": problem}))
     compare = None
-    if engine_settings.compare_on:
+    if _compare_started(engine_settings):
         compare, compare_problem = _compare_engine(engine_settings)
         if compare_problem:
             found.append(Notice("notice_compare_failed", {"reason": compare_problem}))
     if engine_settings.judge_model == JUDGE_COMPARE and compare is None:
         print("the comparison model is not running, so the main model calculates the losses", file=sys.stderr)
-        found.append(Notice("notice_judge_fallback"))
+        if COMPARE_MODEL_STARTED:  # Not told while the comparison model is never started.
+            found.append(Notice("notice_judge_fallback"))
     return engine, compare, evaluation, problem
 
 
@@ -277,7 +281,7 @@ def engine_commands(engine_settings: EngineSettings, turned_off: bool) -> tuple:
         return None, None
     main, _, _ = make_command(engine_settings)
     compare = None
-    if engine_settings.compare_on:
+    if _compare_started(engine_settings):
         compare, _, _ = make_command(engine_settings, engine_settings.compare_engine())
     return _command_line(main), _command_line(compare)
 
@@ -347,11 +351,16 @@ def measure_katago_speed(engine_settings: EngineSettings, running: Engines | Non
     """
     loaded = running if _runs_with(running, engine_settings) else None
     main = _measure_model(engine_settings, loaded, None)
-    if not engine_settings.compare_on:
+    if not _compare_started(engine_settings):
         return MeasuredSpeed(main)
     if not engine_settings.models_differ:
         return MeasuredSpeed(main, main)  # The same model reads at the same speed.
     return MeasuredSpeed(main, _measure_model(engine_settings, loaded, engine_settings.compare_engine()))
+
+
+def _compare_started(engine_settings: EngineSettings) -> bool:
+    """True if the comparison model's KataGo is started: it is turned on and set, and not left out for now."""
+    return COMPARE_MODEL_STARTED and engine_settings.compare_on
 
 
 def _runs_with(running: Engines | None, engine_settings: EngineSettings) -> bool:

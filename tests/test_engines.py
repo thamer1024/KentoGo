@@ -5,8 +5,10 @@ from dataclasses import replace
 import pytest
 from fake_engines import fake_katago_settings, make_fake_katago, started_in_the_background
 
+from kentogo import engines as engines_module
 from kentogo.engines import (
     COMPARE_CACHE,
+    engine_commands,
     engines_for,
     make_command,
     measure_katago_speed,
@@ -16,6 +18,27 @@ from kentogo.engines import (
 )
 from kentogo.gui.texts import notice_text
 from kentogo.katago.engine_settings import EngineSettings
+
+
+@pytest.fixture(autouse=True)
+def compare_model_started(monkeypatch):
+    """The comparison model is tested as when it is started (it is left out for now)."""
+    monkeypatch.setattr(engines_module, "COMPARE_MODEL_STARTED", True)
+
+
+def test_the_comparison_model_is_not_started_for_now(tmp_path, monkeypatch):
+    """While COMPARE_MODEL_STARTED is off, only the main KataGo starts, even with the comparison model turned on."""
+    monkeypatch.setattr(engines_module, "COMPARE_MODEL_STARTED", False)
+    settings = fake_katago_settings(
+        tmp_path, compare_model=str(tmp_path / "normal.bin.gz"), use_compare=True, judge_model="compare"
+    )
+    notices = []
+    engine, compare, _, problem = start_engines(settings, turned_off=False, notices=notices)
+    try:
+        assert problem == "" and compare is None and notices == []
+        assert engine_commands(settings, turned_off=False)[1] is None
+    finally:
+        engine.close()
 
 
 def test_start_engine_without_katago(tmp_path):

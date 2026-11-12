@@ -21,13 +21,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from kentogo.commentary import diagram
+from kentogo.commentary.fact_lines import fact_lines, group_text, move_text, placed_move_text
 from kentogo.commentary.language import CATEGORIES, CommentaryLanguage
 from kentogo.commentary.material import GameMaterial, GroupInfo, MoveMaterial, PvStep
 from kentogo.commentary.prompt_text import COLOR_PLACEHOLDER, PromptText
 from kentogo.commentary.prompt_words import PromptWords, words_for
 from kentogo.commentary.targets import targets_for
 from kentogo.common.board import Point
-from kentogo.common.types import GTP_COLUMNS, Move, opponent
+from kentogo.common.types import Move, opponent
 
 # The rank of the opponent compared with the user, as chosen in the list of games.
 RELATION_SAME = "same"
@@ -133,14 +134,14 @@ def loss_table(material: GameMaterial, rank: str, words: PromptWords) -> str:
 
 def _move_facts(material: GameMaterial, move: MoveMaterial, words: PromptWords) -> str:
     """Describe one move with the facts that KentoGo worked out."""
-    lines = _move_head(move, words) + [
+    lines = _move_head(move, material.size, words) + [
         *_candidate_line(move, words),
         *_score_line(move, words),
         words.sequence_line.format(sequence=_sequence(move.pv, words)),
         words.facts_heading,
-        *_step_lines(move.pv_steps, words),
+        *_shape_lines(material, move, words),
         *_nearby_lines(move.nearby, words),
-        *_reply_lines(move, words),
+        *_reply_lines(move, material.size, words),
         *([words.notes_line.format(notes=move.notes)] if move.notes else []),
         *([words.katrain_line.format(text=move.katrain_text)] if move.katrain_text else []),
         words.before_diagram,
@@ -153,10 +154,10 @@ def _move_facts(material: GameMaterial, move: MoveMaterial, words: PromptWords) 
     return "\n".join(lines)
 
 
-def _move_head(move: MoveMaterial, words: PromptWords) -> list[str]:
-    """Return the heading and the first lines of a move."""
+def _move_head(move: MoveMaterial, size: int, words: PromptWords) -> list[str]:
+    """Return the heading and the first lines of a move (the moves with their places)."""
     color = words.color_name(move.played.color)
-    played = _move_text(move.played, words)
+    played = placed_move_text(move.played, size, words)
     if move.taken_back:
         lines = [
             words.move_heading_taken_back.format(number=move.number, color=color),
@@ -167,9 +168,10 @@ def _move_head(move: MoveMaterial, words: PromptWords) -> list[str]:
             words.move_heading.format(number=move.number, color=color),
             words.played_line.format(move=played, loss=move.points_lost),
         ]
-    lines.append(words.best_line.format(best=move.best_move.gtp() if move.best_move else words.none))
+    best = placed_move_text(move.best_move, size, words) if move.best_move else words.none
+    lines.append(words.best_line.format(best=best))
     if move.last_move is not None:
-        lines.append(words.last_move_line.format(move=_move_text(move.last_move, words)))
+        lines.append(words.last_move_line.format(move=placed_move_text(move.last_move, size, words)))
     return lines
 
 
@@ -189,18 +191,26 @@ def _score_line(move: MoveMaterial, words: PromptWords) -> list[str]:
     return [words.score_line.format(leader=leader, points=abs(move.score_after))]
 
 
-def _reply_lines(move: MoveMaterial, words: PromptWords) -> list[str]:
-    """Return the lines about the opponent's next move."""
+def _reply_lines(move: MoveMaterial, size: int, words: PromptWords) -> list[str]:
+    """Return the lines about the opponent's next move (the moves with their places)."""
     reply = move.reply
     if reply is None:
         return [words.reply_none]
-    lines = [words.reply_line.format(move=_move_text(reply.move, words))]
+    lines = [words.reply_line.format(move=placed_move_text(reply.move, size, words))]
     if reply.best_move:
         loss = words.reply_loss.format(loss=reply.points_lost) if reply.points_lost is not None else ""
-        lines.append(words.reply_best_line.format(best=reply.best_move, loss=loss))
+        best = placed_move_text(Move.from_gtp(reply.best_move, reply.move.color), size, words)
+        lines.append(words.reply_best_line.format(best=best, loss=loss))
     if reply.pv:
         lines.append(words.reply_sequence_line.format(sequence=_sequence(reply.pv, words)))
     return lines
+
+
+def _shape_lines(material: GameMaterial, move: MoveMaterial, words: PromptWords) -> list[str]:
+    """Return the facts about the shapes around the move, or only the steps of the sequence without them."""
+    if move.facts is None:
+        return _step_lines(move.pv_steps, words)
+    return fact_lines(move.facts, material.size, _zoom_region(material, move), words)
 
 
 def _step_lines(steps: tuple[PvStep, ...], words: PromptWords) -> list[str]:
@@ -208,10 +218,10 @@ def _step_lines(steps: tuple[PvStep, ...], words: PromptWords) -> list[str]:
     lines = []
     for number, step in enumerate(steps, start=1):
         captured = GroupInfo(opponent(step.move.color), step.captured, 0)
-        events = [words.captures.format(group=_group_text(captured, words))] if step.captured else []
-        events += [words.atari.format(group=_group_text(group, words)) for group in step.in_atari]
+        events = [words.captures.format(group=group_text(captured, words))] if step.captured else []
+        events += [words.atari.format(group=group_text(group, words)) for group in step.in_atari]
         if events:
-            move = _move_text(step.move, words)
+            move = move_text(step.move, words)
             lines.append(words.step_line.format(number=number, move=move, events=words.list_separator.join(events)))
     return lines or [words.no_steps]
 
@@ -220,7 +230,7 @@ def _nearby_lines(groups: tuple[GroupInfo, ...], words: PromptWords) -> list[str
     """Return the lines of the groups near the move, on the board before it."""
     if not groups:
         return []
-    lines = [words.nearby_line.format(group=_group_text(group, words), liberties=group.liberties) for group in groups]
+    lines = [words.nearby_line.format(group=group_text(group, words), liberties=group.liberties) for group in groups]
     return [words.nearby_heading, *lines]
 
 
@@ -231,9 +241,13 @@ def _whole_diagram(material: GameMaterial, move: MoveMaterial) -> str:
 
 def _zoom_diagram(material: GameMaterial, move: MoveMaterial) -> str:
     """Return the diagram of the part of the board around the played move and the best move."""
+    return diagram.render(move.before.stones, _zoom_region(material, move), move.last_move, _marks(move))
+
+
+def _zoom_region(material: GameMaterial, move: MoveMaterial) -> diagram.Region:
+    """Return the part of the board around the played move and the best move."""
     points = [m.coord for m in (move.played, move.best_move) if m is not None and m.coord is not None]
-    region = diagram.region_around(points, material.size, ZOOM_MARGIN, ZOOM_MINIMUM)
-    return diagram.render(move.before.stones, region, move.last_move, _marks(move))
+    return diagram.region_around(points, material.size, ZOOM_MARGIN, ZOOM_MINIMUM)
 
 
 def _marks(move: MoveMaterial) -> dict[Point, str]:
@@ -248,23 +262,4 @@ def _marks(move: MoveMaterial) -> dict[Point, str]:
 
 def _sequence(moves: tuple[Move, ...], words: PromptWords) -> str:
     """Return a sequence such as "黒Q16 → 白R14"."""
-    return words.sequence_arrow.join(_move_text(move, words) for move in moves) if moves else words.none
-
-
-def _move_text(move: Move, words: PromptWords) -> str:
-    """Return a move such as "黒Q16" or "白パス"."""
-    point = words.pass_move if move.is_pass else move.gtp()
-    return words.move.format(color=words.color_name(move.color), point=point)
-
-
-def _group_text(group: GroupInfo, words: PromptWords) -> str:
-    """Return a group such as "白の石 C3,C4(2子)"."""
-    return words.group.format(
-        color=words.color_name(group.color), points=_points(group.stones), count=len(group.stones)
-    )
-
-
-def _points(points: tuple[Point, ...]) -> str:
-    """Return points as GTP coordinates, such as "C3,C4" (at most 8, then "…")."""
-    names = [f"{GTP_COLUMNS[x]}{y + 1}" for x, y in points[:8]]
-    return ",".join(names) + (",…" if len(points) > 8 else "")
+    return words.sequence_arrow.join(move_text(move, words) for move in moves) if moves else words.none

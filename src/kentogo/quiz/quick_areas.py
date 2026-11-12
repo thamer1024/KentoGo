@@ -4,6 +4,9 @@ After the answer, the board shows who owns each point at whatever move of the se
 so that the user sees how the areas change move by move. These areas need not be exact: they are
 read shallowly (see katago.quick_reading). The exact standing is calculated only at the last move
 of a sequence (see quiz.standings), and its areas are shown there instead.
+
+The score lead of the same reading is told too (shown_lead), so that the user sees the standing a
+few moves into a sequence, not only at its end.
 """
 
 from __future__ import annotations
@@ -47,6 +50,14 @@ class QuickAreas:
         transform, size = self.session.transform, self.session.problem.position.size
         sign = -1.0 if transform.swap_colors else 1.0
         return {transform.point(point, size): value * sign for point, value in reading.ownership.items()}
+
+    def shown_lead(self) -> float | None:
+        """Return black's rough score lead in the shown position, as the board is shown, once it is read (else None)."""
+        key = self._shown_key()
+        reading = self.readings.get(key) if key is not None else None
+        if reading is None:
+            return None
+        return -reading.lead if self.session.transform.swap_colors else reading.lead
 
     def ask(self, engine: AnalysisEngine | None, wide_root_noise: float | None, on_change: Callable[[], None]) -> None:
         """Read the areas of the shown position if they are not known (after the answer; else nothing).

@@ -20,6 +20,7 @@ from kentogo.gui.texts import (
     notes_text,
     problem_info,
     result_text,
+    rough_standing_text,
     sequence_name,
     sequence_order_text,
     sequence_text,
@@ -166,15 +167,15 @@ def test_color_name():
 def test_sequence_name():
     """Known sources have names, and an unknown source is shown as it is."""
     assert sequence_name("katrain") == "最善手の手順（KaTrain）"
-    assert sequence_name("katago") == "あなたの手の続き（KataGoの予想）"
-    assert sequence_name("katago_actual") == "実戦の手の続き（KataGoの予想）"
+    assert sequence_name("katago") == "あなたの手の続き（相手は最強の応手）"
+    assert sequence_name("katago_actual") == "実戦の手の続き（相手は最強の応手）"
     assert sequence_name("other") == "other"
 
 
 def test_sequence_text():
     """The shown sequence has its name, an explanation, which of the sequences it is, and the move count."""
     shown = sequence_text("katago", index=2, count=3, step=4, total=12)
-    assert "表示中：あなたの手の続き（KataGoの予想）" in shown
+    assert "表示中：あなたの手の続き（相手は最強の応手）" in shown
     assert "あなたが打った手の後" in shown
     assert "手順 2 / 3" in shown and "4 / 12 手目" in shown
 
@@ -289,8 +290,10 @@ def test_sequence_order_text():
     """The order line names every sequence, marks the shown one, and tells which are still calculated."""
     line = sequence_order_text([("katago", "waiting"), ("katrain", ""), ("katago_compare", "failed")], 1, 12)
     assert line.startswith("Tabで切替：あなたの手(考え中 12秒) → ")
-    assert "▶棋譜(KaTrain)" in line and "比較用モデル(失敗)" in line
+    assert "▶KaTrainの手" in line and "比較用モデル(失敗)" in line
     assert "比較用モデル(選ぶと計算)" in sequence_order_text([("katago_compare", "offered")], 0)
+    order = sequence_order_text([("katago", ""), ("game", ""), ("katago_actual", ""), ("katrain", "")], 0)
+    assert order.endswith("あなたの手[/b][/color] → 実戦 → 最強応手 → KaTrainの手")
 
 
 def test_the_comparison_models_seconds_are_shown_only_while_its_sequence_is_shown():
@@ -304,7 +307,11 @@ def test_the_comparison_models_seconds_are_shown_only_while_its_sequence_is_show
 def test_sequence_text_while_waiting():
     """While KataGo is calculating, the text says so instead of the move count."""
     shown = sequence_text("katago_compare", index=1, count=2, step=0, total=0, status="waiting")
-    assert "表示中：比較用モデルの最善手順" in shown and "考えています" in shown and "手目" not in shown
+    assert (
+        "表示中：比較用モデルの第一手の続き（相手は最強の応手）" in shown
+        and "考えています" in shown
+        and "手目" not in shown
+    )
 
 
 def test_fill_step_text():
@@ -473,3 +480,17 @@ def test_katagos_findings_about_the_best_move():
     )
     assert tactics_text(best, (), MoveValue(6.0, 0, 0, 0.1)) == "最善 Q4：大場？（手抜きすると6.0目損）"
     assert tactics_text(best, (), MoveValue(0.5, 0, 0, 0.1)) == ""  # Too small to tell.
+
+
+def test_every_tactic_has_a_name():
+    """Each name that common.tactics can give has a text (in Japanese and in English)."""
+    from kentogo.common.tactics import GUESSED, SURE
+    from kentogo.gui.texts import TEXTS
+
+    assert all(f"tactic_{name}" in TEXTS for name in SURE + GUESSED)
+
+
+def test_rough_standing_text():
+    """The rough standing a few moves into a sequence: who leads, by how much, after how many moves."""
+    assert rough_standing_text(2.34, 4) == "形勢の目安：黒 2.3目リード（4手後・浅い読み）"
+    assert rough_standing_text(-1.0, 6).startswith("形勢の目安：白 1.0目リード")

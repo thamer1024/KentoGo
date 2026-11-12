@@ -61,12 +61,12 @@ class LineEngines:
     """What the sequence is made with.
 
     Attributes:
-        best: KataGo for the user's moves (the main KataGo, or the comparison model).
-        human: KataGo with the human-like model (the main KataGo), for the opponent's moves.
-        visits: The visits of each of the user's moves.
+        best: KataGo for the best moves of a side without a profile (the main KataGo, or the comparison model).
+        human: KataGo with the human-like model (the main KataGo), for the moves of a side with a profile.
+        visits: The visits of each best move.
         wide_root_noise: KaTrain's "wide_root_noise", or None for KataGo's own setting.
         profile: KataGo's humanSLProfile of the opponent's rank (see katago.human_moves.human_profile), or ""
-            (then the opponent plays best's best moves too).
+            (then the opponent plays best's best moves: the strongest replies).
         my_profile: KataGo's humanSLProfile of the user's rank, or "" (then the user plays best's best moves).
     """
 

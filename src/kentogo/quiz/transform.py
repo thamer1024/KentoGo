@@ -76,6 +76,7 @@ class BoardTransform:
             actual_move=self.move(problem.actual_move, size),
             best_move=self.move(problem.best_move, size) if problem.best_move else None,
             variations=tuple(replace(v, moves=self.moves(v.moves, size)) for v in problem.variations),
+            game_line=self.moves(problem.game_line, size),
         )
 
     def standing(self, standing: Standing, size: int) -> Standing:
