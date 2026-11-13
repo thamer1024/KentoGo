@@ -12,9 +12,11 @@ Its keys:
   "kentogo": KentoGo's version.
 - "seconds": "total", "analysis" (KataGo's reading) and "writing" (the analysis put into the game, the
   backup and the file written).
-- "steps": the steps of the analysis in their order (see analysis.analyze), each with its "step" name,
-  its "seconds" (from the end of the step before it, or the start of the game) and its "answers" (the
-  answers of KataGo it got).
+- "steps": the steps of the analysis in the order they ran (see analysis.analyze), each with its "step"
+  name, its "seconds" (from the end of the step before it, or the start of the game) and its "answers"
+  (the answers of KataGo it got). A step that runs again after another one is a new entry: the played
+  moves are read after the first analysis and again at the end of the deep reading ("played", "deep",
+  "played").
 - "nodes" (all nodes of the game), "problem_nodes" (the moves that can become problems), "deep_nodes"
   (the moves read deeply), "failed_nodes" (the nodes that KataGo could not analyze).
 - "visits": "first" (each position of the first analysis) and "deep" (the deep reading).
@@ -45,12 +47,13 @@ class StepClock:
     Attributes:
         clock: Gives the time in seconds (time.monotonic; tests give their own).
         started: When the game started.
-        steps: For each step, in the order they came: the time of its last answer and the number of answers.
+        steps: The steps in the order they ran, a step that runs again after another one counted again: its
+            name, the time of its last answer and the number of its answers.
     """
 
     clock: Callable[[], float] = time.monotonic
     started: float = field(init=False)
-    steps: dict[str, list[float]] = field(default_factory=dict, init=False)
+    steps: list[list] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         self.started = self.clock()
@@ -58,14 +61,15 @@ class StepClock:
     def progress(self, step: str, _done: int, _total: int) -> None:
         """Keep the time of an answer of a step (called in KataGo's thread)."""
         now = self.clock()
-        found = self.steps.setdefault(step, [now, 0])
-        found[0] = now
-        found[1] += 1
+        if not self.steps or self.steps[-1][0] != step:
+            self.steps.append([step, now, 0])
+        self.steps[-1][1] = now
+        self.steps[-1][2] += 1
 
     def step_times(self) -> list[dict]:
         """Return each step with its seconds (from the end of the step before it) and its answers."""
         found, before = [], self.started
-        for step, (end, answers) in self.steps.items():
+        for step, end, answers in self.steps:
             found.append({"step": step, "seconds": round(end - before, 2), "answers": int(answers)})
             before = end
         return found

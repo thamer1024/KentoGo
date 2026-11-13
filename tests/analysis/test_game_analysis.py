@@ -238,6 +238,16 @@ def test_moves_that_can_become_problems_are_read_deeply():
     assert played_move_loss(game, game.nodes[3]) == 6.5
 
 
+def test_moves_are_read_deeply_from_a_share_of_the_loss_but_problems_need_the_whole_loss():
+    """A5 lost 6.5 points: with a loss of 8, it is read deeply from half of it (4), but it is no problem position."""
+    engine = FakeEngine()
+    game = analyze_game(engine, root(), FIRST, VALUES, lambda *_: None, DeepTargets({"B": 8.0}, 2000, read_share=0.5))
+    assert [query["allowMoves"][0]["moves"] for query in played(engine) if query["maxVisits"] == 2000] == [["A5"]]
+    assert game.problem_nodes == [] and game.deep_nodes == []
+    whole = analyze_game(FakeEngine(), root(), FIRST, VALUES, lambda *_: None, DeepTargets({"B": 6.5}, 2000))
+    assert [node.depth for node in whole.problem_nodes] == [3] == [node.depth for node in whole.deep_nodes]
+
+
 def allowed(engine: FakeEngine, visits: int) -> list[list[str]]:
     """The played moves read with these visits."""
     return [query["allowMoves"][0]["moves"] for query in played(engine) if query["maxVisits"] == visits]

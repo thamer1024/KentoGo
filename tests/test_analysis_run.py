@@ -245,16 +245,18 @@ def test_deep_targets_come_from_the_quiz_settings():
     settings = AppSettings(quiz=QuizSettings(extract=extract), engine=EngineSettings(max_visits=500))
     root = GoGame.parse_sgf("(;SZ[9]PB[hama]PW[AI];B[ee])")
     targets = analysis_run.deep_targets(settings, root, Path("game.sgf"))
-    assert (targets.losses, targets.visits, targets.my_colors) == (
-        {"B": 2.5, "W": 7.5},
+    assert (targets.losses, targets.visits, targets.my_colors, targets.read_share) == (
+        {"B": 5.0, "W": 15.0},
         500,
         {"B"},
-    )  # Half of the last stage and of the punishment loss (the first analysis is rough); the engine's visits.
+        0.5,
+    )  # The last stage and the punishment loss, read deeply from half of them (the first analysis is rough).
+    assert targets.scaled(targets.read_share).losses == {"B": 2.5, "W": 7.5}
     unknown = GoGame.parse_sgf("(;SZ[9]PB[someone]PW[other];B[ee])")
     deep = AppSettings(quiz=QuizSettings(extract=extract), analysis=AnalysisSettings(deep_visits=3000))
     assert analysis_run.deep_targets(deep, unknown, Path("x.sgf")) == DeepTargets(
-        {"B": 2.5, "W": 2.5}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=2.5
-    )  # 6 moves of a game at most; an opponent's move when the reply lost half of the quiz's punish_my_loss.
+        {"B": 5.0, "W": 5.0}, 3000, max_moves=6, my_colors=frozenset({"B", "W"}), reply_loss=5.0, read_share=0.5
+    )  # 6 moves of a game at most; an opponent's move when the reply lost the quiz's punish_my_loss.
     assert targets.decided(0.995, 0.0) and targets.decided(0.5, -61.0) and not targets.decided(0.98, 10.0)
 
 

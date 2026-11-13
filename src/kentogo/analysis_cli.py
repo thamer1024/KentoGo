@@ -150,7 +150,8 @@ def deep_plan_text(root: GoNode, path: Path, settings: AppSettings) -> str:
     game = GameAnalysis(root)
     load_saved_analyses(game)
     nodes = chosen_deep_candidates(game, targets)
-    limits = ", ".join(f"{color} {loss:g}+" for color, loss in sorted(targets.losses.items()))
+    read = targets.scaled(targets.read_share)
+    limits = ", ".join(f"{color} {loss:g}+" for color, loss in sorted(read.losses.items()))
     moves = ", ".join(f"{node.depth}{node.move.player}" for node in nodes) or "none"
     return (
         f"deep reading ({targets.visits} visits; loss {limits}): {len(nodes)} moves: {moves} "

@@ -33,6 +33,18 @@ def test_each_step_takes_the_time_since_the_step_before_it():
     ]
 
 
+def test_a_step_that_runs_again_after_another_one_is_a_new_entry():
+    """The played moves are read again at the end of the deep reading: each run has its own seconds (none below 0)."""
+    clock = StepClock(Ticks(0.0, 2.0, 5.0, 1.0))  # Started at 100; played at 102, deep at 107, played at 108.
+    for step in ("played", "deep", "played"):
+        clock.progress(step, 1, 1)
+    assert clock.step_times() == [
+        {"step": "played", "seconds": 2.0, "answers": 1},
+        {"step": "deep", "seconds": 5.0, "answers": 1},
+        {"step": "played", "seconds": 1.0, "answers": 1},
+    ]
+
+
 def test_the_record_of_a_game():
     """The record has the file, the seconds of the whole, of KataGo and of the writing, the nodes and the sizes."""
     clock = StepClock(Ticks(0.0, 4.0))

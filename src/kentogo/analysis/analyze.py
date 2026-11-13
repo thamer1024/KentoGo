@@ -69,8 +69,8 @@ class DeepTargets:
     """Which moves are read deeply (see the module's docstring).
 
     Attributes:
-        losses: The smallest loss of a move read deeply, by color ("B" and "W"); a color that is
-            missing is not read deeply.
+        losses: The smallest loss of a problem, by color ("B" and "W"); a color that is missing is not
+            read deeply.
         visits: The visits of the deep reading.
         decided: Tells whether a position is decided, from black's winrate and score lead before the move
             (see mistakes.selection.Selection.is_decided); a move in a decided position is not read deeply.
@@ -81,6 +81,9 @@ class DeepTargets:
             least this many points: the user did not punish it (the quiz's punish_my_loss).
         handicap: True for a game with handicap stones: then decided is given the lead gained since the start
             and no winrate (see common.handicap).
+        read_share: A move is read deeply when it lost this share of losses (and the user's reply this share of
+            reply_loss) by the first analysis, whose losses are rough; after the deep reading, only the moves
+            that lost the whole losses are the game's problem_nodes (see read_deeply).
     """
 
     losses: dict[str, float]
@@ -90,6 +93,12 @@ class DeepTargets:
     my_colors: frozenset[str] = frozenset({"B", "W"})
     reply_loss: float = 0.0
     handicap: bool = False
+    read_share: float = 1.0
+
+    def scaled(self, share: float) -> DeepTargets:
+        """Return the same targets with losses and reply_loss multiplied by share."""
+        losses = {color: loss * share for color, loss in self.losses.items()}
+        return replace(self, losses=losses, reply_loss=self.reply_loss * share)
 
 
 def analyze_game(
@@ -143,7 +152,11 @@ def read_deeply(
     retries: int,
     targets: DeepTargets,
 ) -> None:
-    """Read the moves that can become problems deeply, and keep those that still lose enough as deep_nodes.
+    """Read the moves that can become problems deeply, and keep the moves that lose enough as problem_nodes.
+
+    The moves read deeply are chosen with the rough losses of the first analysis (see DeepTargets.read_share).
+    After the reading, the moves of the game that lost the whole losses are the problem_nodes, and those of
+    them that were read deeply are the deep_nodes.
 
     The positions before and after each move are analyzed with the deep visits (unless they were read
     that deeply already), and the played move is read again in the position before it with those visits,
@@ -171,14 +184,13 @@ def played_nodes(game: GameAnalysis, targets: DeepTargets | None) -> list[GoNode
     """Return the nodes whose played move is read in the position before it.
 
     They are the nodes that need it (see analysis.played_moves.needs_reading); when moves are read deeply,
-    only those whose move lost at least PLAYED_READ_SHARE of the smallest loss of its color, not in a
-    decided position (see the module's docstring).
+    only those whose move lost at least PLAYED_READ_SHARE of the smallest loss of its color that is read
+    deeply (DeepTargets.read_share of the losses), not in a decided position (see the module's docstring).
     """
     nodes = [node for node in game.nodes if needs_reading(game, node)]
     if targets is None:
         return nodes
-    losses = {color: loss * PLAYED_READ_SHARE for color, loss in targets.losses.items()}
-    rough = replace(targets, losses=losses, reply_loss=targets.reply_loss * PLAYED_READ_SHARE)
+    rough = targets.scaled(targets.read_share * PLAYED_READ_SHARE)
     return [node for node in nodes if _is_candidate(game, node, rough)]
 
 
@@ -191,11 +203,11 @@ def deep_candidates(game: GameAnalysis, targets: DeepTargets) -> list[GoNode]:
 def chosen_deep_candidates(game: GameAnalysis, targets: DeepTargets) -> list[GoNode]:
     """Return the deep candidates that are read deeply, in the order of the game (all when max_moves is 0).
 
-    The biggest losses are taken, but the user's mistakes come first: the opponent's moves take at most
+    The candidates are the moves that lost DeepTargets.read_share of the losses. The biggest losses are taken, but the user's mistakes come first: the opponent's moves take at most
     half of max_moves (rounded down), so at least half are the user's mistakes when there are enough of them.
     Of two equal losses, the user's move and then the earlier move is taken.
     """
-    found = deep_candidates(game, targets)
+    found = deep_candidates(game, targets.scaled(targets.read_share))
     if targets.max_moves <= 0:
         return found
     order = sorted(found, key=lambda node: (-(played_move_loss(game, node) or 0.0), not _is_mine(node, targets)))

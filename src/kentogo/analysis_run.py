@@ -243,7 +243,8 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
 
     The losses of the first analysis are rough (it reads few visits), so a move is read deeply already when
     it lost DETECTION_SHARE of those losses: a mistake that the first analysis found a little smaller is not
-    missed. The deep reading then gives its loss, and only a move that lost enough becomes a problem.
+    missed (DeepTargets.read_share). The deep reading then gives its loss, and only a move that lost the whole
+    loss can become a problem (the game's problem_nodes).
     """
     extract = settings.quiz.extract
     mine = extract.smallest_loss()
@@ -256,7 +257,6 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
     )
     theirs = extract.punish_opponent_loss
     losses = {"B": mine, "W": mine} if color is None else {color: mine, opponent(color): theirs}
-    losses = {key: value * DETECTION_SHARE for key, value in losses.items()}
     visits = settings.analysis.deep_visits or settings.engine.max_visits
     mine = frozenset({"B", "W"} if color is None else {color})
     decided = Selection.from_quiz(extract).is_decided
@@ -267,8 +267,9 @@ def deep_targets(settings: AppSettings, root: GoNode, path: Path) -> DeepTargets
         decided,
         settings.analysis.deep_max_moves,
         mine,
-        extract.punish_my_loss * DETECTION_SHARE,
+        extract.punish_my_loss,
         handicap,
+        DETECTION_SHARE,
     )
 
 
