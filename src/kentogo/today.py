@@ -23,6 +23,7 @@ from kentogo.answers import saved_problems
 from kentogo.app_settings import AppSettings
 from kentogo.commentary.history import CommentaryHistory
 from kentogo.commentary.history import history_path as commentary_history_path
+from kentogo.mistakes.extract import with_game_line
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame, collect_games
@@ -258,11 +259,12 @@ def _lost_reviews(
     """Return the reviews due today whose problems are no longer made from the games.
 
     This happens when a game is analyzed again, the conditions for choosing problems
-    change, or the file is moved or deleted. The copies kept in the history are used.
+    change, or the file is moved or deleted. The copies kept in the history are used; an old copy without the
+    game's own sequence gets it from its file, when the file is still there (see mistakes.extract.with_game_line).
     """
     made = {problem.problem_id for problem in problems}
     lost = sorted(problem_id for problem_id, state in states.items() if problem_id not in made and state.is_due(today))
-    return saved_problems(history, lost) if lost else []
+    return [with_game_line(problem) for problem in saved_problems(history, lost)] if lost else []
 
 
 def prepare_problems(

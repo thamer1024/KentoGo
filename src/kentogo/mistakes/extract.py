@@ -64,7 +64,7 @@ from kentogo.record.players import detect_my_color
 REASON_UNKNOWN_COLOR = "unknown_color"  # The user's color was not found.
 REASON_NO_ANALYSIS = "no_analysis"  # The game has neither KaTrain's comments nor its analysis data (KT).
 
-GAME_LINE_MOVES = 15  # The game's own sequence of a problem has at least this many moves (when the game has them).
+GAME_LINE_MOVES = 10  # The game's own sequence of a problem has at least this many moves (when the game has them).
 
 
 @dataclass(frozen=True)
@@ -525,6 +525,40 @@ def _game_line(node: GoNode, problem: Problem) -> tuple[Move, ...]:
             moves.append(move)
         node = node.children[0] if node.children else None
     return tuple(moves) if len(moves) >= 2 else ()
+
+
+def with_game_line(problem: Problem) -> Problem:
+    """Return a problem with the game's own sequence read again from its SGF file, when it has none.
+
+    The copies of problems kept in the history before the game's own sequence was kept have none (see
+    today._lost_reviews). When the file cannot be read, or the problem's position is not in it, the problem
+    is returned as it is.
+    """
+    if problem.game_line:
+        return problem
+    try:
+        root = sgf.load_game(problem.sgf_path)
+    except Exception:  # A file moved or broken: the problem is still asked, without the game's sequence.
+        return problem
+    node = _problem_node(root, problem)
+    return problem if node is None else replace(problem, game_line=_game_line(node, problem))
+
+
+def _problem_node(root: GoNode, problem: Problem) -> GoNode | None:
+    """Return the node of a problem's game move after its position's moves (in any branch), or None."""
+    moves = problem.position.moves
+    stack = [(root, ())]
+    while stack:
+        node, before = stack.pop()
+        move = sgf.node_move(node)
+        if move is not None:
+            if before == moves and move == problem.actual_move:
+                return node
+            before = (*before, move)
+            if len(before) > len(moves) or before != moves[: len(before)]:
+                continue
+        stack.extend((child, before) for child in node.children)
+    return None
 
 
 def _with_opponent_move(problem: Problem, node: GoNode, game: _Game, settings: ExtractSettings) -> Problem:

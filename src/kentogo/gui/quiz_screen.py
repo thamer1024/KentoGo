@@ -32,6 +32,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.modalview import ModalView
 from kivy.uix.scrollview import ScrollView
 
@@ -50,8 +51,9 @@ from kentogo.gui.board_view import (
 from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.dialogs import show_message
 from kentogo.gui.file_name_row import FileNameRow
+from kentogo.gui.flash_label import FlashLabel
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
-from kentogo.mistakes.problem import Problem
+from kentogo.mistakes.problem import SOURCE_KENTOGO, SOURCE_RANK_ANSWER, Problem
 from kentogo.quiz.best_move_value import BestMoveValue
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quick_areas import QuickAreas
@@ -73,6 +75,9 @@ MIN_PANEL_RATIO = 0.3
 # The lowest height of the information (dp): the kind of the problem in big letters, the game and the problem
 # on two lines, and one empty line.
 INFO_HEIGHT = 86
+# The sequences whose standing is compared with the game after the same number of moves (the points got back):
+# the user's answer with the replies of the opponent's rank, and the best sequence of KentoGo's analysis.
+GAIN_SOURCES = (SOURCE_RANK_ANSWER, SOURCE_KENTOGO)
 
 
 class QuizScreen(BoxLayout):
@@ -140,9 +145,15 @@ class QuizScreen(BoxLayout):
     def _build(self) -> None:
         """Make the widgets of the screen."""
         # The board is square, so that the space around it is the same on every side.
-        self.board = BoardWidget(size_hint_x=None)
+        # The board and, over it, the name of the sequence chosen with Tab, shown for a moment. The name is not
+        # a child of the board: the board clears its whole canvas when it draws itself again.
+        self.board_box = FloatLayout(size_hint_x=None)
+        self.board = BoardWidget(pos_hint={"x": 0, "y": 0})  # It fills the box.
         self.board.bind(on_point=self._on_point)
-        self.add_widget(self.board)
+        self.flash = FlashLabel(pos_hint={"center_x": 0.5, "center_y": 0.5})
+        self.board_box.add_widget(self.board)
+        self.board_box.add_widget(self.flash)
+        self.add_widget(self.board_box)
         self.bind(size=self._fit_board)
 
         panel = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
@@ -188,7 +199,7 @@ class QuizScreen(BoxLayout):
 
     def _fit_board(self, *_args) -> None:
         """Make the board as wide as the screen is tall, but leave at least MIN_PANEL_RATIO for the panel."""
-        self.board.width = min(self.height, self.width * (1 - MIN_PANEL_RATIO))
+        self.board_box.width = min(self.height, self.width * (1 - MIN_PANEL_RATIO))
 
     @property
     def session(self) -> QuizSession | None:
@@ -277,10 +288,25 @@ class QuizScreen(BoxLayout):
         self._refresh()
 
     def next_variation(self) -> None:
-        """Switch to the next sequence (only after the answer, and not while KataGo is calculating)."""
+        """Switch to the next sequence (only after the answer, and not while KataGo is calculating).
+
+        Its first move is shown at once, and its name is shown over the board for a moment.
+        """
         if self.run.next_variation():
-            self._show_result(self.session)  # The line of the losses tells about the shown sequence.
-            self._refresh()
+            self._variation_switched()
+
+    def previous_variation(self) -> None:
+        """Switch to the sequence before (Shift+Tab), as next_variation does the next one."""
+        if self.run.previous_variation():
+            self._variation_switched()
+
+    def _variation_switched(self) -> None:
+        """Show the sequence chosen now, and its name over the board for a moment."""
+        self._show_result(self.session)  # The line of the losses tells about the shown sequence.
+        self._refresh()
+        choice = self.session.choice
+        if choice is not None:
+            self.flash.flash(texts.short_sequence_name(choice.source))
 
     def _prepare_standings(self) -> None:
         """Ask KataGo for the standings of the sequences that have none yet (after the answer, see quiz.standings)."""
@@ -379,7 +405,8 @@ class QuizScreen(BoxLayout):
         """Handle the keys.
 
         Space or the right arrow plays the sequence forward, Shift+Space or the left
-        arrow plays it back, Tab switches the sequence, and Enter goes to the next problem.
+        arrow plays it back, Tab switches to the next sequence and Shift+Tab to the one before, and Enter
+        goes to the next problem.
         The keys are not used while a popup (such as the settings screen) is open.
         """
         if any(isinstance(widget, ModalView) for widget in Window.children):
@@ -389,6 +416,8 @@ class QuizScreen(BoxLayout):
             self.step_back()
         elif key == KEY_RIGHT or key == KEY_SPACE:
             self.step_forward()
+        elif key == KEY_TAB and shift:
+            self.previous_variation()
         elif key == KEY_TAB:
             self.next_variation()
         elif key in KEY_ENTERS:
@@ -485,6 +514,8 @@ class QuizScreen(BoxLayout):
         standing = standings.at_end() if standings is not None else None
         if standing is not None:
             lines.append(texts.standing_text(standing, len(moves)))
+            if choice.source in GAIN_SOURCES:
+                lines.append(texts.standing_gain_text(standing))
         elif not at_end:
             lines += self._rough_standing_lines(session)
         return "\n".join(lines)

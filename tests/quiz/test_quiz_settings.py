@@ -37,6 +37,9 @@ def test_from_and_to_dict():
         "max_answer_loss": 0.0,
         "ratio_offer": False,
         "ratio_asked_at": 40,
+        "limit_asked_at": 70,
+        "offer_window": 20,
+        "limit_steps": [10.0, 4.0],
         "problem_kind": "punish",
     }
     settings = QuizSettings.from_dict(values)
@@ -44,6 +47,12 @@ def test_from_and_to_dict():
     assert settings.extract == ExtractSettings(("Taro",), 3, 2.5, 0, True)
     assert settings.scoring == ScoringPolicy(2.0, 0.9, 0.5)
     assert settings.to_dict() == values
+
+
+def test_the_limit_steps_are_kept_the_biggest_first():
+    """The steps are kept the biggest first, without repeats."""
+    assert QuizSettings.from_dict({"limit_steps": [3, 12, 8, 8]}).limit_steps == (12.0, 8.0, 3.0)
+    assert QuizSettings().offer_window == 30 and QuizSettings().limit_steps == (12.0, 8.0, 5.0, 3.0)
 
 
 @pytest.mark.parametrize(
@@ -55,6 +64,10 @@ def test_from_and_to_dict():
         {"problems_per_game": "many"},
         {"pass_ratio": 80},
         {"ratio_asked_at": -1},
+        {"limit_asked_at": -1},
+        {"offer_window": 0},
+        {"limit_steps": [8, 0]},
+        {"limit_steps": "12,8"},
         {"ratio_offer": "yes"},
     ],
 )

@@ -37,7 +37,9 @@ class BoardView:
     Attributes:
         size: Number of lines of the board.
         stones: The stones on the board, as {point: "B" or "W"}.
-        numbers: Numbers to write on stones of a sequence, as {point: number}.
+        numbers: Numbers to write on stones of a sequence, as {point: number}. The newest move of the
+            sequence has none: it is shown by newest instead, and gets its number when the next move is played.
+        newest: The stone of the newest move of a sequence, drawn with a big filled circle, or None.
         last_move: The point of the last move of the position, or None.
         marks: Marks to draw on points, as {point: kinds}, such as (MARK_ANSWER,). When a point has
             several kinds, they are drawn as rings inside each other, the first one outside.
@@ -57,6 +59,7 @@ class BoardView:
     dead: frozenset[Point] = frozenset()
     territory: dict[Point, str] = field(default_factory=dict)
     ownership: dict[Point, float] = field(default_factory=dict)
+    newest: Point | None = None
 
 
 def collect_marks(moves: list[tuple[Move | None, str]]) -> dict[Point, tuple[str, ...]]:
@@ -89,21 +92,24 @@ def make_board_view(
 
     Returns:
         The view. A number is shown only while its stone is still on the board,
-        and only the newest number is shown on a point.
+        and only the newest number is shown on a point. The newest move of the sequence
+        has no number: it is the view's newest (none after a pass).
     """
     board = Board.from_position(position)
     numbers: dict[Point, int] = {}
+    newest = None
     for number, move in enumerate(sequence, start=1):
         try:
             board.play(move)
         except IllegalMoveError:
             break
+        newest = move.coord
         if move.coord is not None:
             numbers[move.coord] = number
     stones = board.stones()
-    numbers = {point: number for point, number in numbers.items() if point in stones}
+    numbers = {point: number for point, number in numbers.items() if point in stones and point != newest}
     last_move = position.moves[-1].coord if position.moves else None
-    return BoardView(position.size, stones, numbers, last_move, dict(marks or {}))
+    return BoardView(position.size, stones, numbers, last_move, dict(marks or {}), newest=newest)
 
 
 def mark_outline(kind: str, center: tuple[float, float], radius: float) -> list[float] | None:

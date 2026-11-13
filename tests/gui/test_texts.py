@@ -17,6 +17,7 @@ from kentogo.gui.texts import (
     game_averages_text,
     history_text,
     kind_title,
+    limit_offer_text,
     notes_text,
     problem_info,
     result_text,
@@ -24,11 +25,15 @@ from kentogo.gui.texts import (
     sequence_name,
     sequence_order_text,
     sequence_text,
+    short_sequence_name,
     skipped_games_text,
     skipped_text,
+    standing_gain_text,
+    standing_text,
     tactics_text,
     text,
 )
+from kentogo.katago.estimate import Estimate, Standing
 from kentogo.katago.move_value import MoveValue
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
@@ -166,7 +171,7 @@ def test_sequence_name():
     """Known sources have names, and an unknown source is shown as it is."""
     assert sequence_name("katrain") == "最善手の手順（KaTrain）"
     assert sequence_name("katago") == "あなたの手の続き（相手は最強の応手）"
-    assert sequence_name("katago_actual") == "実戦の手の続き（相手は最強の応手）"
+    assert sequence_name("rank") == "あなたの手の続き（相手は段級位の応手）"
     assert sequence_name("other") == "other"
 
 
@@ -266,19 +271,25 @@ def test_skipped_games_text():
 
 def test_sequence_order_text():
     """The order line names every sequence, marks the shown one, and tells which are still calculated."""
-    line = sequence_order_text([("katago", "waiting"), ("katrain", ""), ("katago_actual", "failed")], 1, 12)
-    assert line.startswith("Tabで切替：あなたの手(考え中 12秒) → ")
+    line = sequence_order_text([("rank", "waiting"), ("katrain", ""), ("katago", "failed")], 1, 12)
+    assert line.startswith("Tabで切替：段級位の応手(考え中 12秒) → ")
     assert "▶KaTrainの手" in line and "最強応手(失敗)" in line
-    order = sequence_order_text([("katago", ""), ("game", ""), ("katago_actual", ""), ("katrain", "")], 0)
-    assert order.endswith("あなたの手[/b][/color] → 実戦 → 最強応手 → KaTrainの手")
+    order = sequence_order_text([("rank", ""), ("katago", ""), ("game", ""), ("katrain", "")], 0)
+    assert order.endswith("段級位の応手[/b][/color] → 最強応手 → 実戦 → KaTrainの手")
     kentogo = sequence_order_text([("katago", ""), ("kentogo", "")], 0)
     assert kentogo.endswith("→ KentoGoの手") and sequence_name("kentogo") == "最善手の手順（KentoGo）"
 
 
+def test_short_sequence_name():
+    """The short name shown for a moment when the sequence is chosen with Tab."""
+    assert (short_sequence_name("rank"), short_sequence_name("katago")) == ("段級位の応手", "最強応手")
+    assert short_sequence_name("other") == "other"
+
+
 def test_sequence_text_while_waiting():
     """While KataGo is calculating, the text says so instead of the move count."""
-    shown = sequence_text("katago_actual", index=1, count=2, step=0, total=0, status="waiting")
-    assert "表示中：実戦の手の続き（相手は最強の応手）" in shown and "考えています" in shown and "手目" not in shown
+    shown = sequence_text("rank", index=1, count=2, step=0, total=0, status="waiting")
+    assert "表示中：あなたの手の続き（相手は段級位の応手）" in shown and "考えています" in shown and "手目" not in shown
 
 
 def test_fill_step_text():
@@ -455,6 +466,22 @@ def test_every_tactic_has_a_name():
     from kentogo.gui.texts import TEXTS
 
     assert all(f"tactic_{name}" in TEXTS for name in SURE + GUESSED)
+
+
+def test_the_standing_and_the_points_got_back_are_two_texts():
+    """The standing at the end of a sequence, and (shown only for some sequences) how it compares with the game."""
+    standing = Standing(Estimate(-3.0, {}), Estimate(-8.5, {}), "B")
+    assert standing_text(standing, 6) == "形勢：白 3.0目リード（6手後）"
+    assert standing_gain_text(standing) == "実戦の同じ手数と比べて：黒 +5.5目"
+
+
+def test_limit_offer_text():
+    """The offer tells the average loss of the correct answers, and the limit now ("なし" for none) and offered."""
+    from kentogo.quiz.limit_offer import LimitOffer
+
+    first = limit_offer_text(LimitOffer(0.0, 12.0, 6.04, 24, 30))
+    assert "正解した 24 問の、打った手の損の平均は 6.0 目" in first and "なし から 12 目" in first
+    assert "12 から 8 目" in limit_offer_text(LimitOffer(12.0, 8.0, 5.0, 30, 30))
 
 
 def test_rough_standing_text():

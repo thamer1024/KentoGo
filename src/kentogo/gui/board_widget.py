@@ -100,6 +100,7 @@ class BoardWidget(Widget):
             self._draw_territory(geometry)
             self._draw_stones(geometry)
             self._draw_ownership(geometry)
+            self._draw_numbers(geometry)
             self._draw_marks(geometry)
 
     def _geometry(self) -> BoardGeometry:
@@ -148,7 +149,7 @@ class BoardWidget(Widget):
             Rectangle(pos=(x - half, y - half), size=(half * 2, half * 2))
 
     def _draw_stones(self, geometry: BoardGeometry) -> None:
-        """Draw the stones, the numbers on them, and the mark of the last move."""
+        """Draw the stones and the mark of the last move (the numbers come after the territory, see _draw_numbers)."""
         half = geometry.spacing * theme.STONE_SIZE
         for point, color in self.view.stones.items():
             x, y = geometry.to_screen(point)
@@ -161,15 +162,29 @@ class BoardWidget(Widget):
                 Color(*theme.NUMBER_COLORS[color])
                 Line(points=[x - arm, y - arm, x + arm, y + arm], width=2)
                 Line(points=[x - arm, y + arm, x + arm, y - arm], width=2)
-            number = self.view.numbers.get(point)
-            if number is not None:
-                draw_text(str(number), (x, y), geometry.spacing * 0.5, theme.NUMBER_COLORS[color])
         last = self.view.last_move
         if last is not None and last in self.view.stones and last not in self.view.numbers:
             x, y = geometry.to_screen(last)
             Color(*theme.LAST_MOVE_COLOR)
             dot = geometry.stone_radius * 0.35
             Ellipse(pos=(x - dot, y - dot), size=(dot * 2, dot * 2))
+
+    def _draw_numbers(self, geometry: BoardGeometry) -> None:
+        """Draw the numbers of the moves on the stones, over the squares of territory (see draw_outlined_text).
+
+        The newest move of the sequence gets a big filled circle instead of its number (see BoardView.newest).
+        """
+        for point, number in self.view.numbers.items():
+            if point in self.view.stones:
+                draw_outlined_text(str(number), geometry.to_screen(point), geometry.spacing * 0.5)
+        newest = self.view.newest
+        if newest is not None and newest in self.view.stones:
+            x, y = geometry.to_screen(newest)
+            radius = geometry.stone_radius * theme.NEWEST_RADIUS
+            Color(*theme.NEWEST_COLOR)
+            Ellipse(pos=(x - radius, y - radius), size=(radius * 2, radius * 2))
+            Color(*theme.NEWEST_OUTLINE_COLOR)
+            Line(circle=(x, y, radius), width=1.5)
 
     def _draw_marks(self, geometry: BoardGeometry) -> None:
         """Draw a colored mark on each marked point (a ring, or a shape for each kind).
@@ -208,6 +223,28 @@ def stone_texture(color: str) -> Texture:
 def _texture(path: Path) -> Texture:
     """Load an image once, and return its texture."""
     return CoreImage(str(path)).texture
+
+
+def draw_outlined_text(text: str, center: tuple[float, float], font_size: float) -> None:
+    """Draw a number on a stone with its center at the given screen position, readable on any stone.
+
+    It has one bright color with a dark outline (theme.NUMBER_TEXT_COLOR and NUMBER_OUTLINE_COLOR), so that it
+    can be read on black and white stones and on the squares of territory over them.
+    """
+    outline = max(1, round(font_size * theme.NUMBER_OUTLINE))
+    label = CoreLabel(
+        text=text,
+        font_size=font_size,
+        bold=True,
+        color=theme.NUMBER_TEXT_COLOR,
+        outline_width=outline,
+        outline_color=theme.NUMBER_OUTLINE_COLOR,
+    )
+    label.refresh()
+    texture = label.texture
+    Color(1, 1, 1, 1)  # The colors are in the texture.
+    x, y = center
+    Rectangle(texture=texture, pos=(x - texture.width / 2, y - texture.height / 2), size=texture.size)
 
 
 def draw_text_from_left(text: str, left: tuple[float, float], font_size: float, color: tuple) -> None:

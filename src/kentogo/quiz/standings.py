@@ -1,7 +1,6 @@
 """The territory and the standing at the end of each sequence of a problem, as KaTrain shows them.
 
-After the answer, each sequence gets its standing by itself (the one after the game move too, as the
-opponent plays the strongest replies there, not the game's moves):
+After the answer, each sequence gets its standing by itself:
 KataGo is asked about the position at the end of the sequence (with the main model), and about the game
 after the same number
 of moves, which is read from the SGF file (see prepare). Only the ends of the sequences are read, not

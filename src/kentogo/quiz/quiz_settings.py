@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 
 from kentogo.mistakes.extract import ExtractSettings
 from kentogo.quiz.judge import ScoringPolicy
+from kentogo.quiz.limit_offer import LIMITS
 from kentogo.quiz.problem_kinds import KIND_ALL, PROBLEM_KINDS
+from kentogo.quiz.ratio_offer import WINDOW
 
 # Orders of the problems.
 ORDER_FILE_NAME = "file_name"  # By the names of the SGF files.
@@ -37,6 +39,12 @@ class QuizSettings:
         ratio_asked_at: How many judged answers there were when the offer was last answered (0 if
             never), so that it is asked again only after enough new answers. It is changed only by
             the offer, not on the settings screen.
+        limit_asked_at: The same for the offer of the limit of a correct answer's loss (see quiz.limit_offer),
+            which is turned on with ratio_offer too.
+        offer_window: How many of the latest answers the offers are made from, and how many new answers are
+            needed before they are asked again (1 or more).
+        limit_steps: The limits of a correct answer's loss offered one after another, the biggest first
+            (empty: the limit is not offered).
     """
 
     games_folder: str = ""
@@ -47,6 +55,9 @@ class QuizSettings:
     scoring: ScoringPolicy = field(default_factory=ScoringPolicy)
     ratio_offer: bool = True
     ratio_asked_at: int = 0
+    limit_asked_at: int = 0
+    offer_window: int = WINDOW
+    limit_steps: tuple[float, ...] = LIMITS
     problem_kind: str = KIND_ALL
 
     @classmethod
@@ -81,6 +92,9 @@ class QuizSettings:
             scoring=ScoringPolicy.from_dict(values),
             ratio_offer=_boolean(values, "ratio_offer", default.ratio_offer),
             ratio_asked_at=_count(values, "ratio_asked_at", default.ratio_asked_at),
+            limit_asked_at=_count(values, "limit_asked_at", default.limit_asked_at),
+            offer_window=_window(values, default.offer_window),
+            limit_steps=_limits(values.get("limit_steps", default.limit_steps)),
             problem_kind=problem_kind,
         )
 
@@ -95,6 +109,9 @@ class QuizSettings:
             **self.scoring.to_dict(),
             "ratio_offer": self.ratio_offer,
             "ratio_asked_at": self.ratio_asked_at,
+            "limit_asked_at": self.limit_asked_at,
+            "offer_window": self.offer_window,
+            "limit_steps": list(self.limit_steps),
             "problem_kind": self.problem_kind,
         }
 
@@ -105,6 +122,27 @@ def _count(values: dict, key: str, default: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"wrong quiz setting: {key} must be a whole number of 0 or more: {value!r}")
     return value
+
+
+def _window(values: dict, default: int) -> int:
+    """Read offer_window: a whole number of 1 or more."""
+    value = _count(values, "offer_window", default)
+    if value < 1:
+        raise ValueError(f"wrong quiz setting: offer_window must be 1 or more: {value!r}")
+    return value
+
+
+def _limits(value: object) -> tuple[float, ...]:
+    """Read limit_steps: positive numbers, returned the biggest first without repeats."""
+    if not isinstance(value, (list, tuple)) or any(isinstance(item, bool) for item in value):
+        raise ValueError(f"wrong quiz setting: limit_steps must be a list of numbers: {value!r}")
+    try:
+        limits = {float(item) for item in value}
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"wrong quiz setting: limit_steps must be a list of numbers: {value!r}") from error
+    if any(not limit > 0 for limit in limits):
+        raise ValueError(f"wrong quiz setting: limit_steps must be positive numbers: {value!r}")
+    return tuple(sorted(limits, reverse=True))
 
 
 def _boolean(values: dict, key: str, default: bool) -> bool:

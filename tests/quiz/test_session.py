@@ -8,8 +8,8 @@ from kentogo.common.board import IllegalMoveError
 from kentogo.common.types import Move, Position
 from kentogo.mistakes.problem import (
     SOURCE_GAME,
-    SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
+    SOURCE_RANK_ANSWER,
     Problem,
     Variation,
 )
@@ -161,23 +161,22 @@ def sources(quiz: QuizSession) -> list[tuple[str, str]]:
 
 
 def test_katago_sequences_are_in_a_fixed_order():
-    """Tab order: after the answer, after the game move, and the SGF file's sequences."""
+    """Tab order: the replies of the opponent's rank, the strongest replies, and the SGF file's sequences."""
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
-    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    quiz.expect(SOURCE_RANK_ANSWER)
     assert sources(quiz) == [
+        (SOURCE_RANK_ANSWER, WAITING),
         ("katago", WAITING),
-        (SOURCE_KATAGO_ACTUAL, WAITING),
         ("katrain", ""),
         ("katago", ""),  # The SGF file's own second sequence.
     ]
-    # The sequence after the answer is shown first, while KataGo is still calculating it.
+    # The first sequence is shown first, while KataGo is still calculating it.
     assert quiz.variation_index == 0 and quiz.variation is None and quiz.shown_sequence() == ()
-    quiz.apply_evaluation(1.0, 9.0, (gtp("C3", "W"), gtp("D3")), actual_sequence=(gtp("B18", "W"),))
-    assert quiz.variation == Variation((gtp("R4"), gtp("C3", "W"), gtp("D3")), "katago")
-    assert quiz.choices[1].variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ACTUAL)
-    assert quiz.replay_step == 0
+    quiz.apply_evaluation(1.0, 9.0, (gtp("C3", "W"), gtp("D3")))
+    assert quiz.choices[1].variation == Variation((gtp("R4"), gtp("C3", "W"), gtp("D3")), "katago")
+    assert quiz.variation_index == 0 and quiz.variation is None and quiz.replay_step == 0
 
 
 def test_without_katago_the_sgf_sequence_is_first():
@@ -193,37 +192,25 @@ def test_shown_sequence_stays_when_another_arrives():
     quiz = session()
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
-    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    quiz.expect(SOURCE_RANK_ANSWER)
     quiz.next_variation()
     quiz.next_variation()  # KaTrain's sequence.
-    quiz.add_sequence(gtp("A19"), (gtp("R3", "W"),), SOURCE_KATAGO_ACTUAL)
+    quiz.add_sequence(gtp("R4"), (gtp("R3", "W"),), SOURCE_RANK_ANSWER)
     quiz.add_sequence(gtp("R4"), (gtp("C3", "W"),), SOURCE_KATAGO_ANSWER)
     assert quiz.variation == PROBLEM.variations[0]
-    quiz.select_variation(1)
-    assert quiz.variation == Variation((gtp("A19"), gtp("R3", "W")), SOURCE_KATAGO_ACTUAL)
+    quiz.select_variation(0)
+    assert quiz.variation == Variation((gtp("R4"), gtp("R3", "W")), SOURCE_RANK_ANSWER)
 
 
 def test_failed_sequence_is_marked():
     """A sequence that KataGo could not calculate stays in the order, marked as failed."""
     quiz = session()
     quiz.answer(gtp("R4"))
-    quiz.expect(SOURCE_KATAGO_ACTUAL)
-    quiz.fail(SOURCE_KATAGO_ACTUAL)
-    assert sources(quiz)[0] == (SOURCE_KATAGO_ACTUAL, FAILED)
+    quiz.expect(SOURCE_RANK_ANSWER)
+    quiz.fail(SOURCE_RANK_ANSWER)
+    assert sources(quiz)[0] == (SOURCE_RANK_ANSWER, FAILED)
     quiz.fail(SOURCE_KATAGO_ANSWER)  # Not expected, so nothing is added.
     assert len(quiz.choices) == 3
-
-
-def test_no_sequence_after_the_game_move_when_it_is_the_answer():
-    """When the answer is the game move, its sequence is the one after the answer, and is not added twice."""
-    quiz = session()
-    quiz.answer(gtp("A19"))
-    quiz.expect(SOURCE_KATAGO_ANSWER)
-    quiz.expect(SOURCE_KATAGO_ACTUAL)
-    quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ACTUAL)
-    quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ANSWER)
-    assert [choice.source for choice in quiz.choices] == ["katago", "katrain", "katago"]
-    assert quiz.variation == Variation((gtp("A19"), gtp("B18", "W")), SOURCE_KATAGO_ANSWER)
 
 
 def test_next_variation_goes_around():
@@ -232,22 +219,35 @@ def test_next_variation_goes_around():
     quiz.answer(gtp("Q4"))
     quiz.step_forward()
     quiz.next_variation()
-    assert (quiz.variation_index, quiz.replay_step) == (1, 0)
+    assert (quiz.variation_index, quiz.replay_step) == (1, 1)  # Its first move is shown at once.
     quiz.next_variation()
     assert quiz.variation_index == 0
 
 
+def test_previous_variation_goes_around_the_other_way():
+    """previous_variation goes back through the sequences, from the first one to the last one."""
+    quiz = session()
+    quiz.answer(gtp("Q4"))
+    quiz.previous_variation()
+    assert (quiz.variation_index, quiz.replay_step) == (1, 1)  # From the first to the last of two.
+    quiz.previous_variation()
+    assert quiz.variation_index == 0
+
+
 def test_select_another_sequence():
-    """Choosing another sequence shows it from the start."""
+    """Choosing another sequence shows its first move at once; a sequence still calculated starts empty."""
     quiz = session()
     quiz.answer(gtp("Q4"))
     quiz.step_forward()
     quiz.select_variation(1)
-    assert quiz.replay_step == 0
-    quiz.step_forward()
-    assert quiz.shown_sequence() == (gtp("R4"),)
+    assert quiz.replay_step == 1 and quiz.shown_sequence() == (gtp("R4"),)
+    quiz.step_back()
+    assert quiz.shown_sequence() == ()
     with pytest.raises(IndexError):
         quiz.select_variation(2)
+    quiz.expect(SOURCE_RANK_ANSWER)
+    quiz.select_variation(0)
+    assert quiz.variation is None and quiz.replay_step == 0
 
 
 def test_candidate_move_from_analysis_data_is_judged_at_once():
@@ -276,49 +276,50 @@ def test_the_loss_of_the_shown_sequences_first_move():
 
 
 def test_the_end_of_a_sequence_is_where_the_territory_can_be_shown():
-    """Only at the last move of a sequence (the one after the game move too)."""
+    """Only at the last move of a sequence (KataGo's ones too)."""
     quiz = QuizSession(PROBLEM, ScoringPolicy())
     quiz.answer(gtp("Q4"))
     assert quiz.sequence_at_end() is None  # The start of KaTrain's sequence.
     for _ in range(3):
         quiz.step_forward()
     assert quiz.sequence_at_end() == PROBLEM.variations[0]
-    quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ACTUAL)
-    quiz.select_variation(0)
-    quiz.step_forward()
-    assert quiz.choice.source == SOURCE_KATAGO_ACTUAL and quiz.sequence_at_end() is None
+    quiz.add_sequence(gtp("Q4"), (gtp("B18", "W"),), SOURCE_RANK_ANSWER)
+    quiz.select_variation(0)  # Its first move is shown.
+    assert quiz.choice.source == SOURCE_RANK_ANSWER and quiz.sequence_at_end() is None
     quiz.step_forward()
     assert quiz.sequence_at_end() == quiz.choice.variation
 
 
 def test_the_verdict_goes_with_the_answers_sequence():
-    """Correct or wrong is shown with the answer's sequence only; without it, with the first sequence."""
-    quiz = QuizSession(PROBLEM, ScoringPolicy())
+    """Correct or wrong is shown with the answer's sequences only; without them, with the first sequence."""
+    game_line = (gtp("A19"), gtp("B18", "W"))
+    quiz = QuizSession(replace(PROBLEM, game_line=game_line), ScoringPolicy())
     quiz.answer(gtp("Q4"))
-    assert quiz.choice.source == "katrain" and quiz.shows_verdict  # No KataGo: the first sequence.
-    quiz.add_sequence(gtp("A19"), (gtp("B18", "W"),), SOURCE_KATAGO_ACTUAL)
     sources = [choice.source for choice in quiz.choices]
-    quiz.select_variation(sources.index(SOURCE_KATAGO_ACTUAL))
-    assert not quiz.shows_verdict
-    quiz.add_sequence(gtp("K10"), (gtp("K11", "W"),), SOURCE_KATAGO_ANSWER)
+    assert sources[0] == SOURCE_GAME and not quiz.shows_verdict  # No KataGo: not with the game's moves,
+    quiz.select_variation(sources.index("katrain"))
+    assert quiz.shows_verdict  # but with the first sequence after them.
+    quiz.add_sequence(gtp("Q4"), (gtp("K11", "W"),), SOURCE_RANK_ANSWER)
+    quiz.add_sequence(gtp("Q4"), (gtp("K12", "W"),), SOURCE_KATAGO_ANSWER)
     sources = [choice.source for choice in quiz.choices]
-    quiz.select_variation(sources.index(SOURCE_KATAGO_ANSWER))
-    assert quiz.shows_verdict
+    for source in (SOURCE_RANK_ANSWER, SOURCE_KATAGO_ANSWER):
+        quiz.select_variation(sources.index(source))
+        assert quiz.shows_verdict
     quiz.select_variation(sources.index("katrain"))
     assert not quiz.shows_verdict
 
 
 def test_the_games_own_moves_come_after_the_answers_sequence():
-    """Tab order: after the answer, the game's own moves, after the game move (strongest replies), then KaTrain's."""
+    """Tab order: the replies of the opponent's rank, the strongest replies, the game's own moves, then KaTrain's."""
     game_line = (gtp("A19"), gtp("B18", "W"), gtp("C17"))
     quiz = QuizSession(replace(PROBLEM, game_line=game_line), ScoringPolicy())
     quiz.answer(gtp("R4"))
     quiz.expect(SOURCE_KATAGO_ANSWER)
-    quiz.expect(SOURCE_KATAGO_ACTUAL)
+    quiz.expect(SOURCE_RANK_ANSWER)
     assert [choice.source for choice in quiz.choices][:4] == [
+        SOURCE_RANK_ANSWER,
         SOURCE_KATAGO_ANSWER,
         SOURCE_GAME,
-        SOURCE_KATAGO_ACTUAL,
         "katrain",
     ]
-    assert quiz.choices[1].variation == Variation(game_line, SOURCE_GAME)
+    assert quiz.choices[2].variation == Variation(game_line, SOURCE_GAME)

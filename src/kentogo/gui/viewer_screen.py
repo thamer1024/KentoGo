@@ -12,7 +12,7 @@ Home / End go to the first or last move.
 At a move, KaTrain's predicted sequence and the other branches of the SGF file can be
 shown in place of the move. Tab shows the first sequence (its first move replaces the move
 of the game), then the next ones, and then the game again at the move where they branch
-off. Space / Shift+Space and ← → move one move through the game, or through the sequence
+off; Shift+Tab goes the other way. Space / Shift+Space and ← → move one move through the game, or through the sequence
 while one is shown. Esc returns to the game at that move. The other keys and the slider
 return to the game first. Two buttons do the same as Tab and Esc.
 
@@ -151,6 +151,10 @@ class ViewerScreen(BoxLayout):
     def next_variation(self) -> None:
         """Switch between the game and the sequences at the move (see viewer_model.next_variation)."""
         self._move(viewer_model.next_variation)
+
+    def previous_variation(self) -> None:
+        """Switch the other way round (Shift+Tab, see viewer_model.previous_variation)."""
+        self._move(viewer_model.previous_variation)
 
     def estimated(self, key: viewer_model.Browse) -> None:
         """Show the territory and the standing, if the screen still shows that end of a sequence."""
@@ -343,7 +347,8 @@ class ViewerScreen(BoxLayout):
         """Return the text about the shown sequence, with the exact standing at its end or the rough one."""
         text = viewer_model.variation_text(record, browse)
         if standing is not None:
-            return f"{text}\n{texts.standing_text(standing, browse.step)}".strip("\n")
+            lines = (text, texts.standing_text(standing, browse.step), texts.standing_gain_text(standing))
+            return "\n".join(lines).strip("\n")
         if quick is not None:
             return f"{text}\n{texts.quick_standing_text(quick.lead)}".strip("\n")
         return text
@@ -395,6 +400,8 @@ class ViewerScreen(BoxLayout):
         """Return what Space, Tab and Esc do, or None for other keys (Space moves like ← →)."""
         if key == KEY_SPACE:
             return (lambda: self._step(-1)) if shift else (lambda: self._step(1))
+        if key == KEY_TAB and shift:
+            return self.previous_variation
         actions = {KEY_TAB: self.next_variation, KEY_ESCAPE: self.main_line, KEY_T: self.toggle_standing}
         return actions.get(key)
 

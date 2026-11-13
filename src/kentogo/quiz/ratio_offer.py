@@ -1,7 +1,8 @@
 """Offer to raise or lower the pass ratio to suit how well the user answers (合格ラインの上げ下げの提案).
 
 The measure is the average part of the loss got back (see quiz.score.score_answer) in the latest
-WINDOW answers to normal problems (small problems are judged in another way, so they are left out):
+answers to normal problems (small problems are judged in another way, so they are left out): as many
+as the quiz setting offer_window (WINDOW by default).
 
 - raise by STEP (at most MAX_RATIO) when the average is at least the next ratio + RAISE_MARGIN
   (for 70% -> 80%, an average of 85% or more);
@@ -11,7 +12,7 @@ WINDOW answers to normal problems (small problems are judged in another way, so 
 The gap between the two keeps the ratio from going up and down by chance. Only the question is
 made here: the answers in the history are never changed, and a problem that was finished stays
 finished (its state comes from the judgment saved with each answer, see repetition.schedule).
-After the user answers (yes or no), the app asks again only after WINDOW more answers
+After the user answers (yes or no), the app asks again only after that many more answers
 (QuizSettings.ratio_asked_at), so that the next offer is made from answers judged with the ratio
 used then.
 """
@@ -25,7 +26,7 @@ from typing import Protocol
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.score import score_answer
 
-WINDOW = 30  # How many of the latest answers to normal problems are used.
+WINDOW = 30  # How many of the latest answers to normal problems are used, by default (QuizSettings.offer_window).
 STEP = 0.1  # How much the ratio is raised or lowered at a time.
 RAISE_MARGIN = 0.05  # The average must be this much above the next ratio to raise it.
 LOWER_MARGIN = 0.10  # The average must be this much below the current ratio to lower it.
@@ -67,16 +68,17 @@ def judged(answers: Sequence[JudgedAnswer]) -> list[JudgedAnswer]:
     return [answer for answer in answers if answer.actual_loss is not None and answer.answer_loss is not None]
 
 
-def find_ratio_offer(answers: Sequence[JudgedAnswer], policy: ScoringPolicy) -> RatioOffer | None:
+def find_ratio_offer(answers: Sequence[JudgedAnswer], policy: ScoringPolicy, window: int = WINDOW) -> RatioOffer | None:
     """Return the offer to raise or lower the pass ratio, or None if nothing should be asked.
 
     Args:
         answers: The answers with both losses known, the oldest first (see judged).
         policy: The rule used now.
+        window: How many of the latest answers to normal problems are used (1 or more).
     """
     normal = [answer for answer in answers if answer.actual_loss >= policy.small_problem_threshold]
-    latest = normal[-WINDOW:]
-    if len(latest) < WINDOW:
+    latest = normal[-window:]
+    if len(latest) < window:
         return None
     average = round(sum(score_answer(a.actual_loss, a.answer_loss) for a in latest) / len(latest), 4)
     higher, lower = round(policy.pass_ratio + STEP, 2), round(policy.pass_ratio - STEP, 2)
@@ -87,12 +89,13 @@ def find_ratio_offer(answers: Sequence[JudgedAnswer], policy: ScoringPolicy) -> 
     return None
 
 
-def may_ask(enabled: bool, judged_count: int, asked_at: int) -> bool:
+def may_ask(enabled: bool, judged_count: int, asked_at: int, window: int = WINDOW) -> bool:
     """Return True if an offer may be asked now.
 
     Args:
         enabled: The setting that turns the offers on.
         judged_count: How many answers with both losses known there are in the history now.
         asked_at: How many there were when the user last answered an offer (0 if never).
+        window: How many new answers are needed (see find_ratio_offer).
     """
-    return enabled and judged_count - asked_at >= WINDOW
+    return enabled and judged_count - asked_at >= window

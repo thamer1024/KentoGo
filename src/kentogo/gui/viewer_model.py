@@ -8,7 +8,7 @@ sequence (from the position before the move, starting with the best move), then 
 branches of the SGF file at that move. Moving forward and back (Space, the arrows) follows
 the game, or the sequence while one is shown. Tab goes from the game to the first sequence
 (its first move replaces the move of the game), then to the next ones, and after the last
-one back to the game at the move where the sequences branch off.
+one back to the game at the move where the sequences branch off. Shift+Tab goes the other way.
 """
 
 from __future__ import annotations
@@ -152,6 +152,23 @@ def next_variation(record: GameRecord, browse: Browse) -> Browse:
         return browse
     index = 0 if browse.variation is None else browse.variation + 1
     if index >= len(variations):
+        return Browse(browse.position)
+    return Browse(browse.position, index, 1)
+
+
+def previous_variation(record: GameRecord, browse: Browse) -> Browse:
+    """Switch the other way round from next_variation (Shift+Tab).
+
+    From the game, the last sequence is shown with its first move in place of the move of the
+    game. From a sequence, the one before is shown in the same way, and before the first one the
+    game is shown again at the move where the sequences branch off. Nothing happens where there
+    is no sequence.
+    """
+    variations = variations_at(record, browse.position)
+    if not variations:
+        return browse
+    index = len(variations) - 1 if browse.variation is None else browse.variation - 1
+    if index < 0:
         return Browse(browse.position)
     return Browse(browse.position, index, 1)
 

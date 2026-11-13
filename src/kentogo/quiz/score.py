@@ -5,11 +5,17 @@ The answer is 9 points better, and it gets back 90% of the loss.
 
 The losses of the game move and of the answer must be calculated under the
 same conditions (the same model and settings), or they cannot be compared.
+
+The screen shows the losses rounded to 0.1 points and the part got back in whole percent. The comparison
+is made from the losses as they are shown (see compare_with_actual), and the answers are judged by the
+same numbers (see quiz.judge), so that what the screen shows always agrees with the judgment.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+LOSS_DIGITS = 1  # The losses are shown, compared and judged rounded to this many digits after the point.
 
 
 @dataclass(frozen=True)
@@ -58,11 +64,17 @@ def compare_with_actual(actual_loss: float, answer_loss: float) -> Comparison:
         answer_loss: Points lost by the answer, calculated under the same conditions.
 
     Returns:
-        The comparison.
+        The comparison, of the losses rounded as the screen shows them (see LOSS_DIGITS).
     """
+    actual_loss, answer_loss = round(actual_loss, LOSS_DIGITS), round(answer_loss, LOSS_DIGITS)
     return Comparison(
         actual_loss=actual_loss,
         answer_loss=answer_loss,
         improvement=actual_loss - answer_loss,
         recovered_ratio=score_answer(actual_loss, answer_loss),
     )
+
+
+def shown_percent(ratio: float) -> int:
+    """Return a part (0.0 to 1.0) in whole percent, rounded as the screen shows it (the format "{:.0%}")."""
+    return int(f"{ratio * 100:.0f}")

@@ -62,6 +62,7 @@ from kentogo.katago.startup import TIMES_FILE, StartTimes
 from kentogo.notice import Notice
 from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_with_angle
 from kentogo.opponent_rank import problem_ranks
+from kentogo.quiz.limit_offer import LimitOffer, find_limit_offer
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
 from kentogo.quiz.transform import BoardTransform, random_transform
@@ -310,6 +311,8 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         start_times=StartTimes(arguments.settings.parent / TIMES_FILE),
         ratio_offer=_ratio_offer_maker(arguments.settings, settings, parts.history),
         answer_ratio_offer=_ratio_offer_saver(arguments.settings, settings, parts.history, on_saved),
+        limit_offer=_limit_offer_maker(arguments.settings, settings, parts.history),
+        answer_limit_offer=_limit_offer_saver(arguments.settings, settings, parts.history, on_saved),
         report=lambda: load_report(
             arguments.settings, arguments.folder, _current_settings(arguments.settings, settings)
         ),
@@ -349,9 +352,9 @@ def _ratio_offer_maker(
         """Make the offer from the settings in the file and the latest answers."""
         quiz = _current_settings(path, started_with).quiz
         answers = _judged_answers(history)
-        if not may_ask(quiz.ratio_offer, len(answers), quiz.ratio_asked_at):
+        if not may_ask(quiz.ratio_offer, len(answers), quiz.ratio_asked_at, quiz.offer_window):
             return None
-        return find_ratio_offer(answers, quiz.scoring)
+        return find_ratio_offer(answers, quiz.scoring, quiz.offer_window)
 
     return offer
 
@@ -367,6 +370,40 @@ def _ratio_offer_saver(
         quiz = replace(current.quiz, ratio_asked_at=len(_judged_answers(history)))
         if yes:
             quiz = replace(quiz, scoring=replace(quiz.scoring, pass_ratio=offer.proposed))
+        new_settings = replace(current, quiz=quiz)
+        save_settings(path, new_settings)
+        on_saved(new_settings)
+
+    return answer
+
+
+def _limit_offer_maker(
+    path: Path, started_with: AppSettings, history: AnswerHistory | None
+) -> Callable[[], LimitOffer | None]:
+    """Return the function that makes the offer of the limit of a correct answer's loss (see quiz.limit_offer)."""
+
+    def offer() -> LimitOffer | None:
+        """Make the offer from the settings in the file and the latest answers."""
+        quiz = _current_settings(path, started_with).quiz
+        answers = _judged_answers(history)
+        if not may_ask(quiz.ratio_offer, len(answers), quiz.limit_asked_at, quiz.offer_window):
+            return None
+        return find_limit_offer(answers, quiz.scoring, quiz.offer_window, quiz.limit_steps)
+
+    return offer
+
+
+def _limit_offer_saver(
+    path: Path, started_with: AppSettings, history: AnswerHistory | None, on_saved: Callable[[AppSettings], None]
+) -> Callable[[LimitOffer, bool], None]:
+    """Return the function that saves the answer to the offer of the limit, and uses the settings at once."""
+
+    def answer(offer: LimitOffer, yes: bool) -> None:
+        """Change the limit (yes), and remember when the offer was answered (yes or no)."""
+        current = _current_settings(path, started_with)
+        quiz = replace(current.quiz, limit_asked_at=len(_judged_answers(history)))
+        if yes:
+            quiz = replace(quiz, scoring=replace(quiz.scoring, max_answer_loss=offer.proposed))
         new_settings = replace(current, quiz=quiz)
         save_settings(path, new_settings)
         on_saved(new_settings)

@@ -379,9 +379,14 @@ class KentoGoApp(App):
         )
 
     def _ask_ratio_offer(self) -> None:
-        """Ask whether to raise or lower the pass ratio, when the latest answers suggest it (see quiz.ratio_offer)."""
+        """Ask whether to raise or lower the pass ratio, when the latest answers suggest it (see quiz.ratio_offer).
+
+        Without such an offer, the offer of the limit of a correct answer's loss is asked instead (one offer at
+        a time).
+        """
         offer = self.setup.ratio_offer()
         if offer is None:
+            self._ask_limit_offer()
             return
         question = texts.text(
             "ratio_offer_raise" if offer.raises else "ratio_offer_lower",
@@ -394,5 +399,17 @@ class KentoGoApp(App):
             question,
             lambda: self.setup.answer_ratio_offer(offer, True),
             lambda: self.setup.answer_ratio_offer(offer, False),
+            no_label=texts.text("ratio_offer_no"),
+        )
+
+    def _ask_limit_offer(self) -> None:
+        """Ask whether to set or lower the limit of a correct answer's loss, when the answers suggest it."""
+        offer = self.setup.limit_offer()
+        if offer is None:
+            return
+        confirm(
+            texts.limit_offer_text(offer),
+            lambda: self.setup.answer_limit_offer(offer, True),
+            lambda: self.setup.answer_limit_offer(offer, False),
             no_label=texts.text("ratio_offer_no"),
         )

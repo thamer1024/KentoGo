@@ -5,8 +5,8 @@ from fake_analysis import FakeEngine
 from kentogo.common.types import Move, Position
 from kentogo.katago.evaluate import EvaluationSettings
 from kentogo.mistakes.problem import (
-    SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
+    SOURCE_RANK_ANSWER,
     Problem,
     Variation,
 )
@@ -104,17 +104,16 @@ def test_the_problems_are_asked_one_after_another():
     assert [s.problem.problem_id for s in listener.started_with] == ["p1"] and run.index == 0
     run.answer(point("Q4"))
     run.judging.engine.answer(0, score=1.0, pv=("D16",))
-    run.judging.engine.answer(1, score=-6.0, pv=("R17",))
     assert run.next_problem()
     assert listener.started_with[-1].problem.problem_id == "p2"
     run.answer(point("A19"))
-    run.judging.engine.answer(2, score=-6.0, pv=("R17",))
+    run.judging.engine.answer(1, score=-6.0, pv=("R17",))
     assert run.next_problem() and listener.started_with[-1] is None and run.session is None
     assert not run.next_problem()  # After the end, nothing happens.
 
 
 def test_an_answer_in_the_file_is_judged_at_once_and_saved():
-    """The best move is judged from the file: it is saved once, and KataGo shows the sequences after it."""
+    """The best move is judged from the file: it is saved once, and KataGo shows the sequence after it."""
     run, listener, saved = make_run()
     assert run.answer(point("Q4")) == ""
     session = run.session
@@ -122,16 +121,15 @@ def test_an_answer_in_the_file_is_judged_at_once_and_saved():
     assert saved.answers == [("p1", True, None)]
     assert not run.busy and run.calculating  # The sequences are still being calculated.
     engine = run.judging.engine
-    assert [request["moves"][-1] for request, _ in engine.queries] == [["B", "Q4"], ["B", "A19"]]
-    engine.answer(0, score=1.0, pv=("D16",))
-    engine.answer(1, error="KataGo stopped")
+    assert [request["moves"][-1] for request, _ in engine.queries] == [["B", "Q4"]]
+    engine.answer(0, error="KataGo stopped")
     statuses = {choice.source: choice.status for choice in session.choices}
-    assert statuses[SOURCE_KATAGO_ACTUAL] == FAILED and statuses[SOURCE_KATAGO_ANSWER] != WAITING
-    assert not run.calculating and listener.changes == [session, session]
+    assert statuses[SOURCE_KATAGO_ANSWER] == FAILED
+    assert not run.calculating and listener.changes == [session]
 
 
 def test_the_game_move_gets_one_sequence():
-    """When the answer is the game move, KataGo is asked only for the sequence after it."""
+    """When the answer is the game move, KataGo is asked for the sequence after it, as for any answer."""
     run, _, saved = make_run()
     run.answer(point("A19"))
     assert len(run.judging.engine.queries) == 1 and saved.answers == [("p1", False, None)]
@@ -145,6 +143,7 @@ def test_other_answers_are_judged_by_katago():
     assert run.busy and run.calculating and not run.can_play()
     assert run.waiting_reason(session) == (REASON_EVALUATING, {})
     assert not run.next_variation()
+    assert not run.previous_variation()  # Not while KataGo judges.
     assert saved.answers == []
     judge(run.judging.engine, 0, answer_score=1.5)  # The answer loses 0.5 points.
     assert not run.busy and run.can_play() and run.waiting_reason(session) is None
@@ -254,19 +253,48 @@ def strongest_queries(engine: FakeEngine, first: int = 3) -> list[int]:
     ]
 
 
-def test_the_sequences_after_the_answer_and_the_game_move_have_the_strongest_replies(monkeypatch):
+def after(indexes: list[int], first: int) -> list[int]:
+    """The indexes after `first` (not the queries of the sequence with the replies of the opponent's rank)."""
+    return [index for index in indexes if index > first]
+
+
+def test_the_sequence_with_the_replies_of_the_opponents_rank_comes_first(monkeypatch):
+    """After the answer, the opponent replies as a human of the opponent's rank, in the first sequence of Tab."""
+    monkeypatch.setattr(quiz_run, "LINE_SECONDS", -1.0)  # Not made longer than KataGo's own sequence.
+    main, session, listener = answered_with_rank("10k", mine="15k")
+    assert (session.choices[0].source, session.choices[0].status) == (SOURCE_RANK_ANSWER, WAITING)
+    assert session.choices[1].source == SOURCE_KATAGO_ANSWER and session.shows_verdict
+    [theirs] = human_queries(main)
+    assert main.queries[theirs][0]["overrideSettings"]["humanSLProfile"] == "rank_10k"
+    human_policy_answer(main, theirs, 2, 15)  # The opponent's C16.
+    assert shown_moves(session, SOURCE_RANK_ANSWER) == ("R4", "C16") and session.variation_index == 0
+    assert listener.changes[-1] is session
+
+
+def test_without_the_opponents_rank_the_opponent_replies_of_the_users_rank():
+    """When only the user's rank is known, the opponent of the first sequence plays as a human of that rank."""
+    main, _, _ = answered_with_rank("", mine="15k")
+    [theirs] = human_queries(main)
+    assert main.queries[theirs][0]["overrideSettings"]["humanSLProfile"] == "rank_15k"
+
+
+def test_without_a_rank_there_is_no_sequence_with_the_replies_of_a_rank():
+    """Without any rank, KataGo's own sequences only."""
+    _, session, _ = answered_with_rank("")
+    assert SOURCE_RANK_ANSWER not in [choice.source for choice in session.choices]
+
+
+def test_the_sequence_after_the_answer_has_the_strongest_replies(monkeypatch):
     """With a rank, the opponent replies with the main KataGo's best moves, reading estimate_visits each."""
-    monkeypatch.setattr(quiz_run, "LINE_SECONDS", -1.0)  # Not made longer than KataGo's own sequences.
+    monkeypatch.setattr(quiz_run, "LINE_SECONDS", -1.0)  # Not made longer than KataGo's own sequence.
     main, session, listener = answered_with_rank("10k")
     statuses = {choice.source: choice.status for choice in session.choices}
-    assert statuses[SOURCE_KATAGO_ANSWER] == WAITING and statuses[SOURCE_KATAGO_ACTUAL] == WAITING
-    first, second = strongest_queries(main)
+    assert statuses[SOURCE_KATAGO_ANSWER] == WAITING
+    [first] = strongest_queries(main)
     assert main.queries[first][0]["maxVisits"] == MAIN.estimate_visits
     assert "humanSLProfile" not in main.queries[first][0].get("overrideSettings", {})
-    main.answer(first, score=1.0, pv=("C16",))  # After the answer.
-    main.answer(second, score=1.0, pv=("D4",))  # After the game move.
+    main.answer(first, score=1.0, pv=("C16",))
     assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "C16")
-    assert shown_moves(session, SOURCE_KATAGO_ACTUAL) == ("A19", "D4")
     assert listener.changes[-1] is session
 
 
@@ -275,16 +303,15 @@ def test_without_a_rank_katagos_own_sequences_are_shown():
     main, session, _ = answered_with_rank("")
     assert human_queries(main) == []
     assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "D16")
-    assert shown_moves(session, SOURCE_KATAGO_ACTUAL) == ("A19", "R17")
 
 
 def test_without_the_human_like_model_katagos_own_sequences_are_shown(monkeypatch):
     """When KataGo gives no human-like policy for the user's move, its own sequence is shown, and why is told."""
     monkeypatch.setattr(quiz_run, "MIN_LINE", 3)
     main, session, listener = answered_with_rank("10k")
-    first, _ = strongest_queries(main)
+    [first] = strongest_queries(main)
     main.answer(first, score=1.0, pv=("C16",))
-    [mine] = human_queries(main)
+    [mine] = after(human_queries(main), first)
     main.queries[mine][1]({"id": "x", "isDuringSearch": False, "rootInfo": {"scoreLead": 0.0}})
     assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "D16")
     assert listener.failures[-1][0] == "notice_human_line_failed"
@@ -294,9 +321,9 @@ def test_the_users_moves_are_human_like_of_the_users_rank(monkeypatch):
     """With the user's rank, the user's moves after the opponent's reply are human-like of that rank."""
     monkeypatch.setattr(quiz_run, "MIN_LINE", 3)
     main, session, _ = answered_with_rank("10k", mine="15k")
-    first, _ = strongest_queries(main)
+    [first] = strongest_queries(main)
     main.answer(first, score=1.0, pv=("C16",))
-    [mine] = human_queries(main)
+    [mine] = after(human_queries(main), first)
     assert main.queries[mine][0]["overrideSettings"]["humanSLProfile"] == "rank_15k"
     human_policy_answer(main, mine, 16, 15)  # The user's R16.
     assert shown_moves(session, SOURCE_KATAGO_ANSWER) == ("R4", "C16", "R16")
@@ -306,9 +333,9 @@ def test_without_the_users_rank_the_users_moves_are_human_like_of_the_opponents_
     """When only the opponent's rank is known, the user's moves are human-like of that rank."""
     monkeypatch.setattr(quiz_run, "MIN_LINE", 3)
     main, _, _ = answered_with_rank("10k")
-    first, _ = strongest_queries(main)
+    [first] = strongest_queries(main)
     main.answer(first, score=1.0, pv=("C16",))
-    [mine] = human_queries(main)
+    [mine] = after(human_queries(main), first)
     assert main.queries[mine][0]["overrideSettings"]["humanSLProfile"] == "rank_10k"
 
 

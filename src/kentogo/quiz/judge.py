@@ -11,13 +11,22 @@ settings screen. They are kept in the "quiz" part of settings.json.
   still allows an answer that loses 6 points).
 - In both cases, the answer is also correct if it loses at most tolerance
   points (it is almost as good as the best move).
+
+The default values are for beginners: an answer that gets back 60% of the loss is correct, with no
+limit on its own loss (in a problem of 20 points, an answer that loses 8 points is correct). The user
+makes them stricter as they get stronger (see quiz.ratio_offer).
+
+The losses are judged as they are shown, rounded to 0.1 points (see judge_answer): an answer shown to
+lose 5.0 points is within a limit of 5.0 points, even when KataGo found 5.04. The part got back is judged
+in whole percent, as it is shown (see quiz.score.shown_percent): an answer shown to get back 50% passes a
+pass ratio of 0.5.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kentogo.quiz.score import score_answer
+from kentogo.quiz.score import LOSS_DIGITS, score_answer, shown_percent
 
 
 @dataclass(frozen=True)
@@ -34,7 +43,7 @@ class ScoringPolicy:
     """
 
     small_problem_threshold: float = 3.0
-    pass_ratio: float = 0.8
+    pass_ratio: float = 0.6
     tolerance: float = 1.0
     max_answer_loss: float = 0.0
 
@@ -87,7 +96,7 @@ def judge_small_problem(actual_loss: float, answer_loss: float, policy: ScoringP
 def judge_by_ratio(actual_loss: float, answer_loss: float, policy: ScoringPolicy) -> bool:
     """Judge a normal problem: correct if the answer gets back enough of the loss without losing more than
     the limit, or is within the tolerance."""
-    gets_back = score_answer(actual_loss, answer_loss) >= policy.pass_ratio
+    gets_back = shown_percent(score_answer(actual_loss, answer_loss)) >= shown_percent(policy.pass_ratio)
     return (gets_back and within_limit(answer_loss, policy)) or answer_loss <= policy.tolerance
 
 
@@ -99,6 +108,8 @@ def within_limit(answer_loss: float, policy: ScoringPolicy) -> bool:
 def judge_answer(actual_loss: float, answer_loss: float, policy: ScoringPolicy) -> bool:
     """Decide whether an answer is correct, using the rule for small or normal problems.
 
+    Both losses are rounded to 0.1 points first, as the screen shows them (see LOSS_DIGITS).
+
     Args:
         actual_loss: Points lost by the move in the game.
         answer_loss: Points lost by the answer, calculated under the same conditions.
@@ -107,6 +118,7 @@ def judge_answer(actual_loss: float, answer_loss: float, policy: ScoringPolicy) 
     Returns:
         True if the answer is correct.
     """
+    actual_loss, answer_loss = round(actual_loss, LOSS_DIGITS), round(answer_loss, LOSS_DIGITS)
     if actual_loss < policy.small_problem_threshold:
         return judge_small_problem(actual_loss, answer_loss, policy)
     else:

@@ -60,3 +60,10 @@ def test_may_ask_again_after_enough_answers():
     assert not may_ask(True, 45, 20)  # Only 25 answers since the last offer was answered.
     assert may_ask(True, 50, 20)
     assert not may_ask(False, 100, 0)
+
+
+def test_the_window_of_the_settings():
+    """The offer is made from as many answers as the window, and asked again after as many new ones."""
+    assert find_ratio_offer([got_back(0.85)] * 10, POLICY, 10) == RatioOffer(0.7, 0.8, 0.85, 10)
+    assert find_ratio_offer([got_back(0.85)] * 9, POLICY, 10) is None
+    assert may_ask(True, 30, 20, 10) and not may_ask(True, 29, 20, 10)

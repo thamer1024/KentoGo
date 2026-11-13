@@ -101,34 +101,36 @@ on; a question to KataGo then waits until it is ready.
 
 ### The sequences after your answer
 
-After you answer, Tab switches between these sequences (the line at the top shows their order):
+After you answer, Tab switches between these sequences, and Shift+Tab goes back (the line at the top shows
+their order):
 
-1. **Your move**: your answer, then the game goes on with you playing moves of your rank and the
-   opponent playing the strongest replies.
-2. **Game**: the move played in the game and the moves that were played after it, as the game
+1. **Rank replies**: your answer, then the game goes on with you playing moves of your rank and the
+   opponent playing moves of the opponent's rank (your rank when it is not known).
+2. **Strongest replies**: your answer, then the game goes on with you playing moves of your rank and
+   the opponent playing the strongest replies.
+3. **Game**: the move played in the game and the moves that were played after it, as the game
    record has them.
-3. **Strongest replies**: the move played in the game, then you play moves of your rank and the
-   opponent plays the strongest replies. Compared with "Game", it shows how much the move could
-   have been punished.
-4. **KaTrain's move**: the sequence from the best move that KaTrain saved in the game record (and
-   the other branches of the game record, if there are any).
+4. **KentoGo's move** (or **KaTrain's move**): the sequence from the best move that the analysis saved in
+   the game record (and the other branches of the game record, if there are any).
 
-How the sequences 1 and 3 are made:
+How the sequences 1 and 2 are made:
 
 - Your moves are KataGo's human-like moves of your rank (the move a player of that rank would most
   likely play). Your rank is the one in the game record (`BR`/`WR`), or else the rank you gave for
   the AI commentary; when only the opponent's rank is known, that rank is used.
-- The opponent's moves are the main KataGo's best moves, reading "Visits for territory and standing"
+- In sequence 1, the opponent's moves are KataGo's human-like moves of the opponent's rank, in the
+  same way. There is no sequence 1 when neither rank is known.
+- In sequence 2, the opponent's moves are the main KataGo's best moves, reading "Visits for territory and standing"
   (100 at first) for each move: a few seconds for a whole sequence. Raise that number
   on the settings screen for stronger replies, or lower it for faster ones.
 - When neither rank is known, KataGo's own sequence is shown (both sides play its best moves).
-- The sequences are made about as long as KaTrain's (at least 15 moves), but no move is added after
+- The sequences are made about as long as KaTrain's (at least 10 moves), but no move is added after
   5 seconds.
 
 While you play a sequence forward, the board shows the territory of each move, and the line below
 the sequence tells the rough standing of that move (a shallow reading). At the last move of a
-sequence, the exact standing is shown, with how it compares with the game after the same number of
-moves.
+sequence, the exact standing is shown. For "Rank replies" and "KentoGo's move", it is also compared
+with the game after the same number of moves (the points you got back against the game).
 
 ### Trying the problems without saving the answers
 

@@ -7,12 +7,12 @@ A session has two steps for an answer, and it does not use threads:
    KaTrain's analysis data), the result is ready.
 2. Otherwise the loss is calculated by KataGo later (in another thread), and
    the screen passes it to apply_evaluation() in the main thread. KataGo's
-predicted sequences after the answer and after the game move are then added
-as more sequences.
+predicted sequences after the answer are then added as more sequences.
 
 After the answer, the sequences are shown in a fixed order (see choices):
-KataGo's sequence after the answer, the game's own moves, KataGo's sequence after
-the game move, and the sequences in the SGF file. The first one is shown first.
+the sequence after the answer with the replies of the opponent's rank, KataGo's sequence
+after the answer (the strongest replies), the game's own moves, and the sequences in the
+SGF file. The first one is shown first.
 A sequence that KataGo is still calculating (see expect) is in the order too,
 without moves, so that the user can see that it is coming.
 
@@ -31,8 +31,8 @@ from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.problem import (
     SOURCE_GAME,
-    SOURCE_KATAGO_ACTUAL,
     SOURCE_KATAGO_ANSWER,
+    SOURCE_RANK_ANSWER,
     Problem,
     Variation,
 )
@@ -50,6 +50,9 @@ ANSWERED = "answered"
 READY = ""
 WAITING = "waiting"
 FAILED = "failed"
+
+# The sequences that start with the answer (the result of the answer is shown with them).
+ANSWER_SOURCES = (SOURCE_RANK_ANSWER, SOURCE_KATAGO_ANSWER)
 
 
 @dataclass(frozen=True)
@@ -192,19 +195,17 @@ class QuizSession:
         answer_loss: float,
         actual_loss: float,
         answer_sequence: tuple[Move, ...] = (),
-        actual_sequence: tuple[Move, ...] = (),
     ) -> AnswerResult:
         """Set the losses calculated by KataGo, and judge the answer again.
 
         Both losses must be calculated under the same conditions, so the loss of
         the game move is also given, instead of the value from the SGF file.
-        KataGo's sequences after the answer and after the game move are added with add_sequence().
+        KataGo's sequences after the answer are added with add_sequence().
 
         Args:
             answer_loss: Points lost by the answer.
             actual_loss: Points lost by the game move.
             answer_sequence: KataGo's predicted moves after the answer.
-            actual_sequence: KataGo's predicted moves after the game move.
 
         Returns:
             The new result.
@@ -219,10 +220,6 @@ class QuizSession:
             self.add_sequence(self.result.answer, answer_sequence, SOURCE_KATAGO_ANSWER)
         else:
             self.fail(SOURCE_KATAGO_ANSWER)
-        if actual_sequence:
-            self.add_sequence(self.problem.actual_move, actual_sequence, SOURCE_KATAGO_ACTUAL)
-        else:
-            self.fail(SOURCE_KATAGO_ACTUAL)
         return self.result
 
     def sequence_at_end(self) -> Variation | None:
@@ -268,9 +265,9 @@ class QuizSession:
         """Tell that KataGo is calculating a sequence, so that it is shown as being calculated.
 
         Args:
-            source: SOURCE_KATAGO_ANSWER or SOURCE_KATAGO_ACTUAL.
+            source: SOURCE_RANK_ANSWER or SOURCE_KATAGO_ANSWER.
         """
-        if source not in self._added and self._is_needed(source):
+        if source not in self._added:
             self._status[source] = WAITING
 
     def fail(self, source: str) -> None:
@@ -284,12 +281,10 @@ class QuizSession:
         The shown sequence stays the same (it is found again in the new order).
 
         Args:
-            move: The first move (the answer or the game move).
+            move: The first move (the answer).
             sequence: The predicted moves after it.
-            source: SOURCE_KATAGO_ANSWER or SOURCE_KATAGO_ACTUAL.
+            source: SOURCE_RANK_ANSWER or SOURCE_KATAGO_ANSWER.
         """
-        if not self._is_needed(source):
-            return
         shown = self.choice
         self._status.pop(source, None)
         self._added[source] = Variation((move, *sequence), source)
@@ -297,14 +292,6 @@ class QuizSession:
             return  # The same place in the order now has the moves.
         if shown is not None:
             self._selected = self._index_of(shown)
-
-    def _is_needed(self, source: str) -> bool:
-        """The sequence after the game move is not needed when the answer is the game move."""
-        return not (
-            source == SOURCE_KATAGO_ACTUAL
-            and self.result is not None
-            and self.result.answer == self.problem.actual_move
-        )
 
     def _make_result(self, move: Move, answer_loss: float | None, actual_loss: float) -> AnswerResult:
         """Make the result of an answer. If answer_loss is None, the result is not judged yet."""
@@ -317,17 +304,17 @@ class QuizSession:
     def choices(self) -> tuple[SequenceChoice, ...]:
         """All sequences to show after the answer, in the order that Tab goes through them.
 
-        KataGo's sequence after the answer, the game's own moves after the game move, KataGo's sequence
-        after the game move, and the sequences in the SGF file. KataGo's sequences are there only when
-        they are added or expected.
+        The sequence after the answer with the replies of the opponent's rank, KataGo's sequence after the
+        answer, the game's own moves after the game move, and the sequences in the SGF file. KataGo's
+        sequences are there only when they are added or expected.
         """
         game_line = self.problem.game_line
         game = (SequenceChoice(SOURCE_GAME, Variation(game_line, SOURCE_GAME)),) if game_line else ()
         sgf = tuple(SequenceChoice(variation.source, variation) for variation in self.problem.variations)
         return (
+            *self._katago_choice(SOURCE_RANK_ANSWER),
             *self._katago_choice(SOURCE_KATAGO_ANSWER),
             *game,
-            *self._katago_choice(SOURCE_KATAGO_ACTUAL),
             *sgf,
         )
 
@@ -364,17 +351,16 @@ class QuizSession:
 
     @property
     def shows_verdict(self) -> bool:
-        """True while the result of the answer (correct or wrong) is shown: with the answer's own sequence.
+        """True while the result of the answer (correct or wrong) is shown: with the answer's own sequences.
 
         Without KataGo there is no sequence after the answer, so the result is shown with the first
-        sequence instead (the one shown right after answering), but not with the ones after the game move.
+        sequence instead (the one shown right after answering), but not with the game's own moves.
         """
         choice = self.choice
-        if choice is None or choice.source == SOURCE_KATAGO_ANSWER:
+        if choice is None or choice.source in ANSWER_SOURCES:
             return True
-        katago_answer = SOURCE_KATAGO_ANSWER in self._added or SOURCE_KATAGO_ANSWER in self._status
-        after_game_move = (SOURCE_GAME, SOURCE_KATAGO_ACTUAL)
-        first = next((i for i, other in enumerate(self.choices) if other.source not in after_game_move), 0)
+        katago_answer = any(source in self._added or source in self._status for source in ANSWER_SOURCES)
+        first = next((i for i, other in enumerate(self.choices) if other.source != SOURCE_GAME), 0)
         return not katago_answer and self.variation_index == first
 
     @property
@@ -384,7 +370,9 @@ class QuizSession:
         return choice.variation if choice is not None else None
 
     def select_variation(self, index: int) -> None:
-        """Choose another sequence (an index of choices), and show it from the start.
+        """Choose another sequence (an index of choices), and show its first move at once.
+
+        A sequence that KataGo is still calculating is shown from the start (it has no moves yet).
 
         Raises:
             IndexError: If there is no sequence with that index.
@@ -392,12 +380,18 @@ class QuizSession:
         if not 0 <= index < len(self.choices):
             raise IndexError(f"no sequence {index}")
         self._selected = index
-        self.replay_step = 0
+        variation = self.variation
+        self.replay_step = 1 if variation is not None and variation.moves else 0
 
     def next_variation(self) -> None:
-        """Choose the next sequence (after the last one, the first one), and show it from the start."""
+        """Choose the next sequence (after the last one, the first one), and show its first move."""
         if self.choices:
             self.select_variation((self.variation_index + 1) % len(self.choices))
+
+    def previous_variation(self) -> None:
+        """Choose the sequence before (before the first one, the last one), and show its first move."""
+        if self.choices:
+            self.select_variation((self.variation_index - 1) % len(self.choices))
 
     def step_forward(self) -> None:
         """Show one more move of the sequence (nothing happens before the answer or at the end)."""

@@ -19,6 +19,7 @@ from kentogo.mistakes.extract import (
     extract_problems,
     first_of_each_best_move,
     punishment_chances,
+    with_game_line,
 )
 from kentogo.record.ai_comment import AI_HEADER
 from kentogo.record.katrain_comment import INTERNAL_MARKER, SEPARATOR
@@ -108,6 +109,21 @@ def test_the_moves_of_the_game_after_a_problem_are_kept():
     problems = extract(game()).problems
     assert [m.gtp() for m in problems[1].game_line] == ["A19", "D16", "A18", "Q4", "A17"]
     assert problems[0].game_line == ()  # The last move of the game has no moves after it.
+
+
+def test_an_old_copy_gets_the_moves_of_the_game_from_its_file(tmp_path):
+    """A copy kept in the history without the game's own sequence gets it from the SGF file, if it is there."""
+    from dataclasses import replace
+
+    path = tmp_path / "game.sgf"
+    path.write_text(game(branches=UNDONE_BRANCHES), encoding="utf-8")
+    problem = extract_problems(GoGame.parse_sgf(path.read_text(encoding="utf-8")), str(path), ExtractSettings())
+    made = problem.problems[1]
+    old = replace(made, game_line=())
+    assert with_game_line(old).game_line == made.game_line != ()
+    assert with_game_line(replace(old, sgf_path=str(tmp_path / "gone.sgf"))).game_line == ()  # The file is gone.
+    other = replace(old, actual_move=Move.from_gtp("K10", "B"))
+    assert with_game_line(other).game_line == ()  # The move is not in the file.
 
 
 def test_notes_are_kept():

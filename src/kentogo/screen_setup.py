@@ -17,6 +17,7 @@ from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.human_line import PlayerRanks
 from kentogo.quiz.judge import ScoringPolicy
+from kentogo.quiz.limit_offer import LimitOffer
 from kentogo.quiz.ratio_offer import RatioOffer
 from kentogo.quiz.transform import BoardTransform
 from kentogo.report import Report, TodaySummary
@@ -54,6 +55,9 @@ class ScreenSetup:
         start_times: The times that KataGo took to load before (shown while it loads).
         ratio_offer: Returns the offer to raise or lower the pass ratio, or None (see quiz.ratio_offer).
         answer_ratio_offer: Saves the user's answer to the offer (True: change the ratio).
+        limit_offer: Returns the offer to set or lower the limit of a correct answer's loss, or None
+            (see quiz.limit_offer).
+        answer_limit_offer: Saves the user's answer to that offer (True: change the limit).
         report: Makes the report (成績表) from the games and the history (called in a background thread).
         today_summary: Makes the summary of the day, or None if nothing was answered today (in a background thread).
         player_ranks: Returns the ranks of the players of a problem's game, for the human-like moves of
@@ -77,6 +81,8 @@ class ScreenSetup:
     start_times: StartTimes = StartTimes(None)
     ratio_offer: Callable[[], RatioOffer | None] = lambda: None
     answer_ratio_offer: Callable[[RatioOffer, bool], None] = lambda _offer, _yes: None
+    limit_offer: Callable[[], LimitOffer | None] = lambda: None
+    answer_limit_offer: Callable[[LimitOffer, bool], None] = lambda _offer, _yes: None
     report: Callable[[], Report] = Report
     today_summary: Callable[[], TodaySummary | None] = lambda: None
     player_ranks: Callable[[Problem], PlayerRanks] = lambda _problem: PlayerRanks()

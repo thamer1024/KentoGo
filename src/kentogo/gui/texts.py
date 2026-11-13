@@ -27,6 +27,7 @@ from kentogo.mistakes.extract import PUNISH, SHARED
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
+from kentogo.quiz.limit_offer import LimitOffer
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
 from kentogo.report import RECENT, GameAverages, Recent, TodaySummary, Totals
@@ -92,21 +93,24 @@ TEXTS = {
     "sequence": "[color=f2c94c][b]表示中：{name}[/b][/color]\n{explanation}\n手順 {index} / {count}　　{step} / {total} 手目",
     "source_katrain": "最善手の手順（KaTrain）",
     "source_kentogo": "最善手の手順（KentoGo）",
+    "source_rank": "あなたの手の続き（相手は段級位の応手）",
     "source_katago": "あなたの手の続き（相手は最強の応手）",
-    "source_katago_actual": "実戦の手の続き（相手は最強の応手）",
     "source_game": "実戦の手（棋譜の進行）",
     "explain_katrain": "KaTrainが棋譜に残した、この局面の最善手からの手順です。",
     "explain_kentogo": "KentoGoの解析が棋譜に残した、この局面の最善手からの手順です。",
+    "explain_rank": (
+        "あなたが打った手の後、あなたは自分の級位相当の手、相手は相手の段級位相当の手"
+        "（分からないときはあなたと同じ段級位）で進めた手順です。"
+    ),
     "explain_katago": "あなたが打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
-    "explain_katago_actual": "実戦で打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
     "explain_game": "実戦で打った手と、その後に対局で実際に打たれた手です。",
     "switch_sequence": "手順を切り替え（Tab）",
     # Short names of the sequences, for the line that shows the order of Tab.
     "short_katrain": "KaTrainの手",
     "short_kentogo": "KentoGoの手",
-    "short_katago": "あなたの手",
+    "short_rank": "段級位の応手",
+    "short_katago": "最強応手",
     "short_game": "実戦",
-    "short_katago_actual": "最強応手",
     "estimate_button": "地と形勢 (T)",
     "estimate_button_on": "地と形勢：表示中 (T)",
     "estimate_running": "地と形勢を計算しています…",
@@ -114,7 +118,8 @@ TEXTS = {
     "estimate_failed": "地と形勢を計算できませんでした：{reason}",
     "quick_standing": "形勢（概算）：{leader} {ahead:.1f}目リード",
     "rough_standing": "形勢の目安：{leader} {ahead:.1f}目リード（{moves}手後・浅い読み）",
-    "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）\n実戦の同じ手数と比べて：{player} {gain:+.1f}目",
+    "standing": "形勢：{leader} {ahead:.1f}目リード（{moves}手後）",
+    "standing_gain": "実戦の同じ手数と比べて：{player} {gain:+.1f}目",
     "short_waiting": "{name}(考え中 {seconds}秒)",
     "short_failed": "{name}(失敗)",
     "sequence_order": "Tabで切替：{names}",
@@ -195,6 +200,11 @@ TEXTS = {
         "合格ラインを {current}% から {proposed}% に下げますか？\n（完了した問題や過去の判定は変わりません）"
     ),
     "ratio_offer_no": "いいえ（今のまま）",
+    "limit_offer": (
+        "直近 {total} 問のうち正解した {correct} 問の、打った手の損の平均は {average} 目です。\n"
+        "正解とする答えの損の上限を {current} から {proposed} 目にしますか？\n（完了した問題や過去の判定は変わりません）"
+    ),
+    "limit_none": "なし",
     "ok": "OK",
     "error_title": "エラー",
     # Dialogs about problems, so that the user does not need to look at the console.
@@ -440,7 +450,9 @@ TEXTS = {
     "field_pass_ratio": "合格ライン（取り戻した割合 0〜1）",
     "field_tolerance": "許容幅（目）",
     "field_max_answer_loss": "正解とする答えの損の上限（目、0 で上限なし）",
-    "field_ratio_offer": "正答率に合わせて、合格ラインの上げ下げを提案する",
+    "field_ratio_offer": "答えに合わせて、合格ラインと答えの損の上限の変更を提案する",
+    "field_offer_window": "提案に使う直近の問題数（提案の後も、この数だけ解いてから次を考える）",
+    "field_limit_steps": "提案する答えの損の上限の段階（例 12,8,5,3。空欄で提案しない）",
     "order_file_name": "ファイル名順",
     "order_newest": "新しい順",
     "order_random": "ランダム",
@@ -794,6 +806,12 @@ def sequence_name(source: str) -> str:
     return text(key) if key in TEXTS else source
 
 
+def short_sequence_name(source: str) -> str:
+    """Return the short name of a sequence from its source, as in the order of Tab (such as 段級位の応手)."""
+    key = f"short_{source}"
+    return text(key) if key in TEXTS else source
+
+
 def sequence_order_text(choices: list[tuple[str, str]], selected: int, seconds: int = 0) -> str:
     """Return the line that shows the order of the sequences for Tab, with the shown one marked.
 
@@ -807,8 +825,7 @@ def sequence_order_text(choices: list[tuple[str, str]], selected: int, seconds: 
     """
     names = []
     for index, (source, status) in enumerate(choices):
-        key = f"short_{source}"
-        name = text(key) if key in TEXTS else source
+        name = short_sequence_name(source)
         if status:
             name = text(f"short_{status}", name=name, seconds=seconds)
         names.append(f"[color=f2c94c][b]▶{name}[/b][/color]" if index == selected else name)
@@ -994,16 +1011,14 @@ def rough_standing_text(lead: float, moves: int) -> str:
 
 
 def standing_text(standing: Standing, moves: int) -> str:
-    """Return the standing at the end of a sequence of some moves, and how it compares with the game."""
+    """Return the standing at the end of a sequence of some moves."""
     lead = standing.end.lead
-    return text(
-        "standing",
-        leader=color_name("B" if lead >= 0 else "W"),
-        ahead=abs(lead),
-        moves=moves,
-        player=color_name(standing.color),
-        gain=standing.gain,
-    )
+    return text("standing", leader=color_name("B" if lead >= 0 else "W"), ahead=abs(lead), moves=moves)
+
+
+def standing_gain_text(standing: Standing) -> str:
+    """Return how the standing at the end of a sequence compares with the game after the same number of moves."""
+    return text("standing_gain", player=color_name(standing.color), gain=standing.gain)
 
 
 def _comparison_line(comparison: Comparison, move: Move, other: bool, loss: float | None) -> str:
@@ -1166,6 +1181,19 @@ def game_averages_text(averages: GameAverages, bands: Sequence[float]) -> str:
         return "　".join(f"{name} {_per_game(value)}" for name, value in zip(names, values, strict=True))
 
     return text("report_games_recent", count=RECENT, latest=joined(averages.latest), earlier=joined(averages.earlier))
+
+
+def limit_offer_text(offer: LimitOffer) -> str:
+    """Return the question of the offer to set or lower the limit of a correct answer's loss."""
+    current = text("limit_none") if offer.current == 0 else f"{offer.current:g}"
+    return text(
+        "limit_offer",
+        total=offer.total,
+        correct=offer.correct,
+        average=f"{offer.average:.1f}",
+        current=current,
+        proposed=f"{offer.proposed:g}",
+    )
 
 
 def today_summary_text(summary: TodaySummary) -> str:

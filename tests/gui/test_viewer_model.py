@@ -91,6 +91,18 @@ def test_moving_through_the_game_and_the_sequences():
     assert step_game(game, Browse(2, 1, 1), -1) == Browse(1)  # Before its first move: the game before move 2.
 
 
+def test_moving_back_through_the_sequences():
+    """Shift+Tab goes the other way round: the last sequence first, then back to the game."""
+    from kentogo.gui.viewer_model import Browse, previous_variation
+
+    game = branched()
+    at_move = Browse(2)
+    assert previous_variation(game, at_move) == Browse(2, 1, 1)  # The branch of the file, at its first move.
+    assert previous_variation(game, Browse(2, 1, 2)) == Browse(2, 0, 1)  # KaTrain's sequence.
+    assert previous_variation(game, Browse(2, 0, 1)) == at_move  # Back to the game where they branch off.
+    assert previous_variation(game, Browse(3)) == Browse(3)  # No sequence at move 3.
+
+
 def test_sequence_on_the_board_and_in_the_text():
     """The sequence is played from the position before the move, numbered, with the game move marked."""
     from kentogo.gui.board_view import MARK_ACTUAL
@@ -99,7 +111,7 @@ def test_sequence_on_the_board_and_in_the_text():
     game = branched()
     view = browse_view(game, Browse(2, 1, 2))
     assert view.stones == {(4, 4): "B", (2, 6): "B", (3, 5): "W", (6, 6): "B"}
-    assert view.numbers == {(3, 5): 1, (6, 6): 2}
+    assert view.numbers == {(3, 5): 1} and view.newest == (6, 6)  # The newest move has no number.
     assert view.marks == {(0, 0): (MARK_ACTUAL,)}
     text = variation_text(game, Browse(2, 1, 1))
     assert "2手目の代わり：&bl;D6&br; G7" in text and TEXTS["source_sgf_branch"] in text

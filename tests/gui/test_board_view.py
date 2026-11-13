@@ -33,17 +33,20 @@ def test_position_without_sequence():
 
 
 def test_sequence_gets_numbers():
-    """The moves of a sequence are placed and numbered from 1."""
+    """The moves of a sequence are placed and numbered from 1; the newest one is shown without its number."""
     position = Position(9, 6.5, "japanese", (), moves("B:E5"), "W")
     view = make_board_view(position, moves("W:D4 B:F4"))
-    assert view.numbers == {point("D4"): 1, point("F4"): 2}
+    assert view.numbers == {point("D4"): 1} and view.newest == point("F4")
     assert view.stones[point("F4")] == "B"
+    assert make_board_view(position, moves("W:D4 B:F4 W:G4")).numbers == {point("D4"): 1, point("F4"): 2}
+    assert make_board_view(position, moves("W:D4 B:pass")).newest is None  # A pass is no stone.
+    assert make_board_view(position).newest is None
 
 
 def test_captured_numbered_stone_loses_its_number():
     """When a numbered stone is captured, its number is not shown."""
     position = Position(9, 6.5, "japanese", (), moves("W:E6 B:A1 W:E4 B:A2 W:D5"), "B")
-    view = make_board_view(position, moves("B:E5 W:F5"))
+    view = make_board_view(position, moves("B:E5 W:F5 B:A3"))
     assert point("E5") not in view.stones
     assert view.numbers == {point("F5"): 2}
 
@@ -52,7 +55,7 @@ def test_illegal_move_stops_the_sequence():
     """A move that cannot be played, and the moves after it, are not shown."""
     position = Position(9, 6.5, "japanese", (), moves("B:E5"), "W")
     view = make_board_view(position, moves("W:D4 B:D4 W:F4"))
-    assert view.numbers == {point("D4"): 1}
+    assert view.numbers == {} and view.newest == point("D4")  # The newest move shown is the first one.
     assert point("F4") not in view.stones
 
 

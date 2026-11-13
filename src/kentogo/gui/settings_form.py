@@ -36,6 +36,8 @@ GROUP_GENERAL = "general"
 GROUP_QUIZ = "quiz"
 GROUP_ENGINE = "engine"
 GROUP_JUDGE = "judge"
+# The settings that are lists of numbers, written as "20, 10, 5, 3" in their inputs.
+NUMBER_LISTS = ("loss_stages", "limit_steps")
 GROUP_REVIEW = "review"
 GROUP_SEICHI = "seichi"
 GROUP_COMMENTARY = "commentary"
@@ -103,6 +105,8 @@ FIELDS = (
     FieldSpec("pass_ratio", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("max_answer_loss", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("ratio_offer", "quiz", KIND_BOOL, GROUP_JUDGE),
+    FieldSpec("offer_window", "quiz", KIND_INT, GROUP_JUDGE),
+    FieldSpec("limit_steps", "quiz", KIND_TEXT, GROUP_JUDGE),
     FieldSpec("tolerance", "quiz", KIND_FLOAT, GROUP_JUDGE),
     FieldSpec("review_mode", "quiz", KIND_CHOICE, GROUP_REVIEW, REVIEW_MODES),
     FieldSpec("review_streak", "quiz", KIND_INT, GROUP_REVIEW),
@@ -187,7 +191,7 @@ def form_values(settings: AppSettings) -> dict[str, str | bool]:
         value = sections[spec.section][spec.key]
         if spec.key == "my_names":
             values[spec.id] = ", ".join(value)
-        elif spec.key == "loss_stages":
+        elif spec.key in NUMBER_LISTS:
             values[spec.id] = ", ".join(f"{stage:g}" for stage in value)
         elif spec.kind == KIND_BOOL:
             values[spec.id] = bool(value)
@@ -291,7 +295,7 @@ def _parse(spec: FieldSpec, value: str | bool):
     text = str(value).strip()
     if spec.key == "my_names":
         return [name.strip() for name in re.split(r"[,、，]", text) if name.strip()]
-    elif spec.key == "loss_stages":
+    elif spec.key in NUMBER_LISTS:
         return list(parse_stages(text))
     elif spec.kind == KIND_INT:
         if not re.fullmatch(r"\d+", text):

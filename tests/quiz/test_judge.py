@@ -3,6 +3,7 @@
 import pytest
 
 from kentogo.quiz.judge import ScoringPolicy, judge_answer
+from kentogo.quiz.score import compare_with_actual
 
 POLICY = ScoringPolicy(small_problem_threshold=3.0, pass_ratio=0.8, tolerance=1.0)
 
@@ -51,6 +52,34 @@ LIMITED = ScoringPolicy(small_problem_threshold=3.0, pass_ratio=0.7, tolerance=1
 def test_limit_of_the_answer_loss(actual_loss, answer_loss, correct):
     """With a limit, an answer to a big problem must also lose at most that many points."""
     assert judge_answer(actual_loss, answer_loss, LIMITED) is correct
+
+
+def test_the_default_rule_is_for_beginners():
+    """By default, 60% of the loss is enough, with no limit: 20 points lost in the game, 8 lost by the answer."""
+    assert ScoringPolicy().pass_ratio == 0.6 and ScoringPolicy().max_answer_loss == 0.0
+    assert judge_answer(20.0, 8.0, ScoringPolicy()) is True
+    assert judge_answer(20.0, 8.2, ScoringPolicy()) is False
+
+
+@pytest.mark.parametrize(
+    ("actual_loss", "answer_loss", "correct"),
+    [
+        (24.0, 5.04, True),  # Shown as 5.0 points: within the limit of 5.0 (it got back 79%).
+        (24.0, 5.06, False),  # Shown as 5.1 points.
+        (10.0, 3.04, True),  # Shown as 3.0 points: it got back 70%.
+    ],
+)
+def test_the_losses_are_judged_as_they_are_shown(actual_loss, answer_loss, correct):
+    """The losses are rounded to 0.1 points before they are judged, as the screen shows them."""
+    assert judge_answer(actual_loss, answer_loss, LIMITED) is correct
+
+
+def test_the_part_got_back_is_judged_as_it_is_shown():
+    """10.3 -> 5.2 points gets back 49.5%, shown as 50%: it passes a pass ratio of 0.5; 49.4% (49%) does not."""
+    half = ScoringPolicy(small_problem_threshold=3.0, pass_ratio=0.5, tolerance=1.0)
+    assert judge_answer(10.3, 5.2, half) is True
+    assert judge_answer(10.0, 5.06, half) is False  # 5.1 points shown: 49% got back.
+    assert compare_with_actual(10.3, 5.2).recovered_ratio == pytest.approx(0.495, abs=0.001)
 
 
 def test_policy_from_and_to_dict():

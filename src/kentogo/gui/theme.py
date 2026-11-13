@@ -33,7 +33,17 @@ BOARD_TINT = (1, 1, 1, 1)  # Multiplied with the board image.
 LINE_COLOR = (0, 0, 0, 1)
 STONE_IMAGES = {"B": IMAGES / "B_stone.png", "W": IMAGES / "W_stone.png"}
 STONE_SIZE = 0.505  # Half of the stone image size, in line spacings. The edge of the image is transparent.
-NUMBER_COLORS = {"B": (0.95, 0.95, 0.95, 1), "W": (0.05, 0.05, 0.05, 1)}  # Numbers on stones.
+NUMBER_COLORS = {"B": (0.95, 0.95, 0.95, 1), "W": (0.05, 0.05, 0.05, 1)}  # The cross on a dead stone.
+# The numbers of the moves on the stones: one color that can be read on black and white stones and on the
+# squares of territory drawn over dead stones, with a dark outline (RGB).
+NUMBER_TEXT_COLOR = (1.0, 0.82, 0.25, 1)
+NUMBER_OUTLINE_COLOR = (0.08, 0.08, 0.08)
+NUMBER_OUTLINE = 0.08  # The width of the outline, as a part of the size of the numbers.
+# The newest move of a sequence: a big filled circle in a color that no other mark on the board has
+# (magenta), with a white outline, so that it stands out on black and white stones.
+NEWEST_COLOR = (0.95, 0.15, 0.85, 1)
+NEWEST_OUTLINE_COLOR = (1, 1, 1, 1)
+NEWEST_RADIUS = 0.55  # As a part of the stone's radius.
 LAST_MOVE_COLOR = (0.8, 0.1, 0.1, 1)
 
 
