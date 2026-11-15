@@ -12,6 +12,9 @@ from pathlib import Path
 
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines
+from kentogo.fight_setup import FightTools
+from kentogo.fights_today import TodayFights
+from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings
 from kentogo.katago.startup import StartTimes
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
@@ -62,6 +65,9 @@ class ScreenSetup:
         today_summary: Makes the summary of the day, or None if nothing was answered today (in a background thread).
         player_ranks: Returns the ranks of the players of a problem's game, for the human-like moves of
             KataGo's sequences (see kentogo.opponent_rank).
+        load_fights: Makes today's local fight problems (called in a background thread).
+        fight_tools: Makes what the screen of the local fights uses, given the running KataGo and how it analyzes
+            the positions (see kentogo.fight_setup).
     """
 
     load: Callable[[Progress], TodayProblems]
@@ -86,3 +92,7 @@ class ScreenSetup:
     report: Callable[[], Report] = Report
     today_summary: Callable[[], TodaySummary | None] = lambda: None
     player_ranks: Callable[[Problem], PlayerRanks] = lambda _problem: PlayerRanks()
+    load_fights: Callable[[], TodayFights] = lambda: TodayFights([])
+    fight_tools: Callable[[AnalysisEngine, EvaluationSettings], FightTools] = lambda _engine, _evaluation: FightTools(
+        lambda _fight: None, lambda _run: None
+    )

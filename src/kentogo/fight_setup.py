@@ -1,0 +1,69 @@
+"""What the screen of the local fight problems needs: the play of each fight against KataGo, and saving its answer.
+
+The app makes it from the settings (see app._make_setup) when the screen is opened with the running KataGo. The
+opponent is KataGo's strongest replies, or the human-like replies of the opponent's rank in the fight's game
+(see kentogo.opponent_rank; without a rank, the strongest replies). Each reading uses the engine's max_visits.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from kentogo.fight_answers import save_fight_answer
+from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings
+from kentogo.katago.human_moves import human_profile
+from kentogo.mistakes.local_fight import LocalFight
+from kentogo.quiz.fight_judge import OPPONENT_RANK
+from kentogo.quiz.fight_run import FightPlay, FightRun
+from kentogo.quiz.fight_settings import FightSettings
+from kentogo.quiz.human_line import PlayerRanks
+from kentogo.review.history import AnswerHistory
+
+
+@dataclass(frozen=True)
+class FightTools:
+    """What the screen of the local fights uses.
+
+    Attributes:
+        make_run: Makes the play of a fight against KataGo.
+        save: Saves the answer of a fight that has ended (nothing is saved without a history).
+    """
+
+    make_run: Callable[[LocalFight], FightRun]
+    save: Callable[[FightRun], None]
+
+
+def fight_play(settings: FightSettings, evaluation: EvaluationSettings, ranks: PlayerRanks) -> FightPlay:
+    """Return how KataGo plays a fight: the settings' opponent, with the profile of the opponent's rank."""
+    profile = human_profile(ranks.theirs) if settings.opponent == OPPONENT_RANK else ""
+    return FightPlay(
+        evaluation.max_visits, evaluation.wide_root_noise, settings.opponent, profile, settings.score_tolerance
+    )
+
+
+def fight_tools(
+    engine: AnalysisEngine,
+    evaluation: EvaluationSettings,
+    settings: FightSettings,
+    history: AnswerHistory | None,
+    ranks: Callable[[LocalFight], PlayerRanks],
+) -> FightTools:
+    """Make the tools of the screen of the local fights.
+
+    Args:
+        engine: The running KataGo.
+        evaluation: How KataGo analyzes the positions (its visits and noise are used).
+        settings: How the local fights are played.
+        history: The history of the fights, or None.
+        ranks: Returns the ranks of the players of a fight's game.
+    """
+
+    def make_run(fight: LocalFight) -> FightRun:
+        return FightRun(engine, fight, fight_play(settings, evaluation, ranks(fight)))
+
+    def save(run: FightRun) -> None:
+        if history is not None:
+            save_fight_answer(history, run, evaluation.max_visits)
+
+    return FightTools(make_run, save)

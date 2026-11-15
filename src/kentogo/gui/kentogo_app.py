@@ -5,7 +5,8 @@ its start screen (which reads the games), and the territory counting practice (s
 when it is turned on in the settings, shows the final positions of games that ended by
 counting, one after another, chosen and ordered as its settings say (see
 seichi.seichi_plan); the user says how each counting went. Each screen has a button to
-come back to the top screen.
+come back to the top screen. The local fight problems (see fights_today) are played against the running
+KataGo, so they cannot be chosen without it.
 
 KataGo is started with the app, as in KaTrain: when the window has opened, the main model is
 loaded, then the comparison model, while a dialog tells how long it may still take (see
@@ -34,11 +35,14 @@ from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.modalview import ModalView
 
+from kentogo.fight_setup import FightTools
+from kentogo.fights_today import TodayFights
 from kentogo.gui import texts, theme
 from kentogo.gui.api_screen import ApiScreen
 from kentogo.gui.batch_screen import BatchScreen
 from kentogo.gui.commentary_menu import CommentaryMenu
 from kentogo.gui.dialogs import confirm, show_message
+from kentogo.gui.fight_screen import FightScreen
 from kentogo.gui.fonts import register_font
 from kentogo.gui.loading_dialog import LoadingDialog
 from kentogo.gui.paste_screen import PasteScreen
@@ -66,6 +70,7 @@ class KentoGoApp(App):
 
     Attributes:
         quiz: The quiz screen, or None before it is opened.
+        fights: The screen of the local fight problems while it is open, or None.
     """
 
     title = "KentoGo"
@@ -81,6 +86,7 @@ class KentoGoApp(App):
         super().__init__(**kwargs)
         self.setup = setup
         self.quiz: QuizScreen | None = None
+        self.fights: FightScreen | None = None
         self.engines: Engines | None = None  # KataGo, from the start of the app until it ends.
         self.engines_outdated = True  # True until KataGo runs with the settings of the setup.
         self.seichi_queue: SeichiQueue | None = None  # The games of the seichi practice in this start.
@@ -133,6 +139,7 @@ class KentoGoApp(App):
         """Return the practices of the top screen, as (text key, action)."""
         choices = [
             ("mode_quiz", self.show_splash),
+            ("mode_fights", self.show_fights),
             ("mode_viewer", self.show_viewer),
             ("mode_report", self.show_report),
             ("mode_analysis", self.setup.analyze_games),
@@ -295,6 +302,51 @@ class KentoGoApp(App):
             open_game=self.open_game,
         )
         self.frame.add_widget(self.quiz)
+
+    def show_fights(self) -> None:
+        """Find today's local fight problems in the background, then show them (KataGo plays the opponent)."""
+        if self.engines is None:  # Chosen before KataGo was started (just after the window opened).
+            self.start_engines()
+        engines = self.engines
+        if engines.engine is None:
+            message = texts.text("fights_need_katago", reason=engines.engine_problem)
+            show_message(texts.text("mode_fights"), message, on_close=self.show_top)
+            return
+        self.frame.clear_widgets()
+        searching = wrapping_label(halign="center", valign="middle")
+        set_text(searching, texts.lazy("fights_loading"))
+        self.frame.add_widget(searching)
+        load = self.setup.load_fights
+        tools = self.setup.fight_tools(engines.engine, engines.evaluation)
+
+        def work() -> None:
+            """Find the fights in the background thread."""
+            try:
+                today = load()
+            except Exception as error:  # For example, the games folder cannot be read.
+                in_main_thread(self._seichi_failed)(str(error))
+                return
+            in_main_thread(self._show_fights)(today, tools)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_fights(self, today: TodayFights, tools: FightTools) -> None:
+        """Show the screen of the local fights, or tell why there are none."""
+        self.frame.clear_widgets()
+        if today.notices:
+            show_message(texts.text("notice_title"), texts.notices_text(today.notices))
+        if not today.fights:
+            show_message(texts.text("mode_fights"), texts.notice_text(today.message), on_close=self.show_top)
+            return
+        self.fights = FightScreen(today.fights, tools.make_run, tools.save, on_back=self._leave_fights)
+        self.frame.add_widget(self.fights)
+
+    def _leave_fights(self) -> None:
+        """Leave the local fights (their answers are saved when each ends), and go back to the top screen."""
+        if self.fights is not None:
+            self.fights.close()
+            self.fights = None
+        self.show_top()
 
     def change_language(self, language: str) -> None:
         """Show all screens in another language at once, and keep the language for the next start.

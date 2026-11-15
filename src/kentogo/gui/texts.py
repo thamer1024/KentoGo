@@ -292,6 +292,9 @@ TEXTS = {
     "field_use_seichi": "整地練習も使う（トップ画面にボタンを出す）",
     # The dialog at the start that asks which practice to do (when the territory counting practice is on).
     "mode_quiz": "悪手問題",
+    "mode_fights": "局地戦の問題（生き死に・境界）",
+    "fights_loading": "局地戦の問題を探しています…",
+    "fights_need_katago": "局地戦の問題はKataGoと打ち合うので、KataGoが必要です。\n{reason}",
     "mode_seichi": "整地練習",
     "mode_viewer": "棋譜を見る",
     "mode_report": "成績表",

@@ -11,7 +11,8 @@ The games folder is taken from the settings. A folder given on the command line
 is used instead, for this start only. Without a folder, the app still starts and
 tells the user to set the folder on the settings screen.
 
-Answers are saved to history.sqlite3 in the same folder as the settings file.
+Answers are saved to history.sqlite3 in the same folder as the settings file, and the answers of the
+local fight problems to fight_history.sqlite3 there (see fights_today).
 The problems made from each SGF file are kept in problem_cache.sqlite3 there
 too, so that only new and changed files are read at the next start.
 The history decides today's problems: problems never answered, and reviews of
@@ -57,12 +58,14 @@ from kentogo.clear_history import clear_answers, clear_seichi_results
 from kentogo.commentary.prompt_text import create_user_prompt_file
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines, engines_for, measure_katago_speed
+from kentogo.fight_setup import fight_tools
+from kentogo.fights_today import fight_history_path, load_fights
 from kentogo.gui import texts
 from kentogo.gui.commentary_texts import commentary_language
 from kentogo.katago.startup import TIMES_FILE, StartTimes
 from kentogo.notice import Notice
 from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_with_angle
-from kentogo.opponent_rank import problem_ranks
+from kentogo.opponent_rank import fight_ranks, problem_ranks
 from kentogo.quiz.limit_offer import LimitOffer, find_limit_offer
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
@@ -84,6 +87,7 @@ from kentogo.today import (
     find_games_folder,
     include_all_problems,
     load_today,
+    open_answers,
     open_history,
 )
 
@@ -261,20 +265,22 @@ def main(argv: list[str] | None = None) -> None:
     rng = random.Random()
     # Used by the quiz screen to save the answers (not in a trial: see quiz_trial).
     history = None if arguments.test_quiz else open_history(arguments.settings, notices)
+    fight_history = None if arguments.test_quiz else open_answers(fight_history_path(arguments.settings), notices)
     seichi = _SeichiHistoryOpener(arguments.settings)
 
     def make_setup(current: AppSettings, shown: list[Notice]) -> ScreenSetup:
         """Make the setup of the screens from some settings."""
         seichi_history = seichi.open(shown) if current.seichi.use_seichi else None
-        parts = _SetupParts(arguments, current, history, seichi_history, rng, tuple(shown))
+        parts = _SetupParts(arguments, current, history, seichi_history, rng, tuple(shown), fight_history)
         return _make_setup(parts, lambda saved: _use_new_setup(make_setup(saved, [])))
 
     setup = make_setup(settings, notices)
     try:
         _run_app(setup, language)
     finally:
-        if history is not None:
-            history.store.close()
+        for opened in (history, fight_history):
+            if opened is not None:
+                opened.store.close()
         seichi.close()
 
 
@@ -288,6 +294,7 @@ class _SetupParts:
     seichi_history: SeichiHistory | None
     rng: random.Random
     notices: tuple[Notice, ...]
+    fight_history: AnswerHistory | None = None
 
 
 def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> ScreenSetup:
@@ -335,6 +342,14 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
             arguments.settings, arguments.folder, _current_settings(arguments.settings, settings), date.today()
         ),
         player_ranks=lambda problem: problem_ranks(arguments.settings, problem),
+        load_fights=lambda: load_fights(arguments.settings, arguments.folder, settings, rng),
+        fight_tools=lambda engine, evaluation: fight_tools(
+            engine,
+            evaluation,
+            settings.fight_play,
+            parts.fight_history,
+            lambda fight: fight_ranks(arguments.settings, fight),
+        ),
     )
 
 

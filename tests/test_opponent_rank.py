@@ -1,7 +1,9 @@
 """Tests for kentogo.opponent_rank (the ranks of the players, for the human-like moves of KataGo's sequences)."""
 
 from kentogo.commentary.history import CommentaryHistory, history_path
-from kentogo.opponent_rank import given_rank, player_ranks
+from kentogo.common.types import Position
+from kentogo.mistakes.local_fight import LocalFight
+from kentogo.opponent_rank import fight_ranks, given_rank, player_ranks
 from kentogo.quiz.human_line import PlayerRanks
 
 
@@ -31,3 +33,10 @@ def test_the_rank_given_for_the_ai_commentary(tmp_path):
     history.save_inputs("b.sgf", "B", "", "same")
     history.close()
     assert (given_rank(settings, "a.sgf"), given_rank(settings, "b.sgf")) == ("8k", "8k")
+
+
+def test_the_ranks_of_a_fight(tmp_path):
+    """The user plays the fight's next move (here white): the opponent is black."""
+    position = Position(19, 6.5, "japanese", (), (), "W")
+    fight = LocalFight("f", game(tmp_path, "BR[3d]WR[5k]"), 2, position, "boundary", (), (), (), 1, 0.0, ())
+    assert fight_ranks(tmp_path / "settings.json", fight) == PlayerRanks("5k", "3d")

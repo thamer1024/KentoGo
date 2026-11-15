@@ -16,6 +16,7 @@ from kentogo.commentary.history import CommentaryHistory, history_path
 from kentogo.commentary.targets import normalize_rank
 from kentogo.common.sgf import load_game
 from kentogo.common.types import opponent
+from kentogo.mistakes.local_fight import LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.human_line import PlayerRanks
 
@@ -40,6 +41,11 @@ def player_ranks(sgf_path: str, my_color: str, given_rank: Callable[[str], str])
 def problem_ranks(settings_path: Path, problem: Problem) -> PlayerRanks:
     """Return the ranks of the players of a problem's game (the user plays the problem's next move)."""
     return player_ranks(problem.sgf_path, problem.position.next_color, lambda name: given_rank(settings_path, name))
+
+
+def fight_ranks(settings_path: Path, fight: LocalFight) -> PlayerRanks:
+    """Return the ranks of the players of a local fight's game (the user plays the fight's next move)."""
+    return player_ranks(fight.sgf_path, fight.position.next_color, lambda name: given_rank(settings_path, name))
 
 
 def given_rank(settings_path: Path, name: str) -> str:
