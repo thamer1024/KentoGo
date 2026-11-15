@@ -62,7 +62,8 @@ class FightRun:
 
     Attributes:
         fight: The fight.
-        played: The moves played from the fight's position, the user's first.
+        played: The moves played from the fight's position, the user's first (with the user's last move, even
+            when it left the fight).
         start_lead: Black's score lead at the start, or None until start() has the answer.
         outcome: How the fight ended, or None while it goes on.
     """
@@ -108,10 +109,11 @@ class FightRun:
 
         A move away from the fight (or a pass) ends it at once, before KataGo is asked.
         """
-        if not is_near(move, fight_places(self.fight, self.played)):
+        places = fight_places(self.fight, self.played)
+        self.played = (*self.played, move)
+        if not is_near(move, places):
             self._end(FightOutcome(OUTCOME_USER_LEFT), on_end)
             return
-        self.played = (*self.played, move)
         self._user_moves += 1
 
         def receive(answer: dict) -> None:

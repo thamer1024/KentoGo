@@ -81,6 +81,7 @@ def test_the_user_leaves_the_fight():
     fight_run, events = run(engine)
     user(fight_run, events, "J9")
     assert events[-1] == ("end", OUTCOME_USER_LEFT, None) and len(engine.queries) == 1
+    assert [move.gtp() for move in fight_run.played] == ["J9"]  # Kept, to be saved with the answer.
 
 
 def test_the_strongest_opponent_leaves_before_it_is_settled():
