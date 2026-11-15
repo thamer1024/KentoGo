@@ -187,13 +187,15 @@ TEXTS = {
     "fight_kind_life_death": "生き死にの練習",
     "fight_kind_boundary": "境界の練習",
     "fight_starting": "KataGoが局面を読んでいます…",
-    "fight_turn": "{color}番です。この場所の決着がつくまで打ってください（手抜きは不正解）。",
+    "fight_turn": "{color}番です。この場所の決着がつくまで打ってください（手を抜いてもよい場面なら、手抜きも正解です）。",
     "fight_waiting": "KataGoが考えています…",
     "fight_error": "KataGoが答えられませんでした：{reason}\n次の問題に進んでください。",
     "fight_won": "[color=5be37d][b]正解[/b][/color]　局地戦に勝ちました。",
     "fight_lost": "[color=ff8a80][b]不正解[/b][/color]　局地戦に負けました。",
     "fight_score": "[color=ff8a80][b]不正解[/b][/color]　局地戦には勝ちましたが、目数が減りすぎました。",
-    "fight_user_left": "[color=ff8a80][b]不正解[/b][/color]　局地戦から手を抜きました。",
+    "fight_won_left": "[color=5be37d][b]正解[/b][/color]　手を抜いても局地戦に勝てました。",
+    "fight_lost_left": "[color=ff8a80][b]不正解[/b][/color]　手を抜いたので局地戦に負けました。",
+    "fight_score_left": "[color=ff8a80][b]不正解[/b][/color]　手を抜いて局地戦には勝ちましたが、目数が減りすぎました。",
     "fight_opponent_left": "[color=ff8a80][b]不正解[/b][/color]　相手が手を抜きました。最後の手は打たなくてもよい手でした。",
     "fight_line": "[color=f2c94c][b]表示中：{name}[/b][/color]\n手順 {index} / {count}　　{step} / {total} 手目",
     "fight_line_played": "あなたの手順",
@@ -1051,7 +1053,7 @@ def fight_info(fight: LocalFight, index: int, total: int) -> str:
 
 def fight_outcome_text(outcome: FightOutcome) -> str:
     """Return how a local fight ended, with the points lost since the start when they are known."""
-    verdict = text(f"fight_{outcome.kind}")
+    verdict = text(f"fight_{outcome.kind}_left" if outcome.left else f"fight_{outcome.kind}")
     if outcome.score_loss is None:
         return verdict
     return f"{verdict}\n{text('fight_score_loss', loss=outcome.score_loss)}"

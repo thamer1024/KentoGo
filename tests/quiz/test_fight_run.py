@@ -7,7 +7,6 @@ from kentogo.quiz.fight_judge import (
     OPPONENT_RANK,
     OUTCOME_LOST,
     OUTCOME_OPPONENT_LEFT,
-    OUTCOME_USER_LEFT,
     OUTCOME_WON,
 )
 from kentogo.quiz.fight_run import FightPlay, FightRun
@@ -75,13 +74,22 @@ def test_the_fight_is_played_until_it_is_settled():
     assert all(query["includeOwnership"] for query in engine.queries[1:])
 
 
-def test_the_user_leaves_the_fight():
-    """A move far from the fight (or a pass) is wrong at once, without asking KataGo."""
-    engine = FakeEngine({0: (1.0, 0.6, "B2")})
+def test_playing_away_when_the_stones_live_anyway():
+    """A move far from the fight is read too: the stones live without it, so it is correct."""
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.5, 0.9, "B2")})
     fight_run, events = run(engine)
     user(fight_run, events, "J9")
-    assert events[-1] == ("end", OUTCOME_USER_LEFT, None) and len(engine.queries) == 1
-    assert [move.gtp() for move in fight_run.played] == ["J9"]  # Kept, to be saved with the answer.
+    assert events[-1] == ("end", OUTCOME_WON, -0.5) and fight_run.outcome.left and fight_run.outcome.correct
+
+
+def test_playing_away_goes_on_when_it_is_not_settled():
+    """After a move away, the opponent's reply away from the fight (to that move) does not end it."""
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "J8"), 3: (1.0, -0.9, "B2")})
+    fight_run, events = run(engine)
+    user(fight_run, events, "J9")
+    assert events[-1] == ("reply", "J8")
+    user(fight_run, events, "H9")  # Away again: the stones die.
+    assert events[-1] == ("end", OUTCOME_LOST, 0.0) and fight_run.outcome.left
 
 
 def test_the_strongest_opponent_leaves_before_it_is_settled():

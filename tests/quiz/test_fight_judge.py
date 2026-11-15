@@ -45,6 +45,8 @@ def test_moves_near_the_fight():
     assert is_near(Move("B", (3, 3)), places) and not is_near(Move("B", (6, 6)), places)
     assert not is_near(Move("B", None), places)  # A pass leaves the fight.
     assert most_moves(fight()) == 1 + 4 and most_moves(fight(moves=3)) == 2 + 4
+    played = (Move("B", (8, 8)), Move("W", (7, 8)), Move("B", (1, 3)))  # J9 and H9 are away; B4 is near.
+    assert fight_places(fight(), played) == places + [(1, 3)]
 
 
 def test_ended_outcome():

@@ -7,7 +7,7 @@ import pytest
 from kentogo.common.types import Move, Position
 from kentogo.fight_answers import fight_record, save_fight_answer, saved_fights
 from kentogo.mistakes.local_fight import LocalFight
-from kentogo.quiz.fight_judge import OUTCOME_SCORE, OUTCOME_USER_LEFT, FightOutcome
+from kentogo.quiz.fight_judge import OUTCOME_LOST, OUTCOME_SCORE, FightOutcome
 from kentogo.quiz.fight_run import FightPlay, FightRun
 from kentogo.review.history import AnswerHistory
 from kentogo.review.store import ReviewStore
@@ -32,8 +32,8 @@ def test_the_record_of_a_fight():
     assert (record.problem_id, record.move_number, record.color) == ("f1", 2, "B")
     assert (record.answer, record.actual_move, record.best_move) == ("A2 B2 C2", "A2", OUTCOME_SCORE)
     assert (record.answer_loss, record.loss_source, record.max_visits, record.correct) == (4.5, "katago", 500, False)
-    left = fight_record(ended(("J9",), FightOutcome(OUTCOME_USER_LEFT)), WHEN, 500)
-    assert (left.answer, left.answer_loss, left.loss_source) == ("J9", None, "")
+    left = fight_record(ended(("J9",), FightOutcome(OUTCOME_LOST, None, left=True)), WHEN, 500)
+    assert (left.answer, left.best_move, left.answer_loss, left.loss_source) == ("J9", "lost_left", None, "")
 
 
 def test_a_fight_that_has_not_ended_is_not_saved():
@@ -43,7 +43,7 @@ def test_a_fight_that_has_not_ended_is_not_saved():
 
 def test_the_answer_and_the_fight_are_kept():
     history = AnswerHistory(ReviewStore(":memory:"), lambda: WHEN)
-    save_fight_answer(history, ended(("J9",), FightOutcome(OUTCOME_USER_LEFT)), 500)
+    save_fight_answer(history, ended(("J9",), FightOutcome(OUTCOME_LOST)), 500)
     (record,) = history.previous("f1")
     assert (record.answered_at, record.correct) == (WHEN.isoformat(timespec="seconds"), False)
     assert saved_fights(history, ["f1", "missing"]) == [FIGHT]
