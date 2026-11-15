@@ -6,7 +6,9 @@ whether the place is settled:
 
 - The judged points are the stones that changed their owner in the game (the user's stones that died and the
   opponent's stones that lived) for a life and death fight, and the empty points that the user lost for a broken
-  boundary (judged_points).
+  boundary (judged_points). Only those that are the user's at the start, in KataGo's reading with the best play,
+  are judged (kept_points): a point that is lost whatever the user plays (the opponent's move into the user's
+  area took it already) does not make the answer wrong. When none is left, only the score is judged.
 - The place is settled when every judged point belongs to one side by at least SETTLED (is_settled).
 - The fight is won when at least WIN_SHARE of the judged points are the user's by at least OWNED: the user's stones
   live, the opponent's stones die, or the user's territory is kept (fight_won).
@@ -17,8 +19,10 @@ The fight ends, and is judged, when:
   (FightSettings.score_tolerance) since the start (OUTCOME_WON, OUTCOME_LOST or OUTCOME_SCORE);
 - the user plays away from the fight (more than NEAR lines from the judged points and the fight's moves) or
   passes: it is wrong (OUTCOME_USER_LEFT);
-- the strongest opponent plays away from the fight while the place is not settled: the user's move did not need
-  an answer, so it is wrong (OUTCOME_OPPONENT_LEFT; a human-like opponent may leave, and the fight goes on);
+- KataGo's best reply to the user's move is away from the fight (whoever plays the opponent): the place needs no
+  more moves. If the user's move lost more than NEEDLESS_LOSS points, it was not needed either, and it is wrong
+  (OUTCOME_OPPONENT_LEFT); otherwise the fight is judged as if settled. (A human-like opponent may still play
+  away later while KataGo's best reply is in the fight: then the fight goes on.)
 - the user has played the most moves (most_moves): it is judged as if settled (OUTCOME_WON, OUTCOME_LOST or
   OUTCOME_SCORE).
 
@@ -38,6 +42,7 @@ SETTLED = 0.8  # The place is settled when every judged point is one side's by a
 WIN_SHARE = 0.8  # The fight is won when at least this share of the judged points are the user's.
 NEAR = 3  # A move is in the fight when it is within this many lines of a judged point or a move of the fight.
 EXTRA_MOVES = 4  # The user may play this many moves more than in the game, before the fight is judged.
+NEEDLESS_LOSS = 1.0  # A move that lost more than this many points, when the place needed no more moves, was needless.
 
 OUTCOME_WON = "won"  # Settled for the user, and the score held.
 OUTCOME_LOST = "lost"  # Settled (or ended) against the user.
@@ -77,15 +82,21 @@ def judged_points(fight: LocalFight) -> list[Point]:
     return [Move.from_gtp(text, "B").coord for text in texts]
 
 
+def kept_points(points: list[Point], areas: Areas, color: str) -> list[Point]:
+    """Return the points that are color's by at least OWNED in the areas (those the best play keeps)."""
+    sign = 1.0 if color == "B" else -1.0
+    return [point for point in points if sign * areas.get(point, 0.0) >= OWNED]
+
+
 def is_settled(areas: Areas, points: list[Point]) -> bool:
     """True if every point belongs to one side by at least SETTLED."""
     return all(abs(areas.get(point, 0.0)) >= SETTLED for point in points)
 
 
 def fight_won(areas: Areas, points: list[Point], color: str) -> bool:
-    """True if at least WIN_SHARE of the points are color's by at least OWNED."""
+    """True if at least WIN_SHARE of the points are color's by at least OWNED (also when there are no points)."""
     if not points:
-        return False
+        return True
     sign = 1.0 if color == "B" else -1.0
     owned = sum(sign * areas.get(point, 0.0) >= OWNED for point in points)
     return owned >= WIN_SHARE * len(points)
@@ -116,16 +127,17 @@ def score_loss(start_lead: float, end_lead: float, color: str) -> float:
     return sign * (start_lead - end_lead)
 
 
-def ended_outcome(areas: Areas, fight: LocalFight, loss: float | None, tolerance: float) -> FightOutcome:
-    """Return the outcome of a fight that ended (settled, or the user played the most moves).
+def ended_outcome(areas: Areas, points: list[Point], color: str, loss: float | None, tolerance: float) -> FightOutcome:
+    """Return the outcome of a fight that ended (settled, needing no more moves, or the user played the most moves).
 
     Args:
         areas: KataGo's areas after the user's last move.
-        fight: The fight.
+        points: The judged points (see kept_points).
+        color: The user's color.
         loss: How many points the user's score fell since the start, or None if not known (then it is not used).
         tolerance: How many points the score may fall in a correct answer.
     """
-    if not fight_won(areas, judged_points(fight), fight.position.next_color):
+    if not fight_won(areas, points, color):
         return FightOutcome(OUTCOME_LOST, loss)
     if loss is not None and loss > tolerance:
         return FightOutcome(OUTCOME_SCORE, loss)

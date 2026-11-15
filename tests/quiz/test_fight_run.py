@@ -84,12 +84,29 @@ def test_the_user_leaves_the_fight():
     assert [move.gtp() for move in fight_run.played] == ["J9"]  # Kept, to be saved with the answer.
 
 
-def test_the_strongest_opponent_leaves_before_it_is_settled():
-    """KataGo answers far away: black's move did not need an answer, so it is wrong."""
+def test_a_needless_move_answered_elsewhere():
+    """KataGo answers far away, and black's move lost 2 points: it was not needed, so it is wrong."""
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (-1.0, 0.6, "J9")})
+    fight_run, events = run(engine)
+    user(fight_run, events, "A2")
+    assert events[-1] == ("end", OUTCOME_OPPONENT_LEFT, 2.0)
+
+
+def test_the_last_needed_move_answered_elsewhere():
+    """KataGo answers far away after black's best move (nothing lost): the place is done, and the stones live."""
     engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "J9")})
     fight_run, events = run(engine)
     user(fight_run, events, "A2")
-    assert events[-1] == ("end", OUTCOME_OPPONENT_LEFT, 0.0)
+    assert events[-1] == ("end", OUTCOME_WON, 0.0)
+
+
+def test_points_lost_whatever_the_user_plays_are_not_judged():
+    """The stones are white's at the start already: only the score is judged, after the first move."""
+    engine = FakeEngine({0: (1.0, -0.6, "B2"), 1: (0.5, -0.6, "B2")})
+    fight_run, events = run(engine)
+    assert fight_run.points == []
+    user(fight_run, events, "A2")
+    assert events[-1] == ("end", OUTCOME_WON, 0.5)
 
 
 def test_the_stones_die():
@@ -101,7 +118,7 @@ def test_the_stones_die():
 
 def test_a_human_like_opponent():
     """With the opponent's rank, white plays the human-like move (B2), asked with the profile."""
-    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "J9")})
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "C2")})
     fight_run, events = run(engine, opponent=OPPONENT_RANK, profile="rank_15k")
     user(fight_run, events, "A2")
     assert events[-1] == ("reply", "B2")

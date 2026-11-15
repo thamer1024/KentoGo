@@ -12,6 +12,7 @@ from kentogo.quiz.fight_judge import (
     is_near,
     is_settled,
     judged_points,
+    kept_points,
     most_moves,
     score_loss,
 )
@@ -36,7 +37,13 @@ def test_settled_and_won():
     assert is_settled(alive, points) and fight_won(alive, points, "B") and not fight_won(alive, points, "W")
     assert not is_settled(alive | {(2, 0): 0.6}, points)
     assert fight_won(alive | {(2, 0): -0.9}, points * 2 + [(2, 0)], "B") is False  # 6 of 7 is less than 80%.
-    assert fight_won({}, [], "B") is False
+    assert fight_won({}, [], "B") is True  # Nothing could be kept: only the score is judged.
+
+
+def test_only_the_points_that_the_best_play_keeps_are_judged():
+    points = [(0, 0), (1, 0), (2, 0)]
+    start = {(0, 0): 0.7, (1, 0): -0.6, (2, 0): 0.2}  # B1 is lost whatever black plays; C1 is not black's.
+    assert kept_points(points, start, "B") == [(0, 0)] and kept_points(points, start, "W") == [(1, 0)]
 
 
 def test_moves_near_the_fight():
@@ -49,8 +56,10 @@ def test_moves_near_the_fight():
 
 def test_ended_outcome():
     alive = {(0, 0): 0.9, (1, 0): 0.9, (2, 0): 0.9}
-    assert ended_outcome(alive, fight(), 1.0, 3.0).kind == OUTCOME_WON
-    assert ended_outcome(alive, fight(), 4.0, 3.0).kind == OUTCOME_SCORE  # Alive, but too much was lost.
-    assert ended_outcome(alive, fight(), None, 3.0).correct
-    assert ended_outcome({}, fight(), 0.0, 3.0).kind == OUTCOME_LOST
+    points = list(alive)
+    assert ended_outcome(alive, points, "B", 1.0, 3.0).kind == OUTCOME_WON
+    assert ended_outcome(alive, points, "B", 4.0, 3.0).kind == OUTCOME_SCORE  # Alive, but too much was lost.
+    assert ended_outcome(alive, points, "B", None, 3.0).correct
+    assert ended_outcome({}, points, "B", 0.0, 3.0).kind == OUTCOME_LOST
+    assert ended_outcome({}, [], "B", 4.0, 3.0).kind == OUTCOME_SCORE  # Nothing to keep: only the score.
     assert score_loss(2.0, -1.0, "B") == 3.0 and score_loss(2.0, -1.0, "W") == -3.0

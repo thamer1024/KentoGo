@@ -1,6 +1,6 @@
 """Play a local fight problem against KataGo, move after move, until it is judged (the rules are in quiz.fight_judge).
 
-start() reads the score of the fight's position. Then play() takes each move of the user: it checks that the move
+start() reads the score and the areas of the fight's position. Then play() takes each move of the user: it checks that the move
 is in the fight, asks KataGo for the position after it (with the areas, as many visits as the engine's max_visits),
 and either judges the fight or lets the opponent answer:
 
@@ -27,6 +27,7 @@ from kentogo.katago.human_moves import human_query, most_likely_move
 from kentogo.katago.queries import best_sequence, ownership_map, position_query, root_score, with_ownership
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_judge import (
+    NEEDLESS_LOSS,
     OPPONENT_STRONG,
     OUTCOME_OPPONENT_LEFT,
     OUTCOME_USER_LEFT,
@@ -36,6 +37,7 @@ from kentogo.quiz.fight_judge import (
     is_near,
     is_settled,
     judged_points,
+    kept_points,
     most_moves,
     score_loss,
 )
@@ -75,6 +77,7 @@ class FightRun:
         played: The moves played from the fight's position, the user's first (with the user's last move, even
             when it left the fight).
         start_lead: Black's score lead at the start, or None until start() has the answer.
+        points: The judged points that the best play keeps (see quiz.fight_judge.kept_points), known after start().
         outcome: How the fight ended, or None while it goes on.
     """
 
@@ -83,10 +86,12 @@ class FightRun:
         self.fight = fight
         self.played: tuple[Move, ...] = ()
         self.start_lead: float | None = None
+        self.points: list[tuple[int, int]] = []
         self.outcome: FightOutcome | None = None
         self._engine = engine
         self._play = play
         self._user_moves = 0
+        self._last_lead: float | None = None  # Black's lead before the user's move.
 
     @property
     def color(self) -> str:
@@ -94,19 +99,22 @@ class FightRun:
         return self.fight.position.next_color
 
     def start(self, on_ready: Callable[[], None], on_error: Callable[[str], None]) -> None:
-        """Read the score of the fight's position, then call on_ready (or on_error with a message)."""
+        """Read the score and the areas of the fight's position, then call on_ready (or on_error with a message)."""
 
         def receive(answer: dict) -> None:
             if answer.get("isDuringSearch"):
                 return
             try:
                 self.start_lead = root_score(answer)
+                areas = ownership_map(answer, self.fight.position.size)
             except ValueError as error:
                 on_error(str(error))
                 return
+            self._last_lead = self.start_lead
+            self.points = kept_points(judged_points(self.fight), areas, self.color)
             on_ready()
 
-        self._engine.query(self._query(()), receive)
+        self._engine.query(with_ownership(self._query(())), receive)
 
     def play(
         self,
@@ -143,27 +151,35 @@ class FightRun:
         on_end: Callable[[FightOutcome], None],
         on_error: Callable[[str], None],
     ) -> None:
-        """Judge the fight from KataGo's answer after the user's move, or let the opponent answer."""
+        """Judge the fight from KataGo's answer after the user's move, or let the opponent answer.
+
+        When KataGo's best reply is away from the fight, the place needs no more moves (see quiz.fight_judge).
+        """
         areas = ownership_map(answer, self.fight.position.size)
-        loss = score_loss(self.start_lead, root_score(answer), self.color) if self.start_lead is not None else None
-        if is_settled(areas, judged_points(self.fight)) or self._user_moves >= most_moves(self.fight):
-            self._end(ended_outcome(areas, self.fight, loss, self._play.tolerance), on_end)
+        lead = root_score(answer)
+        before, self._last_lead = self._last_lead, lead
+        loss = score_loss(self.start_lead, lead, self.color) if self.start_lead is not None else None
+        best = self._best_reply(answer)
+        if is_settled(areas, self.points) or self._user_moves >= most_moves(self.fight):
+            self._end(self._ended(areas, loss), on_end)
+        elif not is_near(best, fight_places(self.fight, self.played)):
+            move_loss = score_loss(before, lead, self.color) if before is not None else 0.0
+            needless = move_loss > NEEDLESS_LOSS
+            self._end(FightOutcome(OUTCOME_OPPONENT_LEFT, loss) if needless else self._ended(areas, loss), on_end)
         elif self._play.opponent == OPPONENT_STRONG or not self._play.profile:
-            self._strongest_reply(answer, loss, on_reply, on_end)
+            self.played = (*self.played, best)
+            on_reply(best)
         else:
             self._human_reply(on_reply, on_error)
 
-    def _strongest_reply(
-        self, answer: dict, loss: float | None, on_reply: Callable[[Move], None], on_end: Callable[[FightOutcome], None]
-    ) -> None:
-        """Play KataGo's best move; when it leaves the fight (or passes), the user's move needed no answer."""
+    def _best_reply(self, answer: dict) -> Move:
+        """Return KataGo's best reply to the user's move (a pass when it has none)."""
         points = best_sequence(answer)
-        reply = Move.from_gtp(points[0], opponent(self.color)) if points else Move(opponent(self.color), None)
-        if not is_near(reply, fight_places(self.fight, self.played)):
-            self._end(FightOutcome(OUTCOME_OPPONENT_LEFT, loss), on_end)
-            return
-        self.played = (*self.played, reply)
-        on_reply(reply)
+        return Move.from_gtp(points[0], opponent(self.color)) if points else Move(opponent(self.color), None)
+
+    def _ended(self, areas: dict, loss: float | None) -> FightOutcome:
+        """Return the outcome of the fight judged now."""
+        return ended_outcome(areas, self.points, self.color, loss, self._play.tolerance)
 
     def _human_reply(self, on_reply: Callable[[Move], None], on_error: Callable[[str], None]) -> None:
         """Play the human-like move of the opponent's rank (it may leave the fight: the fight goes on)."""
