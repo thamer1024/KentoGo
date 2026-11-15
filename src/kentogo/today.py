@@ -14,7 +14,7 @@ import random
 import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Set
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -210,6 +210,7 @@ def plan_today(
     today: date,
     stages: tuple[float, ...] = (),
     kind: str = KIND_ALL,
+    inside_fights: Set[str] = frozenset(),
 ) -> tuple[QuizPlan, int | None, StageStatus]:
     """Choose today's problems: new problems and the reviews that are due, in the order of the settings.
 
@@ -226,6 +227,9 @@ def plan_today(
         stages: The thresholds of the staged problems, the biggest first, or () if they are not used.
         kind: Which problems are asked (see quiz.problem_kinds); the others are left out, reviews too,
             and the stage counts only the problems of that kind.
+        inside_fights: The IDs of the mistake problems inside the local fights (see
+            mistakes.local_fight.LocalFight.mistake_ids): they are asked as fights, so their copies in the
+            history are not asked as reviews.
 
     Returns:
         A tuple (plan, limit, stage). limit is how many more problems may be asked today, reviews
@@ -245,7 +249,7 @@ def plan_today(
             answered.add(problem_id)
     other = other_kinds(problems, kind)
     stage = current_stage([problem for problem in problems if problem.problem_id not in other], answered, stages)
-    all_problems = problems + _lost_reviews(problems, states, history, today)
+    all_problems = problems + _lost_reviews(problems, states, history, today, inside_fights)
     limit = left_today(settings.daily_limit, done)
     new_ids = {problem_id for problem_id, state in states.items() if state.state == STATE_NEW}
     excluded = set_aside | held_back(problems, new_ids, stage) | other_kinds(all_problems, kind)
@@ -254,15 +258,20 @@ def plan_today(
 
 
 def _lost_reviews(
-    problems: list[Problem], states: dict[str, ReviewState], history: AnswerHistory, today: date
+    problems: list[Problem],
+    states: dict[str, ReviewState],
+    history: AnswerHistory,
+    today: date,
+    inside_fights: Set[str],
 ) -> list[Problem]:
     """Return the reviews due today whose problems are no longer made from the games.
 
     This happens when a game is analyzed again, the conditions for choosing problems
     change, or the file is moved or deleted. The copies kept in the history are used; an old copy without the
     game's own sequence gets it from its file, when the file is still there (see mistakes.extract.with_game_line).
+    A mistake problem inside a local fight (inside_fights) is not one of them: it is asked as the fight.
     """
-    made = {problem.problem_id for problem in problems}
+    made = {problem.problem_id for problem in problems} | set(inside_fights)
     lost = sorted(problem_id for problem_id, state in states.items() if problem_id not in made and state.is_due(today))
     return [with_game_line(problem) for problem in saved_problems(history, lost)] if lost else []
 
@@ -298,6 +307,7 @@ def prepare_problems(
         return TodayProblems([], folder_problem)
     games, skipped = collect_games(folder, settings.quiz.extract, cache, progress, recorded_colors)
     problems = problems_of_kind((result for _path, result in games), settings.quiz.problem_kind)
+    inside_fights = {key for _path, result in games for fight in result.local_fights for key in fight.mistake_ids()}
     for game in skipped:
         print(game.message(), file=sys.stderr)
     skipped_counts = dict(Counter(game.reason for game in skipped))
@@ -307,7 +317,7 @@ def prepare_problems(
         return TodayProblems(problems, None, len(problems), 0, skipped=skipped_counts, skipped_games=skipped)
     stages = settings.quiz.extract.loss_stages
     plan, limit, stage = plan_today(
-        problems, history, settings.review, date.today(), stages, settings.quiz.problem_kind
+        problems, history, settings.review, date.today(), stages, settings.quiz.problem_kind, inside_fights
     )
     print(f"{len(problems)} problems: {plan.new_count} new, {plan.review_count} reviews today", file=sys.stderr)
     notices = [Notice("notice_history_error", {"reason": history.last_error})] if history.last_error else []

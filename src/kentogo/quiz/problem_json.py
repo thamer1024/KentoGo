@@ -10,6 +10,7 @@ import functools
 
 from kentogo.common.types import Move, Position
 from kentogo.mistakes.extract import ExtractResult
+from kentogo.mistakes.local_fight import LocalFight
 from kentogo.mistakes.problem import Problem, Variation
 
 
@@ -98,6 +99,68 @@ def problem_from_dict(values: dict) -> Problem:
     )
 
 
+def local_fight_to_dict(fight: LocalFight) -> dict:
+    """Return a local fight problem as a dict of texts, numbers and lists."""
+    return {
+        **_position_to_dict(fight.position),
+        "problem_id": fight.problem_id,
+        "sgf_path": fight.sgf_path,
+        "move_number": fight.move_number,
+        "kind": fight.kind,
+        "mine": list(fight.mine),
+        "theirs": list(fight.theirs),
+        "points": list(fight.points),
+        "fight_moves": fight.moves,  # "moves" are the position's.
+        "score_lead": fight.score_lead,
+        "game_line": [move_text(move) for move in fight.game_line],
+    }
+
+
+def local_fight_from_dict(values: dict) -> LocalFight:
+    """Make a local fight problem from a dict made by local_fight_to_dict.
+
+    Raises:
+        KeyError, ValueError: If the dict is not complete or has wrong values.
+    """
+    return LocalFight(
+        problem_id=values["problem_id"],
+        sgf_path=values["sgf_path"],
+        move_number=values["move_number"],
+        position=_position_from_dict(values),
+        kind=values["kind"],
+        mine=tuple(values["mine"]),
+        theirs=tuple(values["theirs"]),
+        points=tuple(values["points"]),
+        moves=values["fight_moves"],
+        score_lead=values["score_lead"],
+        game_line=tuple(move_from_text(text) for text in values["game_line"]),
+    )
+
+
+def _position_to_dict(position: Position) -> dict:
+    """Return a position as the keys of a problem's dict."""
+    return {
+        "size": position.size,
+        "komi": position.komi,
+        "rules": position.rules,
+        "setup": [move_text(move) for move in position.setup],
+        "moves": [move_text(move) for move in position.moves],
+        "next_color": position.next_color,
+    }
+
+
+def _position_from_dict(values: dict) -> Position:
+    """Make a position from the keys of a problem's dict (see _position_to_dict)."""
+    return Position(
+        size=values["size"],
+        komi=values["komi"],
+        rules=values["rules"],
+        setup=tuple(move_from_text(text) for text in values["setup"]),
+        moves=tuple(move_from_text(text) for text in values["moves"]),
+        next_color=values["next_color"],
+    )
+
+
 def result_to_dict(result: ExtractResult) -> dict:
     """Return the result of one game (its problems, or why it has none) as a dict."""
     return {
@@ -106,6 +169,7 @@ def result_to_dict(result: ExtractResult) -> dict:
         "reason": result.reason,
         "move_losses": list(result.move_losses),
         "punishments": [problem_to_dict(problem) for problem in result.punishments],
+        "local_fights": [local_fight_to_dict(fight) for fight in result.local_fights],
     }
 
 
@@ -114,4 +178,5 @@ def result_from_dict(values: dict) -> ExtractResult:
     problems = tuple(problem_from_dict(problem) for problem in values["problems"])
     losses = tuple(float(loss) for loss in values.get("move_losses", ()))
     punishments = tuple(problem_from_dict(problem) for problem in values.get("punishments", ()))
-    return ExtractResult(values["my_color"], problems, values["reason"], losses, punishments)
+    fights = tuple(local_fight_from_dict(fight) for fight in values.get("local_fights", ()))
+    return ExtractResult(values["my_color"], problems, values["reason"], losses, punishments, fights)

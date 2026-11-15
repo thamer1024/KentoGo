@@ -33,9 +33,8 @@ from pysgf import GoNode
 from kentogo.common.board import Board, IllegalMoveError, Point
 from kentogo.common.types import Move, Position
 from kentogo.katago.queries import ownership_map
+from kentogo.record.kentogo_analysis import KIND_BOUNDARY, KIND_LIFE_DEATH
 
-KIND_LIFE_DEATH = "life_death"
-KIND_BOUNDARY = "boundary"
 OWNED = 0.5  # A point is a player's when KataGo's ownership is at least this from the player's side.
 MIN_STONES = 3  # The fewest stones that must change their owner in a life and death fight.
 MIN_POINTS = 5  # The fewest empty points that the user must lose when a boundary is broken.

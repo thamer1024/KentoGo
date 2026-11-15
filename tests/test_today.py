@@ -16,6 +16,7 @@ from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.session import QuizSession
 from kentogo.record.katrain_comment import INTERNAL_MARKER
+from kentogo.record.kentogo_analysis import encode_kga
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.review.record import LOSS_FROM_KATAGO, AnswerRecord
 from kentogo.review.review_settings import ReviewSettings
@@ -150,6 +151,23 @@ def test_prepare_problems_with_history(tmp_path, monkeypatch):
 
     answer_first_problem(history, games, "Q4")  # The best move: correct, so it waits 3 days.
     assert prepare_problems(games, AppSettings(), history, random.Random(0)).problems == []
+    history.store.close()
+
+
+def test_a_mistake_inside_a_local_fight_is_not_reviewed(tmp_path, monkeypatch):
+    """When the analysis finds a local fight around a mistake that was answered, the mistake is not asked again
+    (its copy in the history is not a lost review): it is asked as the fight."""
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_with_mistake(9.0), encoding="utf-8")
+    history = open_history(tmp_path / "settings.json")
+    answer_first_problem(history, games, "A19")  # Wrong: asked again tomorrow.
+    fight = {"kind": "life_death", "mine": ["A19"], "theirs": [], "points": [], "moves": 1}
+    kga = "".join(f"[{value}]" for value in encode_kga({"root": {"scoreLead": 0.0}, "moves": {}, "local_fight": fight}))
+    (games / "a.sgf").write_text(sgf_with_mistake(9.0).replace(";W[dp]", f";W[dp]KGA{kga}"), encoding="utf-8")
+    monkeypatch.setattr(today_module, "date", Tomorrow)
+    today = prepare_problems(games, AppSettings(), history, random.Random(0))
+    assert today.problems == [] and today.review_count == 0
     history.store.close()
 
 

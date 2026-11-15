@@ -19,6 +19,10 @@ best move at its turn before, the loss was not made by this move. The punishment
 not among the problems of a game (it has only problems_per_game of them) are kept apart
 (ExtractResult.punishments), for the quiz that asks only punishment problems (see quiz.problem_kinds).
 
+The local fights that the user lost (life and death, and broken boundaries), which KentoGo's analysis found,
+are made too (ExtractResult.local_fights, see mistakes.local_fight); the user's moves inside them are not
+mistake problems, as the fight is asked from where it started.
+
 Whether the game was already decided is read from the analysis data of the position before the move
 (before the opponent's mistake for a punishment problem). In a game with handicap stones, only the lead
 gained since the start counts, not the winrate (see common.handicap).
@@ -34,6 +38,7 @@ from pysgf import GoNode
 from kentogo.common import sgf
 from kentogo.common.handicap import from_start
 from kentogo.common.types import Move, Position, moves_from_gtp
+from kentogo.mistakes.local_fight import LocalFight, find_local_fights, lost_moves
 from kentogo.mistakes.problem import SOURCE_KATRAIN, SOURCE_KENTOGO, Problem, Variation, problem_id_of
 from kentogo.mistakes.selection import (
     DECIDED_LEAD,
@@ -196,6 +201,7 @@ class ExtractResult:
             in the report, see kentogo.report).
         punishments: The punishment problems (PUNISH) that are not among the problems, in open positions,
             in the order played: the quiz of punishment problems asks them too.
+        local_fights: The local fights that the user lost, in the order played (see mistakes.local_fight).
     """
 
     my_color: str | None
@@ -203,6 +209,7 @@ class ExtractResult:
     reason: str = ""
     move_losses: tuple[float, ...] = ()
     punishments: tuple[Problem, ...] = ()
+    local_fights: tuple[LocalFight, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -264,9 +271,13 @@ def extract_problems(root: GoNode, sgf_path: str, settings: ExtractSettings, rec
             made = _make_problem_from_node(game, node, before, settings)
             if made is not None and made[0].problem_id not in problems:
                 problems[made[0].problem_id] = made
+    fights = find_local_fights(main_line, start, sgf_path, my_color)
+    inside = lost_moves(fights)
+    problems = {key: made for key, made in problems.items() if made[0].move_number not in inside}
     losses = _move_losses(main_line, game)
     chosen = _choose(list(problems.values()), settings)
-    return ExtractResult(my_color, chosen, move_losses=losses, punishments=_other_punishments(problems, chosen))
+    others = _other_punishments(problems, chosen)
+    return ExtractResult(my_color, chosen, move_losses=losses, punishments=others, local_fights=fights)
 
 
 def _other_punishments(problems: dict[str, tuple[Problem, bool]], chosen: tuple[Problem, ...]) -> tuple[Problem, ...]:

@@ -32,6 +32,8 @@ from kentogo.record.katrain_kt import SUPPORTED_VERSION, decode_kt
 from kentogo.record.kentogo_data import Grid, decode_kgd, encode_kgd
 
 KGA_PROPERTY = "KGA"
+KIND_LIFE_DEATH = "life_death"  # The kinds of a "local_fight" (see analysis.life_death).
+KIND_BOUNDARY = "boundary"
 _NUMBERS = ("ownership", "policy")  # The board-sized lists of numbers, kept as grids.
 
 

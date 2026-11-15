@@ -22,7 +22,7 @@ from pathlib import Path
 from kentogo.mistakes.extract import ExtractResult, ExtractSettings
 from kentogo.quiz.problem_json import result_from_dict, result_to_dict
 
-CACHE_VERSION = 14  # 2: games without analysis are reported. 3: candidate losses from KT.
+CACHE_VERSION = 15  # 2: games without analysis are reported. 3: candidate losses from KT.
 # 4: the user's color is also found from the ranks and the file name.
 # 5: the AI commentary is kept apart from the user's notes.
 # (The cache key also changed with version 5: the recorded color is part of it.)
@@ -35,6 +35,7 @@ CACHE_VERSION = 14  # 2: games without analysis are reported. 3: candidate losse
 # 12: the moves of the game after each problem are kept (the game's own sequence).
 # 13: the best sequence of a game analyzed by KentoGo is KentoGo's ("kentogo"), not KaTrain's.
 # 14: the game's own sequence has at least 10 moves (it had 15).
+# 15: the local fights that the user lost are kept, and the user's moves inside them are no mistake problems.
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS files (
