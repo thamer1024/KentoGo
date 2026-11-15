@@ -23,8 +23,9 @@ from kentogo.settings import SettingsStore
 # Where the settings are kept (the same style as KaTrain's ~/.katrain).
 SETTINGS_PATH = Path("~/.kentogo/settings.json")
 
-# The parts of the settings file that hold settings (other parts, such as the history, are kept as they are).
-SECTIONS = ("quiz", "engine", "seichi", "commentary", "analysis")
+# The parts of the settings file that hold settings (other parts, such as the history, are kept as they are):
+# those that AppSettings writes, so that every part saved is also read.
+SECTIONS = tuple(AppSettings().sections())
 
 
 def default_settings(katrain_config: Path = DEFAULT_KATRAIN_CONFIG) -> dict[str, dict]:

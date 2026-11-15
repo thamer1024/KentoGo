@@ -20,6 +20,7 @@ from kentogo.app import (
 from kentogo.app_settings import AppSettings
 from kentogo.gui.texts import notice_text
 from kentogo.katago.engine_settings import EngineSettings
+from kentogo.quiz.fight_settings import FightSettings
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.record.katrain_comment import INTERNAL_MARKER
 from kentogo.review.review_settings import ReviewSettings
@@ -114,6 +115,8 @@ def test_save_settings_keeps_other_sections(tmp_path):
         EngineSettings(katago="/bin/katago", katrain_config=str(tmp_path / "none.json")),
         ReviewSettings(priority="mix", session_limit=5),
         SeichiSettings(use_seichi=True),
+        fights=ReviewSettings(session_limit=7, review_streak=2),
+        fight_play=FightSettings(opponent="rank", score_tolerance=5.0),
     )
     save_settings(path, settings)
     assert json.loads(path.read_text())["history"] == {"keep": 1}
