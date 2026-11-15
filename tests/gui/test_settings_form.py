@@ -77,6 +77,19 @@ def test_seichi_page():
     assert (seichi.order, seichi.session_limit, seichi.review_mode) == ("newest", 5, "once")
 
 
+def test_fight_play_settings():
+    """The opponent and the score tolerance of the local fights are on the quiz's page, apart from their reviews."""
+    assert "fight" in PAGE_GROUPS["quiz"]
+    values = form_values(SETTINGS)
+    assert (values["fight_opponent"], values["fight_score_tolerance"]) == ("strong", "3.0")
+    values.update({"fight_opponent": "rank", "fight_score_tolerance": "5", "fight_session_limit": "7"})
+    new = settings_from_form(values, SETTINGS)
+    assert (new.fight_play.opponent, new.fight_play.score_tolerance, new.fights.session_limit) == ("rank", 5.0, 7)
+    with pytest.raises(FormError) as error:
+        settings_from_form({**values, "fight_opponent": "weak"}, SETTINGS)
+    assert set(error.value.errors) == {"fight_opponent"}
+
+
 def test_wrong_inputs_are_all_reported():
     """All wrong inputs are reported together, with their keys."""
     values = form_values(SETTINGS)

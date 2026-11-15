@@ -15,6 +15,7 @@ from kentogo.app_settings import AppSettings
 from kentogo.commentary.commentary_settings import PROVIDERS
 from kentogo.katago.engine_settings import EngineSettings
 from kentogo.katago.locate import KataGoNotFoundError, read_engine_config, resolve_path
+from kentogo.quiz.fight_judge import OPPONENTS
 from kentogo.quiz.problem_kinds import PROBLEM_KINDS
 from kentogo.quiz.quiz_settings import ORDERS, QuizSettings
 from kentogo.quiz.stages import parse_stages
@@ -36,6 +37,7 @@ GROUP_GENERAL = "general"
 GROUP_QUIZ = "quiz"
 GROUP_ENGINE = "engine"
 GROUP_JUDGE = "judge"
+GROUP_FIGHT = "fight"  # How the local fight problems are played (on the page of the quiz).
 # The settings that are lists of numbers, written as "20, 10, 5, 3" in their inputs.
 NUMBER_LISTS = ("loss_stages", "limit_steps")
 GROUP_REVIEW = "review"
@@ -109,6 +111,8 @@ FIELDS = (
     FieldSpec("offer_window", "quiz", KIND_INT, GROUP_JUDGE),
     FieldSpec("limit_steps", "quiz", KIND_TEXT, GROUP_JUDGE),
     FieldSpec("tolerance", "quiz", KIND_FLOAT, GROUP_JUDGE),
+    FieldSpec("opponent", "fights", KIND_CHOICE, GROUP_FIGHT, OPPONENTS, name="fight_opponent"),
+    FieldSpec("score_tolerance", "fights", KIND_FLOAT, GROUP_FIGHT, name="fight_score_tolerance"),
     FieldSpec("review_mode", "quiz", KIND_CHOICE, GROUP_REVIEW, REVIEW_MODES),
     FieldSpec("review_streak", "quiz", KIND_INT, GROUP_REVIEW),
     FieldSpec("priority", "quiz", KIND_CHOICE, GROUP_REVIEW, PRIORITIES),
@@ -139,7 +143,7 @@ FIELDS = (
 # as KaTrain splits them ("General & Engine settings", "Teaching/Analysis settings", ...).
 PAGE_GENERAL = "general"  # KataGo's files, the games folder and names, and the engine.
 PAGE_PRESETS = "presets"  # The recommended numbers of visits for each kind of computer (katago.presets).
-PAGE_QUIZ = "quiz"  # Choosing and asking problems, and judging answers.
+PAGE_QUIZ = "quiz"  # Choosing and asking problems, judging answers, and playing the local fights.
 PAGE_REVIEW = "review"  # Reviews, and the order of new problems and reviews.
 PAGE_SEICHI = "seichi"  # The territory counting practice: the order of the games, counting again, the limit.
 PAGE_COMMENTARY = "commentary"  # The AI commentary: which AI and model, and the API key's variable.
@@ -150,7 +154,7 @@ PAGES = (PAGE_GENERAL, PAGE_PRESETS, PAGE_ANALYSIS, PAGE_QUIZ, PAGE_REVIEW, PAGE
 PAGE_GROUPS = {
     PAGE_GENERAL: (GROUP_KATAGO, GROUP_GENERAL, GROUP_ENGINE),
     PAGE_PRESETS: (),  # Only buttons (see gui.settings_popup).
-    PAGE_QUIZ: (GROUP_QUIZ, GROUP_JUDGE),
+    PAGE_QUIZ: (GROUP_QUIZ, GROUP_JUDGE, GROUP_FIGHT),
     PAGE_REVIEW: (GROUP_REVIEW, GROUP_FIGHT_REVIEW),
     PAGE_SEICHI: (GROUP_SEICHI,),
     PAGE_COMMENTARY: (GROUP_COMMENTARY,),

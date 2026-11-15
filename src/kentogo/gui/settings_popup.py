@@ -60,6 +60,7 @@ from kentogo.gui.settings_form import (
     GROUP_ANALYSIS,
     GROUP_COMMENTARY,
     GROUP_ENGINE,
+    GROUP_FIGHT,
     GROUP_FIGHT_REVIEW,
     GROUP_GENERAL,
     GROUP_JUDGE,
@@ -197,6 +198,8 @@ class SettingsPopup(Popup):
         elif page == PAGE_QUIZ:
             body.add_widget(_two_columns(_header(texts.text("quiz_settings")), _header(texts.text("judge_settings"))))
             body.add_widget(_two_columns(self._settings_box(GROUP_QUIZ), self._settings_box(GROUP_JUDGE)))
+            body.add_widget(_header(texts.text("fight_settings"), halign="left"))
+            body.add_widget(self._settings_box(GROUP_FIGHT))
         elif page == PAGE_COMMENTARY:
             self._add_commentary_page(body)
         elif page == PAGE_PRESETS:
