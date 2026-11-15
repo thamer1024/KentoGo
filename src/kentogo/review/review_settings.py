@@ -39,11 +39,12 @@ class ReviewSettings:
         return 0 if self.daily_limit_off else self.session_limit
 
     @classmethod
-    def from_dict(cls, values: dict) -> ReviewSettings:
-        """Make the settings from the "quiz" part of settings.json.
+    def from_dict(cls, values: dict, default: ReviewSettings | None = None) -> ReviewSettings:
+        """Make the settings from the "quiz" part of settings.json (or the "fights" part, see app_settings).
 
         Args:
             values: The values. Missing keys get the default values, and other keys are ignored.
+            default: The settings whose values the missing keys get (None: the defaults of this class).
 
         Returns:
             The settings.
@@ -51,7 +52,7 @@ class ReviewSettings:
         Raises:
             ValueError: If a value has a wrong type or is not allowed.
         """
-        default = cls()
+        default = default or cls()
         priority = values.get("priority", default.priority)
         if priority not in PRIORITIES:
             raise ValueError(f"wrong review setting: priority must be one of {PRIORITIES}: {priority!r}")

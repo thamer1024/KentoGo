@@ -60,6 +60,7 @@ from kentogo.gui.settings_form import (
     GROUP_ANALYSIS,
     GROUP_COMMENTARY,
     GROUP_ENGINE,
+    GROUP_FIGHT_REVIEW,
     GROUP_GENERAL,
     GROUP_JUDGE,
     GROUP_KATAGO,
@@ -99,7 +100,7 @@ PAGE_SIZES = {
     PAGE_GENERAL: (0.92, 0.95),
     PAGE_PRESETS: (0.8, 0.85),
     PAGE_QUIZ: (0.85, 0.85),
-    PAGE_REVIEW: (0.7, 0.7),
+    PAGE_REVIEW: (0.7, 0.85),
     PAGE_SEICHI: (0.7, 0.7),
     PAGE_COMMENTARY: (0.85, 0.9),
     PAGE_ANALYSIS: (0.92, 0.95),
@@ -211,6 +212,8 @@ class SettingsPopup(Popup):
             if self._exclude_all is not None and self._include_all is not None:
                 body.add_widget(self._review_actions())
             body.add_widget(self._clear_row())
+            body.add_widget(_header(texts.text("fight_review_settings"), halign="left"))
+            body.add_widget(self._settings_box(GROUP_FIGHT_REVIEW))
         scroll = ScrollView()
         scroll.add_widget(body)
 

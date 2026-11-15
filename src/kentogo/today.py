@@ -169,7 +169,11 @@ def open_history(settings_path: Path, notices: list[Notice] | None = None) -> An
         The history, or None if the database cannot be used (the reason is printed).
         The quiz works without the history.
     """
-    path = settings_path.expanduser().parent / HISTORY_FILE_NAME
+    return open_answers(settings_path.expanduser().parent / HISTORY_FILE_NAME, notices)
+
+
+def open_answers(path: Path, notices: list[Notice] | None = None) -> AnswerHistory | None:
+    """Open a history database of answers (see open_history), or None if it cannot be used (the reason is printed)."""
     try:
         return AnswerHistory(ReviewStore(path))
     except (sqlite3.Error, OSError, ValueError) as error:

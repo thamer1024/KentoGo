@@ -39,6 +39,7 @@ GROUP_JUDGE = "judge"
 # The settings that are lists of numbers, written as "20, 10, 5, 3" in their inputs.
 NUMBER_LISTS = ("loss_stages", "limit_steps")
 GROUP_REVIEW = "review"
+GROUP_FIGHT_REVIEW = "fight_review"  # The reviews of the local fight problems (on the page of the reviews).
 GROUP_SEICHI = "seichi"
 GROUP_COMMENTARY = "commentary"
 GROUP_ANALYSIS = "analysis"  # The analysis of games: the folders, the visits and the retries.
@@ -50,7 +51,7 @@ class FieldSpec:
 
     Attributes:
         key: The key of the value in its part of settings.json.
-        section: The part of settings.json: "quiz", "engine", "seichi", "commentary" or "analysis".
+        section: The part of settings.json: "quiz", "engine", "seichi", "commentary", "analysis" or "fights".
         kind: The kind of input, such as KIND_INT.
         group: The box on the screen where the input is shown.
         choices: The values to choose from, for KIND_CHOICE.
@@ -111,6 +112,10 @@ FIELDS = (
     FieldSpec("review_mode", "quiz", KIND_CHOICE, GROUP_REVIEW, REVIEW_MODES),
     FieldSpec("review_streak", "quiz", KIND_INT, GROUP_REVIEW),
     FieldSpec("priority", "quiz", KIND_CHOICE, GROUP_REVIEW, PRIORITIES),
+    FieldSpec("session_limit", "fights", KIND_INT, GROUP_FIGHT_REVIEW, name="fight_session_limit"),
+    FieldSpec("review_mode", "fights", KIND_CHOICE, GROUP_FIGHT_REVIEW, REVIEW_MODES, name="fight_review_mode"),
+    FieldSpec("review_streak", "fights", KIND_INT, GROUP_FIGHT_REVIEW, name="fight_review_streak"),
+    FieldSpec("priority", "fights", KIND_CHOICE, GROUP_FIGHT_REVIEW, PRIORITIES, name="fight_priority"),
     FieldSpec("seichi_session_limit", "seichi", KIND_INT, GROUP_SEICHI),
     FieldSpec("seichi_order", "seichi", KIND_CHOICE, GROUP_SEICHI, SEICHI_ORDERS),
     FieldSpec("seichi_priority", "seichi", KIND_CHOICE, GROUP_SEICHI, PRIORITIES),
@@ -146,7 +151,7 @@ PAGE_GROUPS = {
     PAGE_GENERAL: (GROUP_KATAGO, GROUP_GENERAL, GROUP_ENGINE),
     PAGE_PRESETS: (),  # Only buttons (see gui.settings_popup).
     PAGE_QUIZ: (GROUP_QUIZ, GROUP_JUDGE),
-    PAGE_REVIEW: (GROUP_REVIEW,),
+    PAGE_REVIEW: (GROUP_REVIEW, GROUP_FIGHT_REVIEW),
     PAGE_SEICHI: (GROUP_SEICHI,),
     PAGE_COMMENTARY: (GROUP_COMMENTARY,),
     PAGE_ANALYSIS: (GROUP_ANALYSIS,),
