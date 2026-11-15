@@ -24,9 +24,11 @@ from kentogo.common.types import Move
 from kentogo.katago.estimate import Standing
 from kentogo.katago.move_value import URGENT, MoveValue, kind_of
 from kentogo.mistakes.extract import PUNISH, SHARED
+from kentogo.mistakes.local_fight import KIND_BOUNDARY, LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
+from kentogo.quiz.fight_judge import FightOutcome
 from kentogo.quiz.limit_offer import LimitOffer
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
@@ -181,6 +183,19 @@ TEXTS = {
     "engine_settings": "エンジン設定",
     "judge_settings": "判定設定",
     "review_settings": "復習設定",
+    "fight_kind_life_death": "生き死にの練習",
+    "fight_kind_boundary": "境界の練習",
+    "fight_starting": "KataGoが局面を読んでいます…",
+    "fight_turn": "{color}番です。この場所の決着がつくまで打ってください（手抜きは不正解）。",
+    "fight_waiting": "KataGoが考えています…",
+    "fight_error": "KataGoが答えられませんでした：{reason}\n次の問題に進んでください。",
+    "fight_won": "[color=5be37d][b]正解[/b][/color]　局地戦に勝ちました。",
+    "fight_lost": "[color=ff8a80][b]不正解[/b][/color]　局地戦に負けました。",
+    "fight_score": "[color=ff8a80][b]不正解[/b][/color]　局地戦には勝ちましたが、目数が減りすぎました。",
+    "fight_user_left": "[color=ff8a80][b]不正解[/b][/color]　局地戦から手を抜きました。",
+    "fight_opponent_left": "[color=ff8a80][b]不正解[/b][/color]　相手が手を抜きました。最後の手は打たなくてもよい手でした。",
+    "fight_score_loss": "最初の局面からの目数の減り：{loss:.1f}目",
+    "fights_done": "今日の局地戦の問題は終わりです。",
     "fight_review_settings": "局地戦の問題（生き死に・境界）の復習設定",
     "fight_settings": "局地戦の問題（生き死に・境界）の設定",
     "field_fight_opponent": "相手",
@@ -970,6 +985,7 @@ def analysis_state_text(state: str) -> str:
 # The kinds of problems: their texts and colors (light colors, easy to read on the dark panel).
 KIND_TITLES = {"": ("kind_mistake", "6cc0ff"), PUNISH: ("kind_punish", "ffb74d"), SHARED: ("kind_shared", "80deea")}
 KIND_TITLE_SIZE = "20sp"
+FIGHT_TITLE_COLOR = "ce93d8"  # The local fight problems (see fight_info).
 
 
 def problem_info(problem: Problem, index: int, total: int) -> str:
@@ -997,6 +1013,35 @@ def kind_title(problem: Problem) -> str:
     """Return the kind of a problem in big colored letters, such as 失敗した手の練習 or 咎める手の演習."""
     key, color = KIND_TITLES.get(problem.punishment, KIND_TITLES[""])
     return f"[size={KIND_TITLE_SIZE}][b][color={color}]{text(key)}[/color][/b][/size]"
+
+
+def fight_info(fight: LocalFight, index: int, total: int) -> str:
+    """Return the text about a local fight problem: its kind (big and colored), the game, the move, the count.
+
+    Args:
+        fight: The fight.
+        index: The number of the fight, starting from 1.
+        total: The number of fights.
+    """
+    key = "fight_kind_boundary" if fight.kind == KIND_BOUNDARY else "fight_kind_life_death"
+    title = f"[size={KIND_TITLE_SIZE}][b][color={FIGHT_TITLE_COLOR}]{text(key)}[/color][/b][/size]"
+    info = text(
+        "problem_info",
+        game=Path(fight.sgf_path).stem,
+        move_number=fight.move_number,
+        color=color_name(fight.position.next_color),
+        index=index,
+        total=total,
+    )
+    return f"{title}\n{info}"
+
+
+def fight_outcome_text(outcome: FightOutcome) -> str:
+    """Return how a local fight ended, with the points lost since the start when they are known."""
+    verdict = text(f"fight_{outcome.kind}")
+    if outcome.score_loss is None:
+        return verdict
+    return f"{verdict}\n{text('fight_score_loss', loss=outcome.score_loss)}"
 
 
 def punishment_hint(problem: Problem) -> str:

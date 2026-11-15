@@ -13,6 +13,8 @@ from kentogo.gui.texts import (
     analysis_summary_text,
     band_names,
     color_name,
+    fight_info,
+    fight_outcome_text,
     fill_step_text,
     game_averages_text,
     history_text,
@@ -35,8 +37,10 @@ from kentogo.gui.texts import (
 )
 from kentogo.katago.estimate import Estimate, Standing
 from kentogo.katago.move_value import MoveValue
+from kentogo.mistakes.local_fight import LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
+from kentogo.quiz.fight_judge import FightOutcome
 from kentogo.quiz.score import compare_with_actual
 from kentogo.quiz.session import AnswerResult
 from kentogo.report import GameAverages
@@ -188,6 +192,21 @@ def test_problem_info():
     info = problem_info(PROBLEM, 3, 29)
     assert "KaTrain_game 2026-10-19" in info
     assert "169手目" in info and "黒番" in info and "3 / 29" in info
+
+
+def test_fight_info():
+    fight = LocalFight("f", "/games/a game.sgf", 31, PROBLEM.position, "boundary", (), (), ("A1",), 3, 0.0, ())
+    info = fight_info(fight, 2, 5)
+    assert "境界の練習" in info and "a game" in info and "31手目" in info and "2 / 5" in info
+    assert "生き死にの練習" in fight_info(replace(fight, kind="life_death"), 1, 1)
+
+
+def test_fight_outcome_text():
+    assert "正解" in fight_outcome_text(FightOutcome("won", 1.25)) and "1.2目" in fight_outcome_text(
+        FightOutcome("won", 1.25)
+    )
+    assert fight_outcome_text(FightOutcome("user_left")) == text("fight_user_left")
+    assert "目数が減りすぎました" in fight_outcome_text(FightOutcome("score", 6.0))
 
 
 def test_result_text_correct():
