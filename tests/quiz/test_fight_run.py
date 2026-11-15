@@ -106,3 +106,37 @@ def test_a_human_like_opponent():
     user(fight_run, events, "A2")
     assert events[-1] == ("reply", "B2")
     assert engine.queries[-1]["overrideSettings"]["humanSLProfile"] == "rank_15k"
+
+
+def ai_line(engine, **play) -> list:
+    fight_run, _events = run(engine, **play)
+    lines = []
+    fight_run.ask_ai_line(
+        lambda line: lines.append([move.gtp() for move in line]), lambda message: lines.append(message)
+    )
+    return lines
+
+
+def test_the_sequence_of_the_strongest_ais():
+    """Both sides play KataGo's best moves, as long as the game's sequence of the fight (3 moves)."""
+    engine = FakeEngine({0: (1.0, 0.6, "A2"), 1: (1.0, 0.6, "B2"), 2: (1.0, 0.6, "C2")})
+    assert ai_line(engine) == [["A2", "B2", "C2"]]
+
+
+def test_the_sequence_of_the_human_like_ais():
+    """With the opponent's rank, both sides play the human-like moves of their own ranks."""
+    engine = FakeEngine({0: (1.0, 0.6, "A2"), 1: (1.0, 0.6, "B2"), 2: (1.0, 0.6, "C2")})
+    lines = ai_line(engine, opponent=OPPONENT_RANK, profile="rank_12k", my_profile="rank_15k")
+    assert lines[0][0] == "B2"
+    profiles = [query["overrideSettings"]["humanSLProfile"] for query in engine.queries[1:3]]
+    assert profiles == ["rank_15k", "rank_12k"]
+
+
+class BrokenEngine:
+    def query(self, _request, callback):
+        callback({"error": "broken"})
+        return "x"
+
+
+def test_the_sequence_of_the_ais_fails():
+    assert ai_line(BrokenEngine()) == ["KataGo could not analyze the position: broken"]

@@ -8,6 +8,10 @@ and either judges the fight or lets the opponent answer:
 - the human-like opponent (OPPONENT_RANK) plays the move that a player of the opponent's rank would most likely
   play (one more query, with the human-like model; see katago.human_moves).
 
+After the fight, ask_ai_line() makes the sequence in which both sides play as the opponent was set to play: both
+KataGo's best moves (OPPONENT_STRONG), or both the human-like moves of their ranks (OPPONENT_RANK), as long as
+the game's sequence of the fight (see quiz.human_line).
+
 The callbacks are called in KataGo's thread (the screen moves them to its own). A move is played only after the
 answer to the move before has come (the screen waits for it).
 """
@@ -35,6 +39,9 @@ from kentogo.quiz.fight_judge import (
     most_moves,
     score_loss,
 )
+from kentogo.quiz.human_line import Extension, LineEngines, build_line
+
+AI_LINE_SECONDS = 60.0  # No move is added to the sequence of the AIs after this many seconds.
 
 
 @dataclass(frozen=True)
@@ -48,6 +55,8 @@ class FightPlay:
         profile: KataGo's human-like profile of the opponent's rank, such as "rank_15k" (used with OPPONENT_RANK;
             "" plays the strongest moves).
         tolerance: How many points the user's score may fall in a correct answer.
+        my_profile: KataGo's human-like profile of the user's rank, for the user's side of the sequence of the
+            AIs after the fight (used with OPPONENT_RANK; "" plays the strongest moves).
     """
 
     visits: int
@@ -55,6 +64,7 @@ class FightPlay:
     opponent: str = OPPONENT_STRONG
     profile: str = ""
     tolerance: float = 3.0
+    my_profile: str = ""
 
 
 class FightRun:
@@ -171,6 +181,45 @@ class FightRun:
             on_reply(reply)
 
         self._engine.query(human_query(self.fight.position, self.played, self._play.profile), receive)
+
+    def ask_ai_line(self, on_done: Callable[[tuple[Move, ...]], None], on_error: Callable[[str], None]) -> None:
+        """Make the sequence of the AIs from the fight's position, as long as the game's sequence of the fight.
+
+        Both sides play as the opponent was set to play (see the module's docstring); on_done gets the sequence.
+        """
+        play = self._play
+        rank = play.opponent != OPPONENT_STRONG
+        profile, my_profile = (play.profile, play.my_profile) if rank else ("", "")
+        engines = LineEngines(self._engine, self._engine, play.visits, play.wide_root_noise, profile, my_profile)
+        extension = Extension(max(len(self.fight.game_line), 1), AI_LINE_SECONDS)
+        position = self.fight.position
+
+        def receive(answer: dict) -> None:
+            if answer.get("isDuringSearch"):
+                return
+            try:
+                first = self._first_ai_move(answer, my_profile)
+            except ValueError as error:
+                on_error(str(error))
+                return
+            build_line(engines, position, (first,), on_done, on_error, extension)
+
+        query = human_query(position, (), my_profile) if my_profile else self._query(())
+        self._engine.query(query, receive)
+
+    def _first_ai_move(self, answer: dict, my_profile: str) -> Move:
+        """Return the user's side's first move of the sequence of the AIs, from KataGo's answer.
+
+        Raises:
+            ValueError: If the answer is an error, or has no move.
+        """
+        if my_profile:
+            return most_likely_move(answer, self.fight.position.size, self.color)
+        root_score(answer)  # Raises on an error.
+        points = best_sequence(answer)
+        if not points:
+            raise ValueError("KataGo's answer has no move")
+        return Move.from_gtp(points[0], self.color)
 
     def _end(self, outcome: FightOutcome, on_end: Callable[[FightOutcome], None]) -> None:
         """Keep the outcome and tell it."""

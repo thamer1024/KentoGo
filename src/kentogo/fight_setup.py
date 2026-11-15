@@ -35,10 +35,18 @@ class FightTools:
 
 
 def fight_play(settings: FightSettings, evaluation: EvaluationSettings, ranks: PlayerRanks) -> FightPlay:
-    """Return how KataGo plays a fight: the settings' opponent, with the profile of the opponent's rank."""
-    profile = human_profile(ranks.theirs) if settings.opponent == OPPONENT_RANK else ""
+    """Return how KataGo plays a fight: the opponent of the settings, with the profiles of the players' ranks.
+
+    The opponent's profile is used for its replies, and both are used for the sequence of the AIs after the fight.
+    """
+    rank = settings.opponent == OPPONENT_RANK
     return FightPlay(
-        evaluation.max_visits, evaluation.wide_root_noise, settings.opponent, profile, settings.score_tolerance
+        evaluation.max_visits,
+        evaluation.wide_root_noise,
+        settings.opponent,
+        human_profile(ranks.theirs) if rank else "",
+        settings.score_tolerance,
+        human_profile(ranks.mine) if rank else "",
     )
 
 
