@@ -81,13 +81,15 @@ def test_broken_and_skipped_files_are_reported_from_the_cache(tmp_path, reads):
     """Broken and skipped files are reported the same way when they come from the cache."""
     (tmp_path / "b.sgf").write_text("(;SZ[19]PB[x]PW[y];B[pd])", encoding="utf-8")
     (tmp_path / "c.sgf").write_text(f"(;SZ[9:13]PB[{HUMAN}]PW[{AI}];B[aa])", encoding="utf-8")
+    os.utime(tmp_path / "b.sgf", (1_000, 1_000))
+    os.utime(tmp_path / "c.sgf", (2_000, 2_000))
     cache = ProblemCache(":memory:")
     first = collect_problems(tmp_path, ExtractSettings(), cache)
     second = collect_problems(tmp_path, ExtractSettings(), cache)
     assert reads["files"] == 2
     assert second == first
-    assert first[1][0].message() == "b.sgf: skipped (unknown_color)"
-    assert first[1][1].message().startswith("c.sgf: cannot read")
+    assert first[1][0].message().startswith("c.sgf: cannot read")  # The most recently changed first.
+    assert first[1][1].message() == "b.sgf: skipped (unknown_color)"
 
 
 def test_deleted_files_are_forgotten(tmp_path):

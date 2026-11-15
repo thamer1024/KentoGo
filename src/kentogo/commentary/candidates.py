@@ -81,7 +81,7 @@ def list_candidates(
     my_names: Iterable[str] = (),
     default_rank: str = "",
 ) -> list[GameCandidate]:
-    """Make the list of games to show, the oldest first.
+    """Make the list of games to show, the most recently changed first.
 
     Args:
         folder: The games folder (its subfolders are not read).
@@ -91,7 +91,7 @@ def list_candidates(
         default_rank: The rank used when it is not known otherwise.
 
     Returns:
-        The games, in the order of their time of change.
+        The games, the most recently changed first (and by name at the same time).
     """
     entries = history.all_entries()
     games = []
@@ -103,7 +103,7 @@ def list_candidates(
         entry = entries.get(path.name, GameEntry(path.name))
         if is_shown(entry, modified_ns, since_ns):
             games.append(_candidate(path, modified_ns, entry, tuple(my_names), default_rank))
-    return sorted(games, key=lambda game: (game.modified_ns, game.name))
+    return sorted(games, key=lambda game: (-game.modified_ns, game.name))
 
 
 def candidate_for(

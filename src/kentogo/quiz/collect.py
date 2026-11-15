@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from kentogo.common.files import newest_first
 from kentogo.common.sgf import load_game
 from kentogo.mistakes.extract import ExtractResult, ExtractSettings, extract_problems
 from kentogo.mistakes.problem import Problem
@@ -79,7 +80,8 @@ def collect_games(
     Returns:
         A tuple (games, skipped). games has each file that gave a result (its problems and the
         losses of the user's moves), in the order of the file names. skipped tells which files
-        could not be read, had no user color, or had no analysis.
+        could not be read, had no user color, or had no analysis, the most recently changed first
+        (as the screens list games).
     """
     games: list[tuple[Path, ExtractResult]] = []
     skipped: list[SkippedGame] = []
@@ -99,7 +101,8 @@ def collect_games(
         games.append((path, game.result))
     if cache is not None:
         _finish_cache(cache, folder, paths)
-    return games, skipped
+    order = {path.name: index for index, path in enumerate(newest_first(paths))}
+    return games, sorted(skipped, key=lambda game: order[game.name])
 
 
 def _read_game(

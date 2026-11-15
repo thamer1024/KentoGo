@@ -24,6 +24,12 @@ The steps (see analyze_game):
    At most max_moves of them are read in a game, the biggest losses first, but the opponent's moves
    take at most half of them: the user's mistakes come first.
    The moves that still lose that much are the game's deep_nodes.
+4. The local fights that the user lost (life and death, and broken boundaries) are found from KataGo's areas
+   (see analysis.life_death): the areas of every position are asked in the first step when moves are read
+   deeply (and a position whose saved data has no areas is read again for them). At most LOCAL_FIGHT_MOVES
+   of the user's moves that lost a fight, those that changed the most points, are read deeply (the positions
+   before and after them, with their areas); those that still lose the fight are the game's local_fights,
+   kept where each fight started.
 
 The deep reading (3) has no time limit, as KaTrain's re-analysis. A node that KataGo could not analyze
 is asked again (retries times). The answer for a position is kept in that position only. KaTrain's own
@@ -51,6 +57,14 @@ from kentogo.analysis.game_analysis import (
     analyze_with_retries,
     first_nodes,
     load_saved_analyses,
+)
+from kentogo.analysis.life_death import (
+    LOCAL_FIGHT_MOVES,
+    LocalChange,
+    areas_of,
+    change_of,
+    fight_start,
+    strongest_changes,
 )
 from kentogo.analysis.played_moves import needs_reading, played_move_loss, read_played_moves
 from kentogo.analysis.query import QuerySettings
@@ -126,13 +140,25 @@ def analyze_game(
     game = GameAnalysis(root)
     load_saved_analyses(game)
     visits = first_visits(settings)
-    first = analysis_step(game, QuerySettings(visits, values.wide_root_noise, GAME_PRIORITY, max_time=values.max_time))
-    analyze_with_retries(engine, game, first_nodes(game), first, _step(progress, FIRST_STEP), settings.retries)
+    areas = targets is not None  # The areas find the local fights (step 4).
+    first_settings = QuerySettings(visits, values.wide_root_noise, GAME_PRIORITY, values.max_time, ownership=areas)
+    nodes = first_nodes(game) + (nodes_without_areas(game) if areas else [])
+    analyze_with_retries(
+        engine, game, nodes, analysis_step(game, first_settings), _step(progress, FIRST_STEP), settings.retries
+    )
     first_values = replace(values, max_visits=visits)  # Read as deeply as the first analysis, at most.
     read_played_moves(engine, game, first_values, progress, settings.retries, played_nodes(game, targets))
     if targets is not None:
         read_deeply(engine, game, values, progress, settings.retries, targets)
+        read_local_fights(engine, game, values, progress, settings.retries, targets)
     return game
+
+
+def nodes_without_areas(game: GameAnalysis) -> list[GoNode]:
+    """Return the nodes whose saved analysis data has no areas (they are read again in the first step for them)."""
+    return [
+        node for node in game.nodes if (analysis := game.analysis(node)) is not None and not analysis.get("ownership")
+    ]
 
 
 def first_visits(settings: AnalysisSettings) -> int:
@@ -164,13 +190,8 @@ def read_deeply(
     the user's reply is read again too: it tells how much the user lost by not punishing it.
     """
     nodes = chosen_deep_candidates(game, targets)
-    positions = []
-    for node in nodes:
-        for position in (node.parent, node):
-            if position not in positions and _node_visits(game, position) < targets.visits:
-                positions.append(position)
-    deep = analysis_step(game, QuerySettings(targets.visits, values.wide_root_noise, DEEP_PRIORITY))
-    analyze_with_retries(engine, game, positions, deep, _step(progress, DEEP_STEP), retries)
+    deep = analysis_step(game, QuerySettings(targets.visits, values.wide_root_noise, DEEP_PRIORITY, ownership=True))
+    analyze_with_retries(engine, game, _deep_positions(game, nodes, targets), deep, _step(progress, DEEP_STEP), retries)
     deep_values = replace(values, max_visits=targets.visits, max_time=0.0)  # The deep visits, no time limit.
     chosen = {id(node) for node in nodes}
     replies = [node.children[0] for node in nodes if not _is_mine(node, targets) and node.children]
@@ -178,6 +199,56 @@ def read_deeply(
     read_played_moves(engine, game, deep_values, progress, retries, nodes + replies)
     game.problem_nodes = deep_candidates(game, targets)
     game.deep_nodes = [node for node in game.problem_nodes if id(node) in chosen]
+
+
+def read_local_fights(
+    engine: Engine,
+    game: GameAnalysis,
+    values: EngineValues,
+    progress: Progress,
+    retries: int,
+    targets: DeepTargets,
+) -> None:
+    """Find the local fights that the user lost (step 4 of the module's docstring) and keep them in game.local_fights.
+
+    The moves are found with the areas known so far, and at most LOCAL_FIGHT_MOVES of them (those that changed the
+    most points) are read deeply: the positions before and after them with the deep visits and their areas (a
+    position read that deeply already, in step 3, is not read again). Only the moves that still lose the fight
+    are kept, by the node where the fight started (see analysis.life_death.fight_start).
+    """
+    found = [(node, change) for node in game.nodes if _is_mine(node, targets) and (change := _change(game, node))]
+    nodes = strongest_changes(found, LOCAL_FIGHT_MOVES)
+    deep = analysis_step(game, QuerySettings(targets.visits, values.wide_root_noise, DEEP_PRIORITY, ownership=True))
+    analyze_with_retries(engine, game, _deep_positions(game, nodes, targets), deep, _step(progress, DEEP_STEP), retries)
+    for node in nodes:
+        change = _change(game, node)
+        if change is not None:
+            start = fight_start(node, change, lambda position: areas_of(position, game.analysis(position)))
+            game.local_fights[id(start)] = change.as_data(node.depth - start.depth)
+
+
+def _change(game: GameAnalysis, node: GoNode) -> LocalChange | None:
+    """Return what went over to the opponent with a node's move by the areas known so far (see analysis.life_death)."""
+    if node.parent is None:
+        return None
+    return change_of(node, game.analysis(node.parent), game.analysis(node), played_move_loss(game, node))
+
+
+def _deep_positions(game: GameAnalysis, nodes: list[GoNode], targets: DeepTargets) -> list[GoNode]:
+    """Return the positions before and after the nodes' moves that are not read with the deep visits yet (with
+    their areas)."""
+    positions = []
+    for node in nodes:
+        for position in (node.parent, node):
+            if position not in positions and not _read_deeply_with_areas(game, position, targets.visits):
+                positions.append(position)
+    return positions
+
+
+def _read_deeply_with_areas(game: GameAnalysis, node: GoNode, visits: int) -> bool:
+    """True if a position was read with at least the visits, and its analysis has the areas."""
+    analysis = game.analysis(node)
+    return _node_visits(game, node) >= visits and analysis is not None and bool(analysis.get("ownership"))
 
 
 def played_nodes(game: GameAnalysis, targets: DeepTargets | None) -> list[GoNode]:

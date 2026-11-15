@@ -23,6 +23,9 @@ data only. For each node:
   visits, so that an answer is judged from the file. A move that can become a problem keeps its first
   instinct ("instinct"): its rank and probability in KataGo's policy, and the policy's first move (for
   the AI commentary), taken from the policy of the position before it, which is not kept itself.
+  The node after which the problem of a lost local fight starts (life and death, or a broken boundary, see
+  analysis.life_death) keeps the fight ("local_fight"), and its position keeps its candidates as that of a
+  problem. The areas themselves are not kept.
 - The KGD property that older versions of KentoGo wrote (KentoGo's own readings of the moves read deeply,
   which no feature uses) is removed from every node.
 - The root gets CA, AP (KentoGo's version) and KGM[KentoGo], so that KentoGo knows that the losses are
@@ -68,7 +71,7 @@ def write_analysis(game: GameAnalysis, write: WriteSettings) -> None:
     """Write the analysis into the properties of all nodes of the game (the nodes are changed)."""
     analyzed_before = game.root.get_property("KGM") == MODE_MARK
     problems = {id(node) for node in game.problem_nodes}
-    with_candidates = problems | {id(node.parent) for node in game.problem_nodes}
+    with_candidates = problems | {id(node.parent) for node in game.problem_nodes} | set(game.local_fights)
     for node in game.nodes:
         node.properties.pop(OLD_DATA, None)
         marks = {}
@@ -80,6 +83,8 @@ def write_analysis(game: GameAnalysis, write: WriteSettings) -> None:
             _remove_old_marks(node)
         if id(node) in problems:
             marks |= _instinct(game, node)
+        if id(node) in game.local_fights:
+            marks["local_fight"] = game.local_fights[id(node)]
         keep = kept_problem_analysis if id(node) in with_candidates else kept_analysis
         _write_kga(game, node, keep, marks)
 
@@ -109,8 +114,8 @@ def _write_kga(game: GameAnalysis, node: GoNode, keep: Callable[[dict, set[str]]
 
     Args:
         keep: What is kept of the analysis (kept_analysis, or kept_problem_analysis for a problem position).
-        marks: What is kept of the move besides: "taken_back" (KaTrain took it back in a teaching game) and
-            "instinct" (see _instinct).
+        marks: What is kept of the move besides: "taken_back" (KaTrain took it back in a teaching game),
+            "instinct" (see _instinct) and "local_fight" (see analysis.life_death).
     """
     node.properties.pop(KGA_PROPERTY, None)
     if game.old_kentogo_kt:

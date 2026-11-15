@@ -7,8 +7,9 @@ komi and board size, the visits, the policy, and KaTrain's settings (scores from
 wide root noise), and KaTrain's time limit (maxTime) when it is set: KaTrain sets it for the first
 analysis of a game, but not for its re-analysis.
 KaTrain's own key for continuous analysis ("_kt_continuous") is not sent to KataGo, so it is not here.
-Unlike KaTrain, the areas (includeOwnership, and includeMovesOwnership after each candidate move) are never
-asked: KentoGo does not keep them, and they make KataGo's answers large and the analysis slower.
+Unlike KaTrain, the areas after each candidate move (includeMovesOwnership) are never asked, and the areas
+of the position (includeOwnership) only when QuerySettings.ownership is set: KentoGo uses them only to find
+the life and death problems (see analysis.life_death) and does not keep them in the file.
 The policy is asked: it gives the first instinct of the moves that can become problems (see
 analysis.sgf_writer).
 """
@@ -33,12 +34,14 @@ class QuerySettings:
         wide_root_noise: KaTrain's engine setting "wide_root_noise".
         priority: KataGo's priority of the query (KaTrain: -100 for a game, -1000000 for re-analysis).
         max_time: The most seconds of the analysis (KataGo's maxTime, KaTrain's "max_time"); 0 means no limit.
+        ownership: True to ask for the areas of the position (KataGo's includeOwnership).
     """
 
     visits: int
     wide_root_noise: float
     priority: int
     max_time: float = 0.0
+    ownership: bool = False
 
 
 def played_move_query(node: GoNode, settings: QuerySettings) -> dict | None:
@@ -81,7 +84,7 @@ def node_query(node: GoNode, settings: QuerySettings) -> dict | None:
         "komi": node.komi,
         "boardXSize": size_x,
         "boardYSize": size_y,
-        "includeOwnership": False,
+        "includeOwnership": settings.ownership,
         "includeMovesOwnership": False,
         "includePolicy": True,
         "initialStones": [[stone.player, stone.gtp()] for stone in stones],

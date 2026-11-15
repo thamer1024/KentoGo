@@ -1,5 +1,6 @@
 """Tests for kentogo.analysis_run (analyzing the games of a folder, for the command line and the settings screen)."""
 
+import os
 import threading
 from pathlib import Path
 
@@ -77,6 +78,7 @@ def games(tmp_path):
     folder.mkdir()
     (folder / "a.sgf").write_text(GAME, encoding="utf-8")
     (folder / "b.sgf").write_text("not an SGF", encoding="utf-8")
+    os.utime(folder / "b.sgf", (1_000, 1_000))  # Older than a.sgf, so that the lists keep the order a, b.
     return folder
 
 
@@ -154,6 +156,13 @@ def test_list_games_tells_what_each_game_is(tmp_path):
     assert listed.without_kentogo == (FolderGame(folder / "b.sgf", GAME_BROKEN),) and listed.kentogo_count == 1
     assert list_games(AppSettings(analysis=AnalysisSettings(games_folder=str(tmp_path / "x")))).games == ()
     assert list_games(AppSettings()).folder is None
+
+
+def test_list_games_shows_the_newest_first(tmp_path):
+    folder = games(tmp_path)
+    os.utime(folder / "b.sgf", (9_000_000_000, 9_000_000_000))  # b.sgf is now the most recently changed.
+    settings = AppSettings(analysis=AnalysisSettings(games_folder=str(folder)))
+    assert [game.path.name for game in list_games(settings).games] == ["b.sgf", "a.sgf"]
 
 
 def test_games_analyzed_by_katrain_are_analyzed_again_for_kentogo_when_asked(tmp_path):

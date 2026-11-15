@@ -1,5 +1,6 @@
 """Tests for kentogo.today (finding today's problems)."""
 
+import os
 import random
 from datetime import date, timedelta
 
@@ -59,6 +60,7 @@ def test_collect_problems_reports_skipped_and_broken_files(tmp_path):
     (tmp_path / "a.sgf").write_text(sgf_with_mistake(9.0), encoding="utf-8")
     (tmp_path / "b.sgf").write_text("(;SZ[19]PB[x]PW[y];B[pd])", encoding="utf-8")
     (tmp_path / "c.sgf").write_text(f"(;SZ[9:13]PB[{HUMAN}]PW[{AI}];B[aa])", encoding="utf-8")
+    os.utime(tmp_path / "c.sgf", (1_000, 1_000))  # Older than b.sgf: the skipped files are listed newest first.
     problems, skipped = collect_problems(tmp_path, ExtractSettings())
     assert len(problems) == 1
     assert skipped[0].message() == "b.sgf: skipped (unknown_color)"
@@ -280,6 +282,7 @@ def test_skipped_games_are_counted(tmp_path):
     (tmp_path / "a.sgf").write_text(sgf_with_mistake(9.0), encoding="utf-8")
     (tmp_path / "b.sgf").write_text("(;SZ[19]PB[x]PW[y];B[pd])", encoding="utf-8")
     (tmp_path / "c.sgf").write_text(f"(;SZ[19]PB[{HUMAN}]PW[{AI}];B[pd])", encoding="utf-8")
+    os.utime(tmp_path / "c.sgf", (1_000, 1_000))  # Older than b.sgf: the skipped games are listed newest first.
     today = prepare_problems(tmp_path, AppSettings(), None, random.Random(0))
     assert today.skipped == {"unknown_color": 1, "no_analysis": 1}
     assert [game.name for game in today.skipped_games] == ["b.sgf", "c.sgf"]

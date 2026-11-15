@@ -64,6 +64,9 @@ class GameAnalysis:
         deep_nodes: The nodes whose moves were read deeply and can become problems (see analysis.analyze).
         problem_nodes: The nodes whose moves lost enough to become problems (see analysis.analyze.deep_candidates);
             their positions keep the candidate moves in the file (see analysis.sgf_writer).
+        local_fights: The local fights that the user lost (life and death, broken boundaries), by id(node) of the
+            node after which each problem starts (see analysis.life_death.LocalChange.as_data); their positions
+            keep the candidate moves too.
         old_kentogo_kt: True if the KT of the game was written by an older KentoGo (it is removed when written).
     """
 
@@ -74,6 +77,7 @@ class GameAnalysis:
     loaded: set[int] = field(default_factory=set)
     deep_nodes: list[GoNode] = field(default_factory=list)
     problem_nodes: list[GoNode] = field(default_factory=list)
+    local_fights: dict[int, dict] = field(default_factory=dict)
     old_kentogo_kt: bool = False
 
     @property

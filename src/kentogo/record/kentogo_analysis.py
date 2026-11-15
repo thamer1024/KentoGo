@@ -11,6 +11,8 @@ see analysis.sgf_writer):
   (scoreLead and winrate after the move, visits, order, and pv for KataGo's best move).
 - "taken_back" and "instinct": about the node's own move (KaTrain took it back in a teaching game; its
   first instinct, see analysis.sgf_writer._instinct).
+- "local_fight": a local fight that the user lost starts after the node's move (life and death, or a broken
+  boundary, see analysis.life_death).
 - "ownership" and "policy": KataGo's areas and policy (row by row from the top; the policy has the
   pass last). KentoGo no longer writes them, but they are read in the files of older versions.
 

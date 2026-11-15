@@ -24,7 +24,7 @@ def test_guess_relation():
 
 
 def test_list_with_first_values(games):
-    """The list has the shown games, the oldest first, with the first values of the inputs."""
+    """The list has the shown games, the most recently changed first, with the first values of the inputs."""
     games("new.sgf", analyzed_game(), 3_000)
     games("old.sgf", analyzed_game(komi=0.5), 2_000)
     games("before.sgf", analyzed_game(), 500)
@@ -32,8 +32,8 @@ def test_list_with_first_values(games):
     games("fox.sgf", analyzed_game("Taro", "Opponent", extra="BR[3段]"), 2_600)
     history = CommentaryHistory(":memory:")
     found = list_candidates(games.folder, history, 1_000, my_names=["Taro"], default_rank="18k")
-    assert [game.name for game in found] == ["old.sgf", "raw.sgf", "fox.sgf", "new.sgf"]
-    old, raw, fox, new = found
+    assert [game.name for game in found] == ["new.sgf", "fox.sgf", "raw.sgf", "old.sgf"]
+    new, fox, raw, old = found
     assert (old.my_color, old.my_rank, old.relation, old.analyzed, old.has_ai) == ("B", "18k", "higher", True, False)
     assert (raw.analyzed, raw.my_color) == (False, "B")
     assert (fox.my_color, fox.my_rank, fox.black_name) == ("B", "3d", "Taro")  # The rank in the game.
@@ -47,7 +47,7 @@ def test_remembered_inputs_and_states(games):
     history = CommentaryHistory(":memory:")
     history.save_inputs("a.sgf", "W", "15k", "lower")
     history.mark_pending("a.sgf")
-    a, b = list_candidates(games.folder, history, 1_000)
+    b, a = list_candidates(games.folder, history, 1_000)  # The most recently changed first.
     assert (a.pending, a.my_color, a.my_rank, a.relation) == (True, "W", "15k", "lower")
     assert b.has_ai and not b.pending
 

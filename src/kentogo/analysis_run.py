@@ -33,6 +33,7 @@ from kentogo.analysis.saving import back_up, backup_folder, write_game
 from kentogo.analysis.sgf_writer import WriteSettings, write_analysis
 from kentogo.analysis_timing import GameTiming, StepClock, log_timing, timing_record
 from kentogo.app_settings import AppSettings
+from kentogo.common.files import newest_first
 from kentogo.common.sgf import load_game
 from kentogo.common.types import opponent
 from kentogo.engines import Engines, analysis_engine
@@ -188,12 +189,17 @@ def find_games(paths: list[Path]) -> list[Path]:
 
 
 def list_games(settings: AppSettings) -> FolderGames:
-    """Return the games of the analysis's folder and what each one is (reading many games can take long)."""
+    """Return the games of the analysis's folder and what each one is, the most recently changed first.
+
+    Reading many games can take long.
+    """
     folder = games_folder(settings)
     if folder is None or not folder.is_dir():
         return FolderGames(folder)
     backup = backup_folder(folder, settings.analysis.backup_folder)
-    return FolderGames(folder, backup, tuple(FolderGame(path, game_state(path)) for path in find_games([folder])))
+    return FolderGames(
+        folder, backup, tuple(FolderGame(path, game_state(path)) for path in newest_first(find_games([folder])))
+    )
 
 
 def game_state(path: Path) -> str:
