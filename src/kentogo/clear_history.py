@@ -7,6 +7,7 @@ the copy is made is the history cleared, in the file (it is not removed), so tha
 
 - clear_answers: the answers of the quiz and its reviews. From the next start of the quiz, the problems are
   chosen as for a new user.
+- clear_fight_answers: the answers of the local fight problems and their reviews (see fights_today).
 - clear_seichi_results: the results of the territory counting practice.
 
 The other files are kept: the settings, the problem cache, and the history of the AI commentary (it has the
@@ -18,6 +19,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from kentogo.fights_today import fight_history_path
 from kentogo.review.store import ReviewStore
 from kentogo.seichi.seichi_history import FILE_NAME as SEICHI_FILE_NAME
 from kentogo.seichi.seichi_history import SeichiHistory
@@ -45,7 +47,28 @@ def clear_answers(settings_path: Path, now: datetime) -> Path:
         ValueError: If the history was made by a newer version.
         sqlite3.Error, OSError: If the history cannot be copied or written (when it cannot be copied, it is kept).
     """
-    path = settings_path.expanduser().parent / HISTORY_FILE_NAME
+    return _clear_answers_in(settings_path.expanduser().parent / HISTORY_FILE_NAME, now)
+
+
+def clear_fight_answers(settings_path: Path, now: datetime) -> Path:
+    """Clear the history of answers of the local fight problems, after copying it to a backup file.
+
+    Args:
+        settings_path: Path of the settings file (the history is next to it).
+        now: The local date and time, for the name of the backup.
+
+    Returns:
+        The path of the backup.
+
+    Raises:
+        ValueError: If the history was made by a newer version.
+        sqlite3.Error, OSError: If the history cannot be copied or written (when it cannot be copied, it is kept).
+    """
+    return _clear_answers_in(fight_history_path(settings_path), now)
+
+
+def _clear_answers_in(path: Path, now: datetime) -> Path:
+    """Copy a history of answers to a dated backup file, then clear it, and return the path of the backup."""
     backup = backup_path(path, now)
     store = ReviewStore(path)
     try:

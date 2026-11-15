@@ -6,7 +6,10 @@ from datetime import datetime
 from test_today import answer_first_problem, three_games
 
 from kentogo.app_settings import AppSettings
-from kentogo.clear_history import BACKUP_FOLDER_NAME, clear_answers, clear_seichi_results
+from kentogo.clear_history import BACKUP_FOLDER_NAME, clear_answers, clear_fight_answers, clear_seichi_results
+from kentogo.fights_today import fight_history_path
+from kentogo.review.history import AnswerHistory
+from kentogo.review.record import AnswerRecord
 from kentogo.review.store import ReviewStore
 from kentogo.seichi.seichi_history import SeichiHistory, open_seichi_history
 from kentogo.today import load_today, open_history
@@ -45,3 +48,21 @@ def test_clear_seichi_results_keeps_a_dated_backup(tmp_path):
     kept = SeichiHistory(backup)
     assert list(kept.all_results()) == ["a.sgf"]
     kept.close()
+
+
+def test_clear_fight_answers_keeps_a_dated_backup(tmp_path):
+    """The local fights' history is cleared on its own (the quiz's history is kept), after a backup."""
+    settings_path = tmp_path / "settings.json"
+    quiz_history = open_history(settings_path)
+    fights = AnswerHistory(ReviewStore(fight_history_path(settings_path)))
+    for history in (quiz_history, fights):
+        history.save(
+            AnswerRecord("p", NOW.isoformat(), "a.sgf", 3, "B", "A1", "B1", "", None, None, "", None, False, 0, False)
+        )
+    backup = clear_fight_answers(settings_path, NOW)
+    assert backup == tmp_path / BACKUP_FOLDER_NAME / "fight_history-20261113-155007.sqlite3"
+    assert fights.all_previous() == {} and len(quiz_history.all_previous()["p"]) == 1
+    kept = ReviewStore(backup)
+    assert len(kept.all_answers()) == 1
+    for store in (kept, fights.store, quiz_history.store):
+        store.close()

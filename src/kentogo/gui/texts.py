@@ -29,6 +29,7 @@ from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.fight_judge import FightOutcome
+from kentogo.quiz.fight_lines import AI_CALCULATING, AI_FAILED, LINE_AI, LINES, FightLines
 from kentogo.quiz.limit_offer import LimitOffer
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
@@ -194,6 +195,12 @@ TEXTS = {
     "fight_score": "[color=ff8a80][b]不正解[/b][/color]　局地戦には勝ちましたが、目数が減りすぎました。",
     "fight_user_left": "[color=ff8a80][b]不正解[/b][/color]　局地戦から手を抜きました。",
     "fight_opponent_left": "[color=ff8a80][b]不正解[/b][/color]　相手が手を抜きました。最後の手は打たなくてもよい手でした。",
+    "fight_line": "[color=f2c94c][b]表示中：{name}[/b][/color]\n手順 {index} / {count}　　{step} / {total} 手目",
+    "fight_line_played": "あなたの手順",
+    "fight_line_ai": "AI同士（選んだレベル）",
+    "fight_line_game": "実戦",
+    "fight_line_ai_calculating": "AI同士の手順を計算しています…",
+    "fight_line_ai_failed": "AI同士の手順を作れませんでした。",
     "fight_score_loss": "最初の局面からの目数の減り：{loss:.1f}目",
     "fights_done": "今日の局地戦の問題は終わりです。",
     "fight_review_settings": "局地戦の問題（生き死に・境界）の復習設定",
@@ -530,6 +537,9 @@ TEXTS = {
     "clear_question": "学習履歴が消えてしまいます。本当に良いですか？",
     "yes": "はい",
     "cleared_done": "[color=5be37d]学習履歴を消しました。[/color]控え：{path}\n次に悪手問題を始めるときから反映されます。",
+    "clear_fights": "局地戦の学習履歴を消す",
+    "clear_fights_question": "局地戦の学習履歴が消えてしまいます。本当に良いですか？",
+    "cleared_fights_done": "[color=5be37d]局地戦の学習履歴を消しました。[/color]控え：{path}\n次に局地戦の問題を始めるときから反映されます。",
     "clear_seichi": "整地練習の履歴を消す",
     "clear_seichi_question": "整地練習の履歴が消えてしまいます。本当に良いですか？",
     "cleared_seichi_done": "[color=5be37d]整地練習の履歴を消しました。[/color]控え：{path}\n次に整地練習を始めるときから反映されます。",
@@ -1045,6 +1055,23 @@ def fight_outcome_text(outcome: FightOutcome) -> str:
     if outcome.score_loss is None:
         return verdict
     return f"{verdict}\n{text('fight_score_loss', loss=outcome.score_loss)}"
+
+
+def fight_line_text(lines: FightLines) -> str:
+    """Return the line about the sequence shown after a local fight, and whether the AIs' sequence is coming."""
+    shown = text(
+        "fight_line",
+        name=text(f"fight_line_{lines.name}"),
+        index=lines.selected + 1,
+        count=len(LINES),
+        step=lines.step,
+        total=lines.length,
+    )
+    if lines.name == LINE_AI and lines.ai_state == AI_CALCULATING:
+        return f"{shown}\n{text('fight_line_ai_calculating')}"
+    if lines.name == LINE_AI and lines.ai_state == AI_FAILED:
+        return f"{shown}\n{text('fight_line_ai_failed')}"
+    return shown
 
 
 def punishment_hint(problem: Problem) -> str:

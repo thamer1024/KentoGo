@@ -54,7 +54,7 @@ from pathlib import Path
 
 from kentogo.analysis_run import list_games, run_analysis
 from kentogo.app_settings import AppSettings, without_offer_answers
-from kentogo.clear_history import clear_answers, clear_seichi_results
+from kentogo.clear_history import clear_answers, clear_fight_answers, clear_seichi_results
 from kentogo.commentary.prompt_text import create_user_prompt_file
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines, engines_for, measure_katago_speed
@@ -468,6 +468,7 @@ def _settings_opener(
             include_all=lambda: include_all_problems(arguments.settings),
             clear_answers=lambda: _clear_answers(arguments.settings, settings),
             clear_seichi=lambda: clear_seichi_results(arguments.settings, datetime.now()),
+            clear_fights=lambda: clear_fight_answers(arguments.settings, datetime.now()),
             page=page,
             edit_prompt=lambda: _open_prompt_file(arguments.settings),
             measure=lambda: measure_katago_speed(

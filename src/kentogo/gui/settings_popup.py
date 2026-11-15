@@ -136,6 +136,7 @@ class SettingsPopup(Popup):
         include_all: Callable[[], None] | None = None,
         clear_answers: Callable[[], Path] | None = None,
         clear_seichi: Callable[[], Path] | None = None,
+        clear_fights: Callable[[], Path] | None = None,
         page: str = PAGE_GENERAL,
         edit_prompt: Callable[[], Path] | None = None,
         measure: Callable[[], MeasuredSpeed] | None = None,
@@ -157,6 +158,8 @@ class SettingsPopup(Popup):
             clear_seichi: Clears the results of the territory counting practice after a backup, and returns the
                 path of the backup. It runs in a background thread. Its button is shown only when the practice
                 is on the top screen (SeichiSettings.use_seichi); if None, there is none.
+            clear_fights: Clears the history of answers of the local fight problems after a backup, and returns
+                the path of the backup. It runs in a background thread. If None, there is no button for it.
             page: Which settings to show, one of settings_form.PAGES.
             edit_prompt: Makes the user's prompt file of the AI commentary if needed, opens it,
                 and returns its path. It may raise OSError. If None, there is no button for it.
@@ -179,6 +182,7 @@ class SettingsPopup(Popup):
         self._include_all = include_all
         self._clear_answers = clear_answers
         self._clear_seichi = clear_seichi
+        self._clear_fights = clear_fights
         self._edit_prompt = edit_prompt
         self._measure = measure
         self.inputs: dict[str, object] = {}
@@ -217,6 +221,8 @@ class SettingsPopup(Popup):
             body.add_widget(self._clear_row())
             body.add_widget(_header(texts.text("fight_review_settings"), halign="left"))
             body.add_widget(self._settings_box(GROUP_FIGHT_REVIEW))
+            if self._clear_fights is not None:
+                body.add_widget(self._clear_fights_row())
         scroll = ScrollView()
         scroll.add_widget(body)
 
@@ -532,6 +538,12 @@ class SettingsPopup(Popup):
             row.add_widget(flat_button(texts.text("clear_seichi"), self.clear_seichi))
         return row
 
+    def _clear_fights_row(self) -> BoxLayout:
+        """Make the row with the button that clears the history of the local fights."""
+        row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(SPACING))
+        row.add_widget(flat_button(texts.text("clear_fights"), self.clear_fights))
+        return row
+
     def clear_answers(self) -> None:
         """After asking, clear the history of answers (a dated backup is kept, see kentogo.clear_history)."""
 
@@ -552,6 +564,15 @@ class SettingsPopup(Popup):
             return texts.text("cleared_seichi_done", path=self._clear_seichi())
 
         self._ask_to_clear(texts.text("clear_seichi_question"), run)
+
+    def clear_fights(self) -> None:
+        """After asking, clear the history of answers of the local fight problems (a dated backup is kept)."""
+
+        def run() -> str:
+            """Clear it, and return the message that tells where the backup is."""
+            return texts.text("cleared_fights_done", path=self._clear_fights())
+
+        self._ask_to_clear(texts.text("clear_fights_question"), run)
 
     def _ask_to_clear(self, question: str, clear: Callable[[], str]) -> None:
         """Ask with the buttons "yes" and "no", and on yes run clear in the background (its message is shown)."""
