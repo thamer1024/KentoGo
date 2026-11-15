@@ -11,7 +11,8 @@ the "engine" part holds the engine settings, the "seichi" part holds the
 settings of the territory counting practice, the "commentary" part holds the
 settings of the AI commentary, and the "analysis" part holds the settings of the analysis of games. The
 "fights" part holds the review settings of the local fight problems (see mistakes.local_fight): they are
-reviewed in the same way as the mistake problems, but with their own settings (FIGHT_REVIEW at first).
+reviewed in the same way as the mistake problems, but with their own settings (FIGHT_REVIEW at first), and
+how the fights are played (quiz.fight_settings).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from kentogo.analysis.analysis_settings import AnalysisSettings
 from kentogo.commentary.commentary_settings import CommentarySettings
 from kentogo.katago.engine_settings import EngineSettings
+from kentogo.quiz.fight_settings import FightSettings
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.review.review_settings import ReviewSettings
 from kentogo.seichi.seichi_settings import SeichiSettings
@@ -41,6 +43,7 @@ class AppSettings:
         commentary: The settings of the AI commentary.
         analysis: The settings of the analysis of games (KataGo, as KaTrain).
         fights: The review settings of the local fight problems, and how many are asked in a day.
+        fight_play: How the local fight problems are played (the opponent, the score that may be lost).
     """
 
     quiz: QuizSettings = field(default_factory=QuizSettings)
@@ -50,6 +53,7 @@ class AppSettings:
     commentary: CommentarySettings = field(default_factory=CommentarySettings)
     analysis: AnalysisSettings = field(default_factory=AnalysisSettings)
     fights: ReviewSettings = FIGHT_REVIEW
+    fight_play: FightSettings = field(default_factory=FightSettings)
 
     def sections(self) -> dict[str, dict]:
         """Return the settings as the parts of settings.json: {"quiz": {...}, "engine": {...}, ...}."""
@@ -59,7 +63,7 @@ class AppSettings:
             "seichi": self.seichi.to_dict(),
             "commentary": self.commentary.to_dict(),
             "analysis": self.analysis.to_dict(),
-            "fights": self.fights.to_dict(),
+            "fights": {**self.fights.to_dict(), **self.fight_play.to_dict()},
         }
 
     @classmethod
@@ -78,6 +82,7 @@ class AppSettings:
             CommentarySettings.from_dict(sections.get("commentary", {})),
             AnalysisSettings.from_dict(sections.get("analysis", {})),
             ReviewSettings.from_dict(sections.get("fights", {}), FIGHT_REVIEW),
+            FightSettings.from_dict(sections.get("fights", {})),
         )
 
 
