@@ -4,6 +4,7 @@ from test_fight_judge import fight
 from test_fight_run import FakeEngine
 
 from kentogo.quiz.fight_judge import OUTCOME_USER_LEFT, OUTCOME_WON
+from kentogo.quiz.fight_lines import AI_READY
 from kentogo.quiz.fight_quiz import PHASE_ENDED, PHASE_ERROR, PHASE_TURN, PHASE_WAITING, FightQuiz
 from kentogo.quiz.fight_run import FightPlay, FightRun
 
@@ -52,6 +53,9 @@ def test_a_fight_is_played_and_saved():
     assert quiz.play((0, 1)) == "" and quiz.phase == PHASE_TURN  # A2, and white answered B2.
     assert quiz.play((2, 1)) == "" and quiz.phase == PHASE_ENDED  # C2: the stones live.
     assert saved == [quiz.run] and quiz.run.outcome.kind == OUTCOME_WON
+    assert quiz.lines.ai_state == AI_READY and quiz.lines.shown() == quiz.run.played  # The AIs' line came too.
+    quiz.lines.next_line()
+    assert quiz.lines.length == 3  # As long as the game's sequence of the fight.
     quiz.next_fight()
     assert quiz.run is None and quiz.index == 1
 
@@ -78,7 +82,7 @@ def test_answers_about_a_fight_left_are_not_used():
 
 
 def test_leaving_the_fight_and_errors():
-    engine = FakeEngine({0: (1.0, 0.6, "B2")})
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "C2"), 2: (1.0, 0.6, "D2")})  # With the AIs' line.
     quiz, saved = quiz_with(engine)
     quiz.play((8, 8))  # J9, far from the fight.
     assert quiz.phase == PHASE_ENDED and saved[0].outcome.kind == OUTCOME_USER_LEFT

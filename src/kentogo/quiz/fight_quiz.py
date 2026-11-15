@@ -6,7 +6,8 @@ until the fight is judged. The fight goes through these phases:
 - PHASE_STARTING: KataGo reads the score of the fight's position;
 - PHASE_TURN: the user's turn (a click on the board is a move);
 - PHASE_WAITING: KataGo reads the position after the user's move, and answers or judges the fight;
-- PHASE_ENDED: the fight was judged (and its answer was saved);
+- PHASE_ENDED: the fight was judged (and its answer was saved); its sequences can be shown (see quiz.fight_lines),
+  and KataGo makes the sequence of the AIs;
 - PHASE_ERROR: KataGo could not answer (the fight is not saved; the next fight can be asked).
 
 The answers of KataGo come in its own thread: they are moved to the screen's thread (in_main) before anything
@@ -22,6 +23,7 @@ from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_judge import FightOutcome
+from kentogo.quiz.fight_lines import FightLines
 from kentogo.quiz.fight_run import FightRun
 
 PHASE_STARTING = "starting"
@@ -47,6 +49,7 @@ class FightQuiz:
         run: The fight asked now, or None after the last one.
         phase: The phase of the fight asked now (see the module's docstring).
         error: What KataGo said when it could not answer ("" without an error).
+        lines: The sequences of the fight asked now, after it has ended (None before).
     """
 
     def __init__(
@@ -71,6 +74,7 @@ class FightQuiz:
         self.run: FightRun | None = None
         self.phase = PHASE_STARTING
         self.error = ""
+        self.lines: FightLines | None = None
         self._make_run = make_run
         self._save = save
         self._listener = listener
@@ -81,6 +85,7 @@ class FightQuiz:
         """Ask the fight with this number (after the last one: no fight is asked)."""
         self.index = index
         self.error = ""
+        self.lines = None
         if index >= len(self.fights):
             self.run = None
             self._listener.changed()
@@ -139,9 +144,22 @@ class FightQuiz:
         self._listener.changed()
 
     def _ended(self, _outcome: FightOutcome) -> None:
-        """The fight was judged: save it."""
+        """The fight was judged: save it, and let KataGo make the sequence of the AIs."""
+        run = self.run
         self.phase = PHASE_ENDED
-        self._save(self.run)
+        self.lines = FightLines(run.played, run.fight.game_line)
+        self._save(run)
+        self._listener.changed()
+        run.ask_ai_line(self._for(run, self._ai_line_came), self._for(run, self._ai_line_failed))
+
+    def _ai_line_came(self, line: tuple[Move, ...]) -> None:
+        """Keep the sequence of the AIs."""
+        self.lines.set_ai_line(line)
+        self._listener.changed()
+
+    def _ai_line_failed(self, _message: str) -> None:
+        """Tell that the sequence of the AIs could not be made (the fight's answer is kept)."""
+        self.lines.ai_failed()
         self._listener.changed()
 
     def _failed(self, message: str) -> None:
