@@ -3,7 +3,7 @@
 from test_fight_judge import fight
 from test_fight_run import FakeEngine
 
-from kentogo.quiz.fight_judge import OUTCOME_WON
+from kentogo.quiz.fight_judge import OUTCOME_USER_LEFT, OUTCOME_WON
 from kentogo.quiz.fight_lines import AI_READY
 from kentogo.quiz.fight_quiz import PHASE_ENDED, PHASE_ERROR, PHASE_TURN, PHASE_WAITING, FightQuiz
 from kentogo.quiz.fight_run import FightPlay, FightRun
@@ -84,8 +84,8 @@ def test_answers_about_a_fight_left_are_not_used():
 def test_leaving_the_fight_and_errors():
     engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "C2"), 2: (1.0, 0.6, "D2")})  # With the AIs' line.
     quiz, saved = quiz_with(engine)
-    quiz.play((8, 8))  # J9, far from the fight: read as any move, and white answers.
-    assert quiz.phase == PHASE_TURN and [move.gtp() for move in quiz.run.played] == ["J9", "C2"] and saved == []
+    quiz.play((8, 8))  # J9, far from the fight.
+    assert quiz.phase == PHASE_ENDED and saved[0].outcome.kind == OUTCOME_USER_LEFT
 
     quiz, saved = quiz_with(BrokenEngine())
     assert quiz.phase == PHASE_ERROR and "broken" in quiz.error and quiz.play((0, 1)) == ""

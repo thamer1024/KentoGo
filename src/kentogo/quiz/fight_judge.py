@@ -15,16 +15,12 @@ The fight ends, and is judged, when:
 
 - the place is settled: it is correct if the fight is won and the score did not fall by more than the tolerance
   (FightSettings.score_tolerance) since the start (OUTCOME_WON, OUTCOME_LOST or OUTCOME_SCORE);
-- the strongest opponent plays away from the fight, after a move of the user in the fight, while the place is not
-  settled: the user's move did not need an answer, so it is wrong (OUTCOME_OPPONENT_LEFT; a human-like opponent
-  may leave, and the fight goes on);
+- the user plays away from the fight (more than NEAR lines from the judged points and the fight's moves) or
+  passes: it is wrong (OUTCOME_USER_LEFT);
+- the strongest opponent plays away from the fight while the place is not settled: the user's move did not need
+  an answer, so it is wrong (OUTCOME_OPPONENT_LEFT; a human-like opponent may leave, and the fight goes on);
 - the user has played the most moves (most_moves): it is judged as if settled (OUTCOME_WON, OUTCOME_LOST or
   OUTCOME_SCORE).
-
-The user may play away from the fight (more than NEAR lines from the fight's places, see fight_places) or pass:
-such a move is read and judged as any other, so it is correct when the place is settled for the user anyway
-(FightOutcome.left tells it). After it, the opponent may answer away from the fight too (the user's move was
-sente there), and the fight goes on.
 
 The score is KataGo's score lead from the user's side: at the start, and after the user's last move, read with
 the same visits.
@@ -46,6 +42,7 @@ EXTRA_MOVES = 4  # The user may play this many moves more than in the game, befo
 OUTCOME_WON = "won"  # Settled for the user, and the score held.
 OUTCOME_LOST = "lost"  # Settled (or ended) against the user.
 OUTCOME_SCORE = "score"  # Won, but the score fell by more than the tolerance.
+OUTCOME_USER_LEFT = "user_left"  # The user played away from the fight (or passed).
 OUTCOME_OPPONENT_LEFT = "opponent_left"  # The strongest opponent left the fight before it was settled.
 
 OPPONENT_STRONG = "strong"  # The opponent plays KataGo's best moves (the engine's visits).
@@ -61,14 +58,12 @@ class FightOutcome:
     """How a local fight ended.
 
     Attributes:
-        kind: OUTCOME_WON, OUTCOME_LOST, OUTCOME_SCORE or OUTCOME_OPPONENT_LEFT.
+        kind: OUTCOME_WON, OUTCOME_LOST, OUTCOME_SCORE, OUTCOME_USER_LEFT or OUTCOME_OPPONENT_LEFT.
         score_loss: How many points the user's score fell since the start (negative: it rose), or None if not known.
-        left: True if the user's last move was away from the fight (or a pass).
     """
 
     kind: str
     score_loss: float | None = None
-    left: bool = False
 
     @property
     def correct(self) -> bool:
@@ -105,16 +100,9 @@ def is_near(move: Move, places: list[Point]) -> bool:
 
 
 def fight_places(fight: LocalFight, played: tuple[Move, ...]) -> list[Point]:
-    """Return the places of a fight: the judged points, the game's moves of the fight, and the moves played in it.
-
-    A move played is in the fight when it is near the places before it: the moves away from the fight (and the
-    answers to them) are not.
-    """
-    places = judged_points(fight) + [move.coord for move in fight.game_line[: fight.moves] if move.coord is not None]
-    for move in played:
-        if is_near(move, places):
-            places.append(move.coord)
-    return places
+    """Return the places of a fight: the judged points, the game's moves of the fight, and the moves played so far."""
+    moves = (*fight.game_line[: fight.moves], *played)
+    return judged_points(fight) + [move.coord for move in moves if move.coord is not None]
 
 
 def most_moves(fight: LocalFight) -> int:

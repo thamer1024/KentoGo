@@ -19,7 +19,7 @@ answer to the move before has come (the screen waits for it).
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from kentogo.common.types import Move, opponent
 from kentogo.katago.evaluate import AnalysisEngine
@@ -29,6 +29,7 @@ from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_judge import (
     OPPONENT_STRONG,
     OUTCOME_OPPONENT_LEFT,
+    OUTCOME_USER_LEFT,
     FightOutcome,
     ended_outcome,
     fight_places,
@@ -116,18 +117,20 @@ class FightRun:
     ) -> None:
         """Play a move of the user: the opponent then answers (on_reply), or the fight ends (on_end).
 
-        A move away from the fight (or a pass) is read as any other: it is correct when the place is settled for
-        the user anyway.
+        A move away from the fight (or a pass) ends it at once, before KataGo is asked.
         """
-        left = not is_near(move, fight_places(self.fight, self.played))
+        places = fight_places(self.fight, self.played)
         self.played = (*self.played, move)
+        if not is_near(move, places):
+            self._end(FightOutcome(OUTCOME_USER_LEFT), on_end)
+            return
         self._user_moves += 1
 
         def receive(answer: dict) -> None:
             if answer.get("isDuringSearch"):
                 return
             try:
-                self._after_user_move(answer, left, on_reply, on_end, on_error)
+                self._after_user_move(answer, on_reply, on_end, on_error)
             except ValueError as error:
                 on_error(str(error))
 
@@ -136,45 +139,27 @@ class FightRun:
     def _after_user_move(
         self,
         answer: dict,
-        left: bool,
         on_reply: Callable[[Move], None],
         on_end: Callable[[FightOutcome], None],
         on_error: Callable[[str], None],
     ) -> None:
-        """Judge the fight from KataGo's answer after the user's move, or let the opponent answer.
-
-        Args:
-            answer: KataGo's answer after the user's move.
-            left: True if the user's move was away from the fight.
-            on_reply: Called with the opponent's reply.
-            on_end: Called with the outcome when the fight ends.
-            on_error: Called with a message when KataGo could not answer.
-        """
+        """Judge the fight from KataGo's answer after the user's move, or let the opponent answer."""
         areas = ownership_map(answer, self.fight.position.size)
         loss = score_loss(self.start_lead, root_score(answer), self.color) if self.start_lead is not None else None
         if is_settled(areas, judged_points(self.fight)) or self._user_moves >= most_moves(self.fight):
-            self._end(replace(ended_outcome(areas, self.fight, loss, self._play.tolerance), left=left), on_end)
+            self._end(ended_outcome(areas, self.fight, loss, self._play.tolerance), on_end)
         elif self._play.opponent == OPPONENT_STRONG or not self._play.profile:
-            self._strongest_reply(answer, loss, left, on_reply, on_end)
+            self._strongest_reply(answer, loss, on_reply, on_end)
         else:
             self._human_reply(on_reply, on_error)
 
     def _strongest_reply(
-        self,
-        answer: dict,
-        loss: float | None,
-        left: bool,
-        on_reply: Callable[[Move], None],
-        on_end: Callable[[FightOutcome], None],
+        self, answer: dict, loss: float | None, on_reply: Callable[[Move], None], on_end: Callable[[FightOutcome], None]
     ) -> None:
-        """Play KataGo's best move.
-
-        When it leaves the fight (or passes) after a move of the user in the fight, the user's move needed no
-        answer, and the fight ends. After a move of the user away from the fight, the fight goes on.
-        """
+        """Play KataGo's best move; when it leaves the fight (or passes), the user's move needed no answer."""
         points = best_sequence(answer)
         reply = Move.from_gtp(points[0], opponent(self.color)) if points else Move(opponent(self.color), None)
-        if not left and not is_near(reply, fight_places(self.fight, self.played)):
+        if not is_near(reply, fight_places(self.fight, self.played)):
             self._end(FightOutcome(OUTCOME_OPPONENT_LEFT, loss), on_end)
             return
         self.played = (*self.played, reply)

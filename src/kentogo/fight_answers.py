@@ -5,10 +5,9 @@ feature (review). The answers of the fights are kept in their own history (see f
 as the mistake problems' answers, with these meanings:
 
 - answer: the moves played from the fight's position, both colors, in GTP coordinates separated by spaces
-  (such as "A2 B2 C2"; the last one is the user's);
+  (such as "A2 B2 C2"; the last one is the user's, even when it left the fight);
 - actual_move: the move of the game at the fight's position;
-- best_move: how the fight ended (quiz.fight_judge.OUTCOME_WON, ...), with "_left" when the user's last move was
-  away from the fight;
+- best_move: how the fight ended (quiz.fight_judge.OUTCOME_WON, ...);
 - answer_loss: how many points the user's score fell since the start, or None if not known;
 - max_visits: KataGo's visits of each reading;
 - correct: the outcome (True only when the fight was won and the score held).
@@ -61,7 +60,7 @@ def fight_record(run: FightRun, answered_at: datetime, visits: int) -> AnswerRec
         color=run.color,
         answer=" ".join(move.gtp() for move in run.played),
         actual_move=fight.game_line[0].gtp() if fight.game_line else "",
-        best_move=f"{outcome.kind}_left" if outcome.left else outcome.kind,
+        best_move=outcome.kind,
         answer_loss=outcome.score_loss,
         actual_loss=None,
         loss_source=LOSS_UNKNOWN if outcome.score_loss is None else LOSS_FROM_KATAGO,

@@ -14,7 +14,6 @@ from kentogo.gui.texts import (
     band_names,
     color_name,
     fight_info,
-    fight_line_text,
     fight_outcome_text,
     fill_step_text,
     game_averages_text,
@@ -42,7 +41,6 @@ from kentogo.mistakes.local_fight import LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
 from kentogo.quiz.fight_judge import FightOutcome
-from kentogo.quiz.fight_lines import FightLines
 from kentogo.quiz.score import compare_with_actual
 from kentogo.quiz.session import AnswerResult
 from kentogo.report import GameAverages
@@ -207,19 +205,8 @@ def test_fight_outcome_text():
     assert "正解" in fight_outcome_text(FightOutcome("won", 1.25)) and "1.2目" in fight_outcome_text(
         FightOutcome("won", 1.25)
     )
-    assert fight_outcome_text(FightOutcome("won", None, left=True)) == text("fight_won_left")
+    assert fight_outcome_text(FightOutcome("user_left")) == text("fight_user_left")
     assert "目数が減りすぎました" in fight_outcome_text(FightOutcome("score", 6.0))
-
-
-def test_fight_line_text():
-    lines = FightLines((Move.from_gtp("A2", "B"), Move.from_gtp("B2", "W")), (Move.from_gtp("C3", "B"),))
-    assert "あなたの手順" in fight_line_text(lines) and "2 / 2 手目" in fight_line_text(lines)
-    lines.next_line()
-    assert "AI同士" in fight_line_text(lines) and "計算しています" in fight_line_text(lines)
-    lines.ai_failed()
-    assert "作れませんでした" in fight_line_text(lines)
-    lines.next_line()
-    assert "実戦" in fight_line_text(lines) and "手順 3 / 3" in fight_line_text(lines)
 
 
 def test_result_text_correct():
