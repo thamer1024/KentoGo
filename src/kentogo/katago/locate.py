@@ -18,7 +18,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import platform
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -173,11 +175,32 @@ def engine_command(
     katago = _katago_program(engine.get("katago", ""), katrain_package, which)
     model = _existing_file(engine.get("model", ""), "model", katrain_package)
     settings = _existing_file(engine.get("config", ""), "analysis settings", katrain_package)
-    command = [str(katago), "analysis", "-model", str(model)]
+
+    # Check whether KentoGo is running on WSL and launching a Windows-native KataGo binary (.exe).
+    # In that hybrid case, Linux/WSL launches the .exe using its WSL path, but the file arguments
+    # passed to KataGo must be converted to Windows paths (C:\... or \\wsl.localhost\...) via wslpath.
+    is_wsl = sys.platform == "linux" and "microsoft" in platform.release().lower()
+    is_windows_katago = katago.suffix.lower() == ".exe"
+
+    def _for_katago(path: Path) -> str:
+        """Convert a resolved WSL path to a Windows path when invoking Windows katago.exe from WSL."""
+        path_str = str(path)
+        if is_wsl and is_windows_katago:
+            try:
+                result = subprocess.run(["wslpath", "-w", path_str], capture_output=True, text=True, check=True)
+                return result.stdout.strip()
+                pass
+            except (OSError, subprocess.SubprocessError):
+        return path_str
+
+    command = [str(katago), "analysis", "-model", _for_katago(model)]
     human_model = (engine.get("humanlike_model") or "").strip()
     if human_model:
-        command += ["-human-model", str(_existing_file(human_model, "human-like model", katrain_package))]
-    command += ["-config", str(settings), "-override-config", f"homeDataDir={os.path.expanduser(KATRAIN_DATA_FOLDER)}"]
+        human_model_path = _existing_file(human_model, "human-like model", katrain_package)
+        command += ["-human-model", _for_katago(human_model_path)]
+
+    home_data_dir = Path(os.path.expanduser(KATRAIN_DATA_FOLDER))
+    command += ["-config", _for_katago(settings), "-override-config", f"homeDataDir={_for_katago(home_data_dir)}"]
     return EngineCommand(tuple(command), False, max_visits)
 
 
