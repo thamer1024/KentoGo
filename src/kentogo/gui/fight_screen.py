@@ -1,4 +1,4 @@
-"""The screen of the local fight problems: the board on the left, and the information and buttons on the right.
+﻿"""The screen of the local fight problems: the board on the left, and the information and buttons on the right.
 
 The fights are asked one by one by quiz.fight_quiz; this screen only shows them and passes on the clicks. The
 board shows the fight's position (its last move, the opponent's move into the user's area, is marked) and the
@@ -130,6 +130,10 @@ class FightScreen(BoxLayout):
         reason = self.quiz.play(point)
         if reason:
             set_text(self.status_label, texts.lazy("illegal_move", reason=reason))
+        # 修正：石が置かれた直後に新しい盤面を描画する
+        view = make_board_view(self.quiz.run.fight.position, self.quiz.run.played)
+        self.board.show(view)
+
 
     def next_fight(self) -> None:
         """Ask the next fight."""
@@ -148,3 +152,5 @@ class FightScreen(BoxLayout):
             self.next_fight()
             return True
         return False
+
+
