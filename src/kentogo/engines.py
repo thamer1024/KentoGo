@@ -14,14 +14,13 @@ import sys
 from dataclasses import dataclass, replace
 
 from kentogo.katago.engine_settings import EngineSettings
-from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings, Models
+from kentogo.katago.evaluate import AnalysisEngine, AnalysisModel, EvaluationSettings, Models
 from kentogo.katago.locate import EngineCommand, KataGoNotFoundError, engine_command, katrain_package
 from kentogo.katago.process import KataGoProcess
 from kentogo.katago.speed import MeasuredSpeed, measure_speed, wait_for_answer
 from kentogo.katago.startup import LoadingStage
 from kentogo.katago.timed_queries import RunningQueries, TimedEngine
 from kentogo.notice import Notice
-from kentogo.quiz.quiz_run import Judging
 
 
 def evaluation_settings(engine_settings: EngineSettings) -> EvaluationSettings:
@@ -126,13 +125,9 @@ class Engines:
         """Return the KataGo process to wait for at the start (none when it is not running)."""
         return [] if self.process is None else [_main_stage(self.process)]
 
-    def judging(self) -> Judging:
-        """Return KataGo for the quiz: for judging the answers and showing sequences."""
-        return Judging(self.engine, self.evaluation, self.engine_problem)
-
     def viewer_models(self) -> Models:
         """Return the models for the screen that shows the games (the main one, if it is running)."""
-        return self.judging().models()
+        return Models(AnalysisModel(self.engine, self.evaluation) if self.engine is not None else None)
 
 
 def _main_stage(main: KataGoProcess) -> LoadingStage:

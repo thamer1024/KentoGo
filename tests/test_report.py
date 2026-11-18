@@ -1,16 +1,24 @@
 """Tests for kentogo.report (the report and the summary of the day)."""
 
+import json
+import random
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
+from kentogo import report as report_module
 from kentogo.app_settings import AppSettings
 from kentogo.common.types import Move, Position
+from kentogo.mistakes.extract import PUNISH
 from kentogo.mistakes.problem import Problem
+from kentogo.practice_stores import open_history
+from kentogo.quiz.problem_json import problem_to_dict
+from kentogo.quiz.problem_kinds import KIND_PUNISH
 from kentogo.record.katrain_comment import INTERNAL_MARKER
-from kentogo.repetition.schedule import DONE, NEW
+from kentogo.repetition.counts import ProblemCounts
+from kentogo.repetition.schedule import DONE, NEW, STATE_REVIEW, ReviewState
 from kentogo.report import (
     Achievement,
     DayResult,
@@ -25,12 +33,17 @@ from kentogo.report import (
     game_mistakes,
     game_time,
     load_report,
+    load_today_summary,
+    practice_results,
     recent_results,
     recovered_points,
     today_summary,
     totals,
 )
-from kentogo.today import open_history
+from kentogo.review.history import AnswerHistory
+from kentogo.review.record import LOSS_FROM_SGF, AnswerRecord
+from kentogo.review.store import ReviewStore
+from kentogo.today import count_current_problems, prepare_problems
 
 TODAY = date(2026, 11, 6)
 
@@ -195,3 +208,101 @@ def test_load_report_from_the_games_and_the_history(tmp_path):
     assert report.bands == (20.0, 10.0, 5.0, 3.0)
     assert report.totals == Totals()
     assert report.pass_ratio == AppSettings().quiz.scoring.pass_ratio
+
+
+REVIEW = ReviewState(STATE_REVIEW, 0, TODAY)
+
+
+def wrong_record(problem_id: str, sgf_path: str, when: datetime) -> AnswerRecord:
+    """A wrong answer to a problem."""
+    return AnswerRecord(
+        problem_id,
+        when.isoformat(),
+        sgf_path,
+        3,
+        "B",
+        "A1",
+        "A19",
+        "Q4",
+        9.0,
+        9.0,
+        LOSS_FROM_SGF,
+        None,
+        False,
+        0,
+        False,
+    )
+
+
+def history_with_copy(problem_id: str) -> AnswerHistory:
+    """A history with an answer to a problem and a copy of the problem."""
+    history = AnswerHistory(ReviewStore(":memory:"))
+    data = json.dumps(problem_to_dict(replace(PROBLEM, problem_id=problem_id)), ensure_ascii=False)
+    history.save(wrong_record(problem_id, "a.sgf", datetime.now(timezone.utc)), data)
+    return history
+
+
+def test_current_counts_leave_out_what_is_not_asked():
+    """Set aside, finished and uncopied lost problems, and those inside fights, are not counted."""
+    history = history_with_copy("lost")
+    history.store.exclude(["aside"], datetime.now(timezone.utc).isoformat())
+    made = [replace(PROBLEM, problem_id=key) for key in ("done", "review", "new", "aside")]
+    states = {
+        "done": DONE,
+        "review": REVIEW,
+        "lost": REVIEW,
+        "no copy": REVIEW,
+        "in a fight": REVIEW,
+        "lost and done": DONE,
+    }
+    counts = count_current_problems(made, states, history, inside_fights={"in a fight"})
+    assert counts == ProblemCounts(1, 2, 1)
+    history.store.close()
+
+
+def test_current_counts_use_only_the_kind_asked():
+    history = history_with_copy("lost")
+    made = [replace(PROBLEM, problem_id="mistake"), replace(PROBLEM, problem_id="punish", punishment=PUNISH)]
+    counts = count_current_problems(made, {"lost": REVIEW}, history, KIND_PUNISH)
+    assert counts == ProblemCounts(0, 0, 1)
+    history.store.close()
+
+
+def test_the_summary_of_the_day_has_the_current_counts(tmp_path):
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_game(25.0), encoding="utf-8")
+    (games / "b.sgf").write_text(sgf_game(12.0, "B[dd];W[pp]"), encoding="utf-8")
+    problem = prepare_problems(games, AppSettings(), None, random.Random(0)).problems[0]
+    history = open_history(tmp_path / "settings.json")
+    history.save(wrong_record(problem.problem_id, problem.sgf_path, datetime.now(timezone.utc)))
+    history.store.close()
+    summary = load_today_summary(tmp_path / "settings.json", games, AppSettings(), date.today())
+    assert summary.counts == ProblemCounts(0, 1, 1)
+
+
+def test_the_current_counts_are_made_only_for_a_summary_with_answers(tmp_path, monkeypatch):
+    """The report does not need them, and neither does a day without answers."""
+
+    def not_expected(*_arguments):
+        raise AssertionError("the counts are not needed")
+
+    monkeypatch.setattr(report_module, "count_current_problems", not_expected)
+    games = tmp_path / "games"
+    games.mkdir()
+    (games / "a.sgf").write_text(sgf_game(25.0), encoding="utf-8")
+    settings_path = tmp_path / "settings.json"
+    assert load_report(settings_path, games, AppSettings()).totals == Totals()
+    assert load_today_summary(settings_path, games, AppSettings(), date.today()) is None
+
+
+def test_practice_results_of_answers_without_the_loss_of_the_game():
+    """The local fights have no loss of the game: only the correct answers are counted."""
+    answers = [
+        replace(answer(days_ago(2), 0.0, 1.0, True), actual_loss=None),
+        replace(answer(days_ago(1), 0.0, 1.0, False), actual_loss=None),
+    ]
+    results = practice_results(answers, {}, 1.0)
+    assert results.totals == Totals(2, 1, 0, 0.0, 2)
+    assert results.recent.correct_rate == 0.5 and results.recent.average is None
+    assert [(day.correct, day.average) for day in results.days] == [(1, None), (0, None)]

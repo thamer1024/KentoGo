@@ -4,7 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from kentogo.common.board import IllegalMoveError
+from kentogo.common.board import Board, IllegalMoveError
+from kentogo.common.tactics import tactics
 from kentogo.common.types import Move, Position
 from kentogo.mistakes.problem import (
     SOURCE_BEST_HUMAN,
@@ -48,6 +49,22 @@ BEST_LINE = (gtp("R4"), gtp("D16", "W"))
 def session(transform: BoardTransform = BoardTransform()) -> QuizSession:
     """Start a session with the test problem."""
     return QuizSession(PROBLEM, ScoringPolicy(), transform)
+
+
+def test_the_tactics_of_the_best_move_to_show():
+    """Without the sequence there are none; with it, they are those of its first move on the problem's board."""
+    quiz = session()
+    assert quiz.best_move_tactics() == ()
+    quiz.add_sequence(BEST_LINE[0], BEST_LINE[1:], SOURCE_BEST_HUMAN)
+    board = Board.from_position(PROBLEM.position)
+    assert quiz.best_move_tactics() == tactics(board, BEST_LINE[0], PROBLEM.position.moves[-1])
+
+
+def test_a_position_that_cannot_be_played_has_no_tactics():
+    position = replace(PROBLEM.position, moves=(gtp("Q16"), gtp("Q16", "W")))
+    quiz = QuizSession(replace(PROBLEM, position=position), ScoringPolicy())
+    quiz.add_sequence(BEST_LINE[0], BEST_LINE[1:], SOURCE_BEST_HUMAN)
+    assert quiz.best_move_tactics() == ()
 
 
 def test_best_move_is_correct():

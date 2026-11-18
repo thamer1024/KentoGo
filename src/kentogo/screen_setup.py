@@ -6,28 +6,28 @@ makes it again when the settings are saved (see gui.kentogo_app.KentoGoApp.use_s
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Set
 from dataclasses import dataclass
 from pathlib import Path
 
+from kentogo.answers import QuizAnswers
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines
 from kentogo.fight_setup import FightTools
 from kentogo.fights_today import FightSummary, TodayFights
 from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings
 from kentogo.katago.startup import StartTimes
-from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
-from kentogo.quiz.human_line import PlayerRanks
+from kentogo.quiz.collect import Progress
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.limit_offer import LimitOffer
+from kentogo.quiz.quiz_run import Judging
 from kentogo.quiz.ratio_offer import RatioOffer
 from kentogo.quiz.transform import BoardTransform
 from kentogo.report import Report, TodaySummary
-from kentogo.review.history import AnswerHistory
-from kentogo.seichi.seichi_history import SeichiHistory
+from kentogo.seichi.seichi_plan import SeichiGame, SeichiQueue
 from kentogo.seichi.seichi_settings import SeichiSettings
-from kentogo.today import Progress, TodayProblems
+from kentogo.today import TodayProblems
 
 
 @dataclass(frozen=True)
@@ -45,13 +45,15 @@ class ScreenSetup:
         engines_for: Returns KataGo for these settings, given the KataGo that runs now or None
             (see the function engines_for).
         open_settings: A function that opens a settings screen, given one of settings_form.PAGES.
-        history: Where the answers are saved, or None.
+        answers: Where the answers of the quiz are kept.
         analyze_games: Starts the analysis of the games with KataGo (the top screen's "KataGoで棋譜解析").
         notices: Problems found at the start, shown in a dialog on the top screen.
         use_seichi: Show the territory counting practice on the top screen.
-        games_folder: Finds the games folder, as (folder, problem) (see today.find_games_folder).
+        games_folder: Finds the games folder, as (folder, problem) (see games_folder.find_games_folder).
         seichi: The settings of the territory counting practice.
-        seichi_history: Where the results of the territory counting practice are saved, or None.
+        plan_seichi: Plans the games of the territory counting practice from a games folder (called in a
+            background thread).
+        save_seichi_result: Keeps how the counting of a game went.
         save_language: Keeps the chosen language in the settings file. Returns "" when it is saved,
             or why it could not be saved.
         commentary: What the screens of the AI commentary need, or None (no AI commentary).
@@ -63,11 +65,10 @@ class ScreenSetup:
         answer_limit_offer: Saves the user's answer to that offer (True: change the limit).
         report: Makes the report (成績表) from the games and the history (called in a background thread).
         today_summary: Makes the summary of the day, or None if nothing was answered today (in a background thread).
-        player_ranks: Returns the ranks of the players of a problem's game, for the human-like moves of
-            KataGo's sequences (see kentogo.opponent_rank).
+        judging: Returns what the quiz needs from a running KataGo (see quiz.quiz_run.Judging).
         load_fights: Makes today's local fight problems (called in a background thread).
-        fight_summary: Makes the summary of the fights answered today, or None if there are none (in a background
-            thread).
+        fight_summary: Makes the summary of the fights answered today from the IDs of all the current fights, or
+            None if none was answered (in a background thread).
         fight_tools: Makes what the screen of the local fights uses, given the running KataGo and how it analyzes
             the positions (see kentogo.fight_setup).
     """
@@ -77,13 +78,14 @@ class ScreenSetup:
     choose_transform: Callable[[], BoardTransform]
     engines_for: Callable[[Engines | None], Engines]
     open_settings: Callable[[str], None]
-    history: AnswerHistory | None
+    answers: QuizAnswers
     analyze_games: Callable[[], None] = lambda: None
     notices: tuple[Notice, ...] = ()
     use_seichi: bool = False
     games_folder: Callable[[], tuple[Path | None, Notice | None]] = lambda: (None, None)
     seichi: SeichiSettings = SeichiSettings()
-    seichi_history: SeichiHistory | None = None
+    plan_seichi: Callable[[Path], SeichiQueue] = lambda _folder: SeichiQueue([], None)
+    save_seichi_result: Callable[[SeichiGame, bool], None] = lambda _game, _good: None
     save_language: Callable[[str], str] = lambda _language: ""
     commentary: CommentaryWorkspace | None = None
     start_times: StartTimes = StartTimes(None)
@@ -93,9 +95,9 @@ class ScreenSetup:
     answer_limit_offer: Callable[[LimitOffer, bool], None] = lambda _offer, _yes: None
     report: Callable[[], Report] = Report
     today_summary: Callable[[], TodaySummary | None] = lambda: None
-    player_ranks: Callable[[Problem], PlayerRanks] = lambda _problem: PlayerRanks()
+    judging: Callable[[Engines], Judging] = lambda _engines: Judging()
     load_fights: Callable[[], TodayFights] = lambda: TodayFights([])
-    fight_summary: Callable[[], FightSummary | None] = lambda: None
+    fight_summary: Callable[[Set[str]], FightSummary | None] = lambda _fight_ids: None
     fight_tools: Callable[[AnalysisEngine, EvaluationSettings], FightTools] = lambda _engine, _evaluation: FightTools(
         lambda _fight: None, lambda _run: None
     )

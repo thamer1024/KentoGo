@@ -41,9 +41,8 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.slider import Slider
 
-from kentogo.common import sgf
 from kentogo.common.types import Position
-from kentogo.gui import texts, theme, viewer_model
+from kentogo.gui import sequence_texts, texts, theme, viewer_model
 from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.dialogs import show_long_message, show_message
 from kentogo.gui.file_name_row import FileNameRow
@@ -54,9 +53,9 @@ from kentogo.katago.evaluate import Models
 from kentogo.katago.quick_reading import QuickReading, QuickReadings
 from kentogo.record.game_record import (
     GameRecord,
+    load_game_record,
     next_ai_position,
     previous_ai_position,
-    read_game_record,
     review_text,
 )
 from kentogo.viewer.analyses import ESTIMATE_FAILED, NO_ENGINE, GameAnalyses
@@ -122,7 +121,7 @@ class ViewerScreen(BoxLayout):
 
         def work() -> None:
             try:
-                record = read_game_record(sgf.load_game(path))
+                record = load_game_record(path)
             except Exception as error:  # A broken file is told, and the screen stays usable.
                 in_main_thread(self._failed)(str(error) or type(error).__name__)
                 return
@@ -347,10 +346,14 @@ class ViewerScreen(BoxLayout):
         """Return the text about the shown sequence, with the exact standing at its end or the rough one."""
         text = viewer_model.variation_text(record, browse)
         if standing is not None:
-            lines = (text, texts.standing_text(standing, browse.step), texts.standing_gain_text(standing))
+            lines = (
+                text,
+                sequence_texts.standing_text(standing, browse.step),
+                sequence_texts.standing_gain_text(standing),
+            )
             return "\n".join(lines).strip("\n")
         if quick is not None:
-            return f"{text}\n{texts.quick_standing_text(quick.lead)}".strip("\n")
+            return f"{text}\n{sequence_texts.quick_standing_text(quick.lead)}".strip("\n")
         return text
 
     def _step(self, step: int) -> None:

@@ -9,6 +9,7 @@ from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_judge import OPPONENT_RANK, OUTCOME_USER_LEFT, FightOutcome
 from kentogo.quiz.fight_settings import FightSettings
 from kentogo.quiz.human_line import PlayerRanks
+from kentogo.quiz.transform import BoardTransform
 from kentogo.review.history import AnswerHistory
 from kentogo.review.store import ReviewStore
 
@@ -43,3 +44,11 @@ def test_the_tools_make_the_runs_and_save_them():
     tools.save(run)
     assert [record.max_visits for record in history.previous("f1")] == [800]
     fight_tools(None, EVALUATION, FightSettings(), None, lambda _fight: PlayerRanks()).save(run)  # No history.
+
+
+def test_the_tools_choose_how_each_fight_is_turned():
+    turned = BoardTransform(3)
+    tools = fight_tools(
+        None, EVALUATION, FightSettings(), None, lambda _fight: PlayerRanks(), choose_transform=lambda: turned
+    )
+    assert tools.choose_transform() == turned

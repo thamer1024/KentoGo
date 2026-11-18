@@ -26,11 +26,11 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
-from kentogo.commentary.batch import STATUS_DONE, BatchListener, GameOutcome, run_listed_games
+from kentogo.commentary.batch import STATUS_DONE, BatchListener, GameOutcome
 from kentogo.commentary.candidates import GameCandidate
 from kentogo.commentary.job import GameRequest
 from kentogo.commentary.provider_base import ProviderError
-from kentogo.commentary.since import SINCE_CHOICES, SINCE_DATE, since_ns_for
+from kentogo.commentary.since import SINCE_CHOICES, SINCE_DATE
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.gui import commentary_texts, texts, theme
 from kentogo.gui.board_view import BoardView
@@ -143,18 +143,10 @@ class BatchScreen(BoxLayout):
 
         def work() -> None:
             """Run in the background thread."""
-            history = self.workspace.open_history()
-            if history is None:
-                in_main_thread(self._show_list)([])
+            games = self.workspace.games_to_list(self.folder)
+            if games is None:
+                in_main_thread(self._ask_since)()
                 return
-            try:
-                since_ns = history.since_ns()
-                if since_ns is None:
-                    in_main_thread(self._ask_since)()
-                    return
-                games = self.workspace.new_games(self.folder, history, since_ns)
-            finally:
-                history.close()
             in_main_thread(self._show_list)(games)
 
         threading.Thread(target=work, daemon=True).start()
@@ -175,17 +167,11 @@ class BatchScreen(BoxLayout):
     def _since_chosen(self, choice: str, date_text: str) -> None:
         """Remember the chosen time in the history, and read the list."""
         try:
-            since_ns = since_ns_for(choice, datetime.now(), date_text)
+            self.workspace.choose_since(choice, date_text, datetime.now())
         except ValueError as error:
             show_message(texts.text("error_title"), texts.text("commentary_since_date_wrong", reason=error))
             self._ask_since()
             return
-        history = self.workspace.open_history()
-        if history is not None:
-            try:
-                history.set_since_ns(since_ns)
-            finally:
-                history.close()
         self._load()
 
     def _show_list(self, games: list[GameCandidate]) -> None:
@@ -201,12 +187,7 @@ class BatchScreen(BoxLayout):
         """Take a game out of the list for good (not while the AI is asked)."""
         if self.cancel_event is not None:
             return
-        history = self.workspace.open_history()
-        if history is not None:
-            try:
-                history.exclude(row.candidate.name)
-            finally:
-                history.close()
+        self.workspace.exclude_game(row.candidate.name)
         self.rows.remove(row)
         self.list_box.remove_widget(row)
         set_text(self.title_label, lambda: texts.text("commentary_batch_count", count=len(self.rows)))
@@ -241,26 +222,17 @@ class BatchScreen(BoxLayout):
 
         def work() -> None:
             """Run in the background thread. Errors are shown on the screen."""
+            language = commentary_texts.commentary_language()
             try:
-                provider = self.workspace.provider()
+                outcomes = self.workspace.ask_listed_games(requests, not_analyzed, language, listener, cancel)
             except ProviderError as error:
                 in_main_thread(self._failed)(
                     commentary_texts.provider_error_text(error.kind, error.detail, settings.api_key_env)
                 )
                 return
-            text, _problems = self.workspace.prompt_text(commentary_texts.commentary_language())
-            history = self.workspace.open_history()
-            try:
-                conditions = self.workspace.conditions()
-                outcomes = run_listed_games(
-                    requests, provider, text, history, listener, cancel, not_analyzed, conditions=conditions
-                )
             except Exception as error:  # The screen must stay usable.
                 in_main_thread(self._failed)(texts.text("action_failed", reason=error))
                 return
-            finally:
-                if history is not None:
-                    history.close()
             in_main_thread(self._all_finished)(outcomes, settings.api_key_env)
 
         threading.Thread(target=work, daemon=True).start()

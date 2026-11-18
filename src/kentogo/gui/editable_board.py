@@ -82,7 +82,7 @@ class EditableBoard(BoardWidget):
         """Show the stones of a step of the computer's seichi, with marks on the points of the step.
 
         A step with two points (from, to) gets a triangle where the stone was and a circle where a
-        stone is put, as the step's words say (see texts.fill_step_text). Other points get a circle.
+        stone is put, as the step's words say (see seichi_texts.fill_step_text). Other points get a circle.
         """
         if len(points) == 2:
             marks = {points[0]: (MARK_ACTUAL,), points[1]: (MARK_ANSWER,)}

@@ -4,13 +4,15 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kentogo.answers import record_of
+from kentogo.answers import QuizAnswers, record_of
 from kentogo.common.types import Move, Position
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import QuizSession
 from kentogo.quiz.transform import BoardTransform
+from kentogo.review.history import AnswerHistory
 from kentogo.review.record import LOSS_FROM_KATAGO, LOSS_FROM_SGF, LOSS_UNKNOWN
+from kentogo.review.store import ReviewStore
 
 JST = timezone(timedelta(hours=9))
 WHEN = datetime(2026, 10, 20, 21, 30, tzinfo=JST)
@@ -32,6 +34,23 @@ def answered(gtp: str, transform: BoardTransform = BoardTransform()) -> QuizSess
     session = QuizSession(PROBLEM, ScoringPolicy(), transform)
     session.answer(transform.move(Move.from_gtp(gtp, "B"), 19))
     return session
+
+
+def test_quiz_answers_are_kept_in_the_history():
+    history = AnswerHistory(ReviewStore(":memory:"))
+    answers = QuizAnswers(history)
+    assert answers.previous("p1") == []
+    answers.save(answered("Q4"))
+    assert [record.answer for record in answers.previous("p1")] == ["Q4"]
+    assert answers.last_error == ""
+    history.store.close()
+
+
+def test_quiz_answers_without_a_history_are_not_kept():
+    answers = QuizAnswers(None)
+    answers.save(answered("Q4"))
+    assert answers.previous("p1") is None
+    assert answers.last_error == ""
 
 
 def test_record_of_a_move_from_the_sgf_file():

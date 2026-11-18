@@ -19,7 +19,7 @@ from kivy.uix.scrollview import ScrollView
 
 from kentogo.analysis_run import AnalysisListener, AnalysisSummary, FolderGames
 from kentogo.app_settings import AppSettings
-from kentogo.gui import texts, theme
+from kentogo.gui import analysis_texts, texts, theme
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread
 
 SPACING = 8  # dp
@@ -104,15 +104,15 @@ class AnalysisPopup(Popup):
 
     def _progress(self, step: str, done: int, total: int) -> None:
         if not self._stop.is_set():
-            self.step_label.text = texts.analysis_step_text(step, done, total)
+            self.step_label.text = analysis_texts.analysis_step_text(step, done, total)
 
     def _game_finished(self, name: str, outcome: str, detail: str) -> None:
-        line = texts.analysis_outcome_text(name, outcome, detail)
+        line = analysis_texts.analysis_outcome_text(name, outcome, detail)
         self.log_label.text = f"{self.log_label.text}\n{line}".strip("\n")
 
     def _finished(self, summary: AnalysisSummary) -> None:
         """Tell how the run ended, and let the dialog be closed."""
-        self.game_label.text = texts.analysis_summary_text(summary)
+        self.game_label.text = analysis_texts.analysis_summary_text(summary)
         self.step_label.text = ""
         self.stop_button.disabled = True
         self.close_button.disabled = False

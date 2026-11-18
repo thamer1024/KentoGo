@@ -2,68 +2,38 @@
 
 The start screen calls load_today() in a background thread, and shows the
 progress and then the numbers of new problems and reviews.
-
-The settings screen calls exclude_all_problems() ("treat all current problems
-as done") and include_all_problems() ("start all problems again"). They write
-to the history at once, and are used from the next start.
 """
 
 from __future__ import annotations
 
 import random
-import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Mapping, Set
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
 from kentogo.answers import saved_problems
 from kentogo.app_settings import AppSettings
-from kentogo.commentary.history import CommentaryHistory
-from kentogo.commentary.history import history_path as commentary_history_path
+from kentogo.commentary_inputs import read_recorded_colors
+from kentogo.games_folder import find_games_folder
 from kentogo.mistakes.extract import with_game_line
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
-from kentogo.quiz.collect import SkippedGame, collect_games
+from kentogo.practice_stores import open_cache, open_history
+from kentogo.quiz.collect import Progress, SkippedGame, collect_games
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
 from kentogo.quiz.problem_kinds import KIND_ALL, other_kinds, problems_of_kind
-from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.stages import NO_STAGES, StageStatus, current_stage, held_back
+from kentogo.repetition.counts import ProblemCounts, count_problems
 from kentogo.repetition.daily import answered_on, left_today
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.repetition.plan import QuizPlan, plan_problems
-from kentogo.repetition.schedule import STATE_NEW, ReviewState, review_state
+from kentogo.repetition.schedule import STATE_NEW, STATE_REVIEW, ReviewState, review_state
 from kentogo.review.history import AnswerHistory
 from kentogo.review.review_settings import ReviewSettings
-from kentogo.review.store import ReviewStore
-
-# The names of the history database and the problem cache, kept in the same folder as the settings file.
-HISTORY_FILE_NAME = "history.sqlite3"
-CACHE_FILE_NAME = "problem_cache.sqlite3"
-
-# The folder of the project when KentoGo runs from its source (for example, downloaded from GitHub).
-PROJECT_FOLDER = Path(__file__).resolve().parents[2]
-# The games folder when KentoGo is installed as a program (not from its source).
-INSTALLED_GAMES_FOLDER = Path("~/.kentogo/games")
-
-# A function that is told (files done, all files) while the SGF files are read.
-Progress = Callable[[int, int], None]
-
-
-class NoGamesFolderError(ValueError):
-    """Raised when there is no games folder to read.
-
-    Attributes:
-        notice: Why (see find_games_folder).
-    """
-
-    def __init__(self, notice: Notice):
-        """Keep why there is no folder."""
-        super().__init__(f"no games folder: {notice.values}")
-        self.notice = notice
 
 
 @dataclass(frozen=True)
@@ -94,117 +64,6 @@ class TodayProblems:
     notices: list[Notice] = field(default_factory=list)
     stage: StageStatus = NO_STAGES
     kind: str = KIND_ALL
-
-
-def default_games_folder() -> Path:
-    """Return the games folder used when the settings name none.
-
-    From the source, it is the "games" folder of the project (empty at first, and kept out of
-    git with the SGF files). An installed KentoGo uses "games" next to its settings instead.
-    """
-    if (PROJECT_FOLDER / "pyproject.toml").is_file():
-        return PROJECT_FOLDER / "games"
-    return INSTALLED_GAMES_FOLDER.expanduser()
-
-
-def find_games_folder(
-    argument: Path | None, setting: str, default: Path | None = None
-) -> tuple[Path | None, Notice | None]:
-    """Find the games folder: the one on the command line, or else the one in the settings, or else the default.
-
-    The default folder is made if it does not exist yet. The app starts even without a
-    usable folder, so that the user can set it on the settings screen.
-
-    Args:
-        argument: The folder given on the command line, or None.
-        setting: The games_folder of the quiz settings ("" means the default folder).
-        default: The default folder. None means default_games_folder() (tests give their own).
-
-    Returns:
-        A tuple (folder, problem). folder is None if there is no usable folder, and
-        problem then tells why (None when there is a folder).
-    """
-    if argument is None and not setting.strip():
-        folder = default or default_games_folder()
-        try:
-            folder.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            return None, Notice("folder_missing", {"folder": folder})
-        return folder, None
-    folder = argument or Path(setting.strip()).expanduser()
-    if not folder.is_dir():
-        return None, Notice("folder_missing", {"folder": folder})
-    return folder, None
-
-
-def open_cache(settings_path: Path, notices: list[Notice] | None = None) -> ProblemCache | None:
-    """Open the problem cache in the folder of the settings file.
-
-    Args:
-        settings_path: Path of the settings file. "~" means the home folder.
-        notices: If given, a message for the user is added when the cache cannot be used.
-
-    Returns:
-        The cache, or None if it cannot be used (the reason is printed).
-        Then all SGF files are read, which is slower but works.
-    """
-    path = settings_path.expanduser().parent / CACHE_FILE_NAME
-    try:
-        return ProblemCache(path)
-    except (sqlite3.Error, OSError) as error:
-        print(f"cannot use the problem cache {path}: {error}", file=sys.stderr)
-        if notices is not None:
-            notices.append(Notice("notice_cache_failed", {"path": path, "reason": error}))
-        return None
-
-
-def open_history(settings_path: Path, notices: list[Notice] | None = None) -> AnswerHistory | None:
-    """Open the history database in the folder of the settings file.
-
-    Args:
-        settings_path: Path of the settings file. "~" means the home folder.
-        notices: If given, a message for the user is added when the history cannot be used.
-
-    Returns:
-        The history, or None if the database cannot be used (the reason is printed).
-        The quiz works without the history.
-    """
-    return open_answers(settings_path.expanduser().parent / HISTORY_FILE_NAME, notices)
-
-
-def open_answers(path: Path, notices: list[Notice] | None = None) -> AnswerHistory | None:
-    """Open a history database of answers (see open_history), or None if it cannot be used (the reason is printed)."""
-    try:
-        return AnswerHistory(ReviewStore(path))
-    except (sqlite3.Error, OSError, ValueError) as error:
-        print(f"cannot use the history {path}: {error}", file=sys.stderr)
-        if notices is not None:
-            notices.append(Notice("notice_history_failed", {"path": path, "reason": error}))
-        return None
-
-
-def read_recorded_colors(settings_path: Path) -> dict[str, str]:
-    """Read the user's colors given in the list of games for the AI commentary.
-
-    Args:
-        settings_path: Path of the settings file (the database is next to it).
-
-    Returns:
-        The color by the name of the SGF file, or an empty dict if the database
-        cannot be read (the reason is printed; the colors are then found in other ways).
-    """
-    path = commentary_history_path(settings_path)
-    if not path.exists():
-        return {}
-    try:
-        history = CommentaryHistory(path)
-        try:
-            return history.recorded_colors()
-        finally:
-            history.close()
-    except (sqlite3.Error, OSError) as error:
-        print(f"cannot read the commentary history {path}: {error}", file=sys.stderr)
-        return {}
 
 
 def plan_today(
@@ -280,6 +139,32 @@ def _lost_reviews(
     return [with_game_line(problem) for problem in saved_problems(history, lost)] if lost else []
 
 
+def count_current_problems(
+    problems: list[Problem],
+    states: Mapping[str, ReviewState],
+    history: AnswerHistory,
+    kind: str = KIND_ALL,
+    inside_fights: Set[str] = frozenset(),
+) -> ProblemCounts:
+    """Count the problems that are asked now or later, by how far they are (the same ones as plan_today).
+
+    Problems set aside and problems of other kinds are left out. A review that is no longer made from the
+    games is counted when its copy in the history can be asked; a finished problem like that is not.
+
+    Args:
+        problems: All problems made from the games.
+        states: The review state of each problem ID, since the last reset. A missing ID is a new problem.
+        history: The history of answers.
+        kind: Which problems are asked (see quiz.problem_kinds).
+        inside_fights: The IDs of the mistake problems inside the local fights: they are asked as fights.
+    """
+    made = {problem.problem_id for problem in problems} | set(inside_fights)
+    waiting = sorted(key for key, state in states.items() if state.state == STATE_REVIEW and key not in made)
+    all_problems = problems + saved_problems(history, waiting)
+    left_out = history.exclusions() | other_kinds(all_problems, kind)
+    return count_problems((p.problem_id for p in all_problems if p.problem_id not in left_out), states)
+
+
 def prepare_problems(
     folder_argument: Path | None,
     settings: AppSettings,
@@ -325,21 +210,10 @@ def prepare_problems(
     )
     print(f"{len(problems)} problems: {plan.new_count} new, {plan.review_count} reviews today", file=sys.stderr)
     notices = [Notice("notice_history_error", {"reason": history.last_error})] if history.last_error else []
-    if problems and not plan.problems:
-        message = Notice("daily_done" if limit == 0 else "nothing_today")
-        return TodayProblems(
-            [],
-            message,
-            session_limit=limit,
-            skipped=skipped_counts,
-            skipped_games=skipped,
-            notices=notices,
-            stage=stage,
-            kind=settings.quiz.problem_kind,
-        )
+    message = Notice("daily_done" if limit == 0 else "nothing_today") if problems and not plan.problems else None
     return TodayProblems(
         plan.problems,
-        None,
+        message,
         plan.new_count,
         plan.review_count,
         limit,
@@ -386,65 +260,3 @@ def load_today(
             cache.close()
         if history is not None:
             history.store.close()
-
-
-def exclude_all_problems(settings_path: Path, folder_argument: Path | None, settings: QuizSettings) -> int:
-    """Set aside every problem in the games folder now, as if all were done (written at once).
-
-    Problems from games added later are not set aside. This uses its own
-    connections, so it can run in a background thread.
-
-    Args:
-        settings_path: Path of the settings file (the cache and the history are next to it).
-        folder_argument: The games folder given on the command line, or None.
-        settings: The quiz settings (the games folder and the conditions for choosing problems).
-
-    Returns:
-        How many problems were set aside.
-
-    Raises:
-        NoGamesFolderError: If there is no games folder (its notice tells why).
-        ValueError: If the history is newer.
-        sqlite3.Error, OSError: If the history cannot be written.
-    """
-    folder, folder_problem = find_games_folder(folder_argument, settings.games_folder)
-    if folder is None:
-        raise NoGamesFolderError(folder_problem)
-    cache = open_cache(settings_path)
-    try:
-        games, _ = collect_games(folder, settings.extract, cache, recorded_colors=read_recorded_colors(settings_path))
-        problems = problems_of_kind((result for _path, result in games), settings.problem_kind)
-    finally:
-        if cache is not None:
-            cache.close()
-    problem_ids = sorted({problem.problem_id for problem in problems})
-    store = ReviewStore(settings_path.expanduser().parent / HISTORY_FILE_NAME)
-    try:
-        store.exclude(problem_ids, _now())
-    finally:
-        store.close()
-    return len(problem_ids)
-
-
-def include_all_problems(settings_path: Path) -> None:
-    """Start all problems again: no problem is set aside or done (written at once).
-
-    The answers are kept, but answers before now are not used to choose problems.
-
-    Args:
-        settings_path: Path of the settings file (the history is next to it).
-
-    Raises:
-        ValueError: If the history was made by a newer version.
-        sqlite3.Error, OSError: If the history cannot be written.
-    """
-    store = ReviewStore(settings_path.expanduser().parent / HISTORY_FILE_NAME)
-    try:
-        store.reset(_now())
-    finally:
-        store.close()
-
-
-def _now() -> str:
-    """Return the current time in ISO 8601 format with the time zone, as in the history."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

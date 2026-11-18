@@ -4,6 +4,7 @@ from pysgf import GoGame
 
 from kentogo.record.ai_comment import AI_HEADER, REVIEW_HEADER
 from kentogo.record.game_record import (
+    load_game_record,
     move_commentary,
     next_ai_position,
     next_position,
@@ -94,3 +95,9 @@ def test_branches_and_the_position_before_a_move():
     assert [m.gtp() for m in before.moves] == ["A1", "A2"] and before.next_color == "W"
     assert [m.gtp() for m in before.setup] == ["E5"]
     assert game.position_before(0).moves == ()
+
+
+def test_a_game_is_read_from_its_file(tmp_path):
+    path = tmp_path / "game.sgf"
+    path.write_bytes(GAME.encode("utf-8"))
+    assert load_game_record(path) == read_game_record(GoGame.parse_sgf(GAME))

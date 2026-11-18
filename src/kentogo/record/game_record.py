@@ -18,6 +18,7 @@ Nothing here uses the screens, so the same record can be shown in any screen.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from pysgf import GoNode
 
@@ -139,6 +140,11 @@ class GameRecord:
     def ai_positions(self) -> list[int]:
         """Return the positions whose move has an AI commentary or review, in order."""
         return [record.number for record in self.moves if record.ai_text or record.ai_review]
+
+
+def load_game_record(path: str | Path) -> GameRecord:
+    """Read the game of an SGF file into a record (see read_game_record)."""
+    return read_game_record(sgf.load_game(path))
 
 
 def read_game_record(root: GoNode) -> GameRecord:

@@ -21,7 +21,7 @@ from kivy.core.clipboard import Clipboard
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 
-from kentogo.commentary.batch import STATUS_DONE, BatchListener, GameOutcome, run_batch
+from kentogo.commentary.batch import STATUS_DONE, BatchListener, GameOutcome
 from kentogo.commentary.candidates import GameCandidate
 from kentogo.commentary.job import GameRequest
 from kentogo.commentary.provider_base import ProviderError
@@ -151,23 +151,16 @@ class ApiScreen(BoxLayout):
 
         def work() -> None:
             """Run in the background thread. Errors are shown on the screen."""
+            language = commentary_texts.commentary_language()
             try:
-                provider = self.workspace.provider()
+                outcome, problems = self.workspace.ask_game(request, language, listener, cancel)
             except ProviderError as error:
                 message = commentary_texts.provider_error_text(error.kind, error.detail, settings.api_key_env)
                 in_main_thread(self._failed)(message)
                 return
-            text, problems = self.workspace.prompt_text(commentary_texts.commentary_language())
-            history = self.workspace.open_history()
-            try:
-                conditions = self.workspace.conditions()
-                outcome = run_batch([request], provider, text, history, listener, cancel, conditions)[0]
             except Exception as error:  # The screen must stay usable.
                 in_main_thread(self._failed)(texts.text("action_failed", reason=error))
                 return
-            finally:
-                if history is not None:
-                    history.close()
             file_problems = commentary_texts.prompt_file_problems_text(problems)
             in_main_thread(self._finished)(outcome, settings.api_key_env, file_problems)
 

@@ -6,6 +6,7 @@ import pytest
 from fake_engines import fake_katago_settings, make_fake_katago
 
 from kentogo.engines import (
+    Engines,
     engine_command_line,
     engines_for,
     measure_katago_speed,
@@ -15,6 +16,15 @@ from kentogo.engines import (
 )
 from kentogo.gui.texts import notice_text
 from kentogo.katago.engine_settings import EngineSettings
+from kentogo.katago.evaluate import AnalysisModel, EvaluationSettings, Models
+
+
+def test_the_models_of_the_screen_that_shows_the_games():
+    """The running KataGo is the main model; without KataGo, there is none."""
+    settings = EvaluationSettings()
+    engine = object()
+    assert Engines(engine, settings, "").viewer_models() == Models(AnalysisModel(engine, settings))
+    assert Engines(None, settings, "not found").viewer_models() == Models()
 
 
 def test_start_engine_without_katago(tmp_path):

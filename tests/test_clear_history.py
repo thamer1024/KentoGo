@@ -8,11 +8,12 @@ from test_today import answer_first_problem, three_games
 from kentogo.app_settings import AppSettings
 from kentogo.clear_history import BACKUP_FOLDER_NAME, clear_answers, clear_fight_answers, clear_seichi_results
 from kentogo.fights_today import fight_history_path
+from kentogo.practice_stores import open_history
 from kentogo.review.history import AnswerHistory
 from kentogo.review.record import AnswerRecord
 from kentogo.review.store import ReviewStore
 from kentogo.seichi.seichi_history import SeichiHistory, open_seichi_history
-from kentogo.today import load_today, open_history
+from kentogo.today import load_today
 
 NOW = datetime(2026, 11, 13, 15, 50, 7)
 

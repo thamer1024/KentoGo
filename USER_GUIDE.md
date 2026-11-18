@@ -8,12 +8,15 @@ brackets are the values at the first start. The names are those of the English s
 The top screen has a button for each feature:
 
 - **Mistake problems**: solve problems made from your own mistakes.
+- **Local fight problems (life and death, boundaries)**: play again against KataGo the local fights
+  you lost.
 - **Look through games**: replay your games with the analysis.
 - **Territory counting**: count the final positions of your games (only when "Also use the
   territory counting practice" is on in the settings).
 - **Analyze games with KataGo**: let KentoGo analyze your games.
 - **Analyze games with AI**: get a commentary in words from an AI such as Claude or ChatGPT.
-- **Report**: your results day by day, and your mistakes game by game.
+- **Report**: your results day by day (mistake problems and local fights), and your mistakes game
+  by game.
 
 The ☰ button opens the menu: the flags (the language of the screens) and the settings screens.
 
@@ -55,15 +58,13 @@ The sequences, in the order of Tab:
 
 1. **Rank replies**: after your answer, you play the moves of your rank, and the opponent plays
    the moves of the opponent's rank (from KataGo's human-like model).
-2. **Strongest replies**: you play the moves of your rank, and the opponent plays KataGo's best
-   replies.
-3. **Game**: the move played in the game, and the moves played after it.
-4. **KentoGo's move** (or **KaTrain's move**): the best line of the analysis, and the other
-   branches of the SGF file.
+2. **Game**: the move played in the game, and the moves played after it.
+3. **Best from here**: from the problem position, you play the best of the moves that a player of
+   your rank may play, and the opponent plays the moves of the opponent's rank.
 
 The newest move of a sequence is shown as a magenta disc; the moves before it have numbers. The
 board shows the territory of the move shown, and the panel shows a rough standing. At the last move
-of a sequence, the exact standing is shown. For "Rank replies" and "KentoGo's move", it is also
+of a sequence, the exact standing is shown. For "Rank replies" and "Best from here", it is also
 compared with the game after the same number of moves (the points you won back).
 
 ### Offers to change the judging
@@ -71,6 +72,42 @@ compared with the game after the same number of moves (the points you won back).
 After enough answers, KentoGo may ask whether to raise or lower the passing line, or to set or lower
 the limit on the loss of a correct answer. Answer "Yes" to change the setting, or "No" to keep it.
 See "Judging settings" below.
+
+### Today
+
+When you go back to the top screen after answering that day, "Today" shows the problems answered and
+correct, the points got back, the number of the practice day and what you achieved, and how many of
+the current problems there are in all, done, in progress and not started. Problems set aside are not
+counted; reviews of problems no longer made from your games are counted as in progress.
+
+## Local fight problems
+
+KentoGo finds these problems when it analyzes your games: the life and death fights and the
+boundaries you lost. KataGo is needed to play them.
+
+1. The board shows the position where the fight started. Click your move; KataGo answers on the board.
+2. Go on until the fight is judged. The panel tells whose turn it is and how the fight ended.
+3. Press "Next problem" (or Enter) at any time.
+
+The answer is correct when you win the fight and your score has not fallen from the start by more
+than the allowed points. It is wrong when you lose the fight, when the score falls too much, when you
+play away from the fight or pass, or when you lose points with a move that was not needed.
+
+After a fight:
+
+| Key | What it does |
+| --- | --- |
+| Tab | Show the AIs' sequence; when there are two, switch between them |
+| → | One move forward |
+| ← | One move back |
+| Enter | Next problem |
+
+In the AIs' sequence, both sides play human-like moves from the position where the fight started
+until the place is settled (at 9 dan when no rank is known). When it does not settle the place,
+KataGo's best moves play it again. A group being chased is followed until it is captured or gets away.
+
+When you go back to the top screen after answering that day, "Today" shows the problems answered and
+correct, and how many of the current fights there are in all, done, in progress and not started.
 
 ## Look through games
 
@@ -132,8 +169,16 @@ a commentary is replaced only after you say yes.
 
 ## Report
 
-The report shows the results of each practice day (how many answers were correct, and the part of
-the loss won back on average, with the passing line as a dotted line), and the mistakes in each game.
+The report counts practice days, so that days without practice do not pull the numbers down.
+
+- **Mistake problems**: the problems answered, correct and finished, the points got back, the days of
+  practice, and the last 5 practice days compared with the 5 before. The chart shows the correct
+  answers and the average part won back of each practice day, with the passing line as a dotted line.
+- **Local fight problems**: the same counts without the points, and a chart of the correct answers.
+- **Mistakes in each game**: all your moves count, by the size of the loss, with the average of the
+  last 5 games compared with the 5 before.
+
+The charts show at most 14 practice days or games.
 
 ## The settings
 
@@ -170,7 +215,7 @@ games again at the next start of the quiz (it asks first).
 | Max visits in analysis | How many positions KataGo reads to judge an answer (500). More is more exact but slower. |
 | Wide root noise | Makes KataGo look at more candidate moves (0.04, as in KaTrain). |
 | Maximum time for analysis | The most seconds for one reading (8; 0: no limit). |
-| Visits for territory and standing | The visits of the territory, the rough standing, and each move of the strongest replies (100). |
+| Visits for territory and standing | The visits of the territory and the rough standing; your later moves in "Best from here" use twice this (100). |
 | Longest wait for KataGo to get ready | Seconds to wait for KataGo to load its model (600). |
 
 ### Recommended settings
@@ -229,12 +274,28 @@ percent. The passing line is offered from 0.5 to 0.9, by steps of 0.1. A limit i
 least a third of the latest answers are correct, their average loss is below the next limit, and at
 least 80% of them are within it.
 
+**Local fight problems (life and death, boundaries)**
+
+| Setting | Meaning |
+| --- | --- |
+| Opponent | KataGo's strongest replies, or the human-like replies of the opponent's rank (KataGo's strongest replies). |
+| Points the score may fall in a won fight before it is wrong | Counted from the start of the fight (3). |
+
 ### Review Settings
 
 | Setting | Meaning |
 | --- | --- |
 | Way of reviewing | Forgetting curve (a problem ends after correct answers in a row), or ends after one correct answer (forgetting curve). |
 | Correct answers in a row | With the forgetting curve, how many correct answers in a row finish a problem (2; 0: no reviews). A problem answered wrong comes back the next day, then after 3, 7, 14, 30 and 60 days. |
+| Problems asked first | New problems, reviews of wrong answers, or a mix of two reviews and one new problem (new problems). |
+
+**Review settings of the local fight problems (life and death, boundaries)**
+
+| Setting | Meaning |
+| --- | --- |
+| Most problems a day | Fights asked in a day, reviews included; the count starts again at midnight (5; 0: no limit). |
+| Way of reviewing | Forgetting curve, or ends after one correct answer (forgetting curve). |
+| Correct answers in a row | With the forgetting curve, how many correct answers in a row finish a fight (2; 0: no reviews). |
 | Problems asked first | New problems, reviews of wrong answers, or a mix of two reviews and one new problem (new problems). |
 
 Buttons:
@@ -245,6 +306,7 @@ Buttons:
   The answers are kept.
 - **Clear the learning history**: the answers are cleared, after a backup in
   `~/.kentogo/backups`. The problems are then asked as for a new user.
+- **Clear the local fight history**: the same for the answers of the local fight problems.
 - **Clear the territory counting history** (when the counting practice is on): the same for the
   results of the counting practice.
 

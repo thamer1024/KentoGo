@@ -39,10 +39,8 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.modalview import ModalView
 from kivy.uix.scrollview import ScrollView
 
-from kentogo.answers import save_answer
-from kentogo.common.board import Board, IllegalMoveError
-from kentogo.common.tactics import tactics
-from kentogo.gui import texts, theme
+from kentogo.answers import QuizAnswers
+from kentogo.gui import quiz_texts, sequence_texts, texts, theme
 from kentogo.gui.board_view import (
     MARK_ACTUAL,
     MARK_ANSWER,
@@ -64,7 +62,6 @@ from kentogo.quiz.quiz_run import Judging, QuizRun
 from kentogo.quiz.session import ANSWERED, QuizSession
 from kentogo.quiz.standings import SequenceStandings
 from kentogo.quiz.transform import BoardTransform
-from kentogo.review.history import AnswerHistory
 
 # Key codes of Kivy.
 KEY_LEFT = 276
@@ -89,7 +86,7 @@ class QuizScreen(BoxLayout):
     Attributes:
         run: The quiz: the problems, the one asked now, and the judging of the answers.
         judging: KataGo for judging the answers and for the territory and the standing.
-        history: Where the answers are saved, or None if they are not saved.
+        answers: Where the answers are kept.
         standings: The territory and the standing (T) of the problem asked now, or None after the last one.
     """
 
@@ -100,7 +97,7 @@ class QuizScreen(BoxLayout):
         choose_transform: Callable[[], BoardTransform],
         judging: Judging = Judging(),
         start_message: str = "",
-        history: AnswerHistory | None = None,
+        answers: QuizAnswers = QuizAnswers(None),
         on_back: Callable[[], None] | None = None,
         open_game: Callable[[Problem], None] | None = None,
         **kwargs,
@@ -114,7 +111,7 @@ class QuizScreen(BoxLayout):
             judging: KataGo for judging the answers (see quiz.quiz_run.Judging).
             start_message: Shown instead of the usual message when there are no problems,
                 for example when the games folder is not set.
-            history: Where the answers are saved. If None, they are not saved.
+            answers: Where the answers are kept (by default, they are not kept).
             on_back: Called by the "back to the top screen" button; without it, there is no button.
             open_game: Shows the game of a problem at the mistake (after the answer); without it, there is no button.
             **kwargs: Kivy's layout arguments.
@@ -122,7 +119,7 @@ class QuizScreen(BoxLayout):
         super().__init__(orientation="horizontal", **kwargs)
         self.judging = judging
         self.start_message = start_message
-        self.history = history
+        self.answers = answers
         self.on_back = on_back
         self.open_game = open_game
         self.standings: SequenceStandings | None = None
@@ -254,11 +251,11 @@ class QuizScreen(BoxLayout):
         self._update_buttons()
 
     def _history_line_of(self, problem: Problem) -> Callable[[], str]:
-        """Return what makes the line about the earlier answers to a problem ("" without a history)."""
-        if self.history is None:
+        """Return what makes the line about the earlier answers to a problem ("" if answers are not kept)."""
+        previous = self.answers.previous(problem.problem_id)
+        if previous is None:
             return str
-        previous = self.history.previous(problem.problem_id)
-        return lambda: texts.history_text(previous)
+        return lambda: quiz_texts.history_text(previous)
 
     @property
     def busy(self) -> bool:
@@ -309,7 +306,7 @@ class QuizScreen(BoxLayout):
         self._refresh()
         choice = self.session.choice
         if choice is not None:
-            self.flash.flash(texts.short_sequence_name(choice.source))
+            self.flash.flash(sequence_texts.short_sequence_name(choice.source))
 
     def _prepare_standings(self) -> None:
         """Ask KataGo for the standings of the sequences that have none yet (after the answer, see quiz.standings)."""
@@ -366,15 +363,14 @@ class QuizScreen(BoxLayout):
         self.run.save_unfinished()
 
     def _save(self, session: QuizSession, max_visits: int | None) -> None:
-        """Save an answer to the history (the quiz calls it once for each answer), if there is a history."""
-        if self.history is not None:
-            save_answer(self.history, session, max_visits)
-            self._show_history_error()
+        """Keep an answer (the quiz calls it once for each answer), and tell if that failed."""
+        self.answers.save(session, max_visits)
+        self._show_history_error()
 
     def _show_history_error(self) -> None:
         """Show a dialog if the history could not be read or written (once for each error)."""
-        if self.history is not None and self.history.last_error:
-            self._show_error_once(texts.text("notice_history_error", reason=self.history.last_error))
+        if self.answers.last_error:
+            self._show_error_once(texts.text("notice_history_error", reason=self.answers.last_error))
 
     def _show_error_once(self, message: str) -> None:
         """Show an error in a dialog where it can be copied, unless the same error was shown before.
@@ -396,11 +392,11 @@ class QuizScreen(BoxLayout):
         problem, result = self._problem_with_best_move(session), session.displayed_result
         found = session.sequence_loss()
         sequence = (session.shown_move(found[0]), found[1]) if found is not None else None
-        tactics = _best_move_tactics(session)
+        tactics = session.best_move_tactics()
         best_value = self.best_value
         set_text(
             self.result_label,
-            lambda: texts.result_text(
+            lambda: quiz_texts.result_text(
                 problem,
                 result,
                 waiting(),
@@ -446,7 +442,7 @@ class QuizScreen(BoxLayout):
         self._update_buttons()
         self.board.show(self._board_view())
         number, total, history_line = self.run.index + 1, len(self.run.problems), self._history_line
-        set_text(self.info_label, lambda: _on_one_line(texts.problem_info(problem, number, total), history_line()))
+        set_text(self.info_label, lambda: _on_one_line(quiz_texts.problem_info(problem, number, total), history_line()))
         self.file_row.set_name(Path(problem.sgf_path).name)
         if session.phase != ANSWERED:
             set_text(self.sequence_label, str)
@@ -456,7 +452,7 @@ class QuizScreen(BoxLayout):
         ai_comment = problem.ai_comment
         set_text(
             self.notes_label,
-            lambda: texts.notes_text(problem.notes, ai_comment=ai_comment),
+            lambda: sequence_texts.notes_text(problem.notes, ai_comment=ai_comment),
         )
 
     def _update_buttons(self) -> None:
@@ -507,7 +503,7 @@ class QuizScreen(BoxLayout):
         if choice is None:
             return texts.text("no_sequence")
         moves = choice.variation.moves if choice.variation is not None else ()
-        shown = texts.sequence_text(
+        shown = sequence_texts.sequence_text(
             choice.source,
             index=session.variation_index + 1,
             count=len(session.choices),
@@ -515,7 +511,7 @@ class QuizScreen(BoxLayout):
             total=len(moves),
             status=choice.status,
         )
-        order = texts.sequence_order_text(
+        order = sequence_texts.sequence_order_text(
             [(c.source, c.status) for c in session.choices], session.variation_index, self.busy_seconds
         )
         lines = [order, shown]
@@ -525,9 +521,9 @@ class QuizScreen(BoxLayout):
             lines.append(texts.text("estimate_running"))
         standing = standings.at_end() if standings is not None else None
         if standing is not None:
-            lines.append(texts.standing_text(standing, len(moves)))
+            lines.append(sequence_texts.standing_text(standing, len(moves)))
             if choice.source in GAIN_SOURCES:
-                lines.append(texts.standing_gain_text(standing))
+                lines.append(sequence_texts.standing_gain_text(standing))
         elif not at_end:
             lines += self._rough_standing_lines(session)
         return "\n".join(lines)
@@ -537,7 +533,7 @@ class QuizScreen(BoxLayout):
         lead = self.quick_areas.shown_lead() if self.quick_areas is not None else None
         if lead is None or session.replay_step == 0:
             return []
-        return [texts.rough_standing_text(lead, session.replay_step)]
+        return [sequence_texts.rough_standing_text(lead, session.replay_step)]
 
     @staticmethod
     def _problem_with_best_move(session: QuizSession) -> Problem:
@@ -565,19 +561,6 @@ class QuizScreen(BoxLayout):
             return replace(view, ownership=standing.end.ownership)
         areas = self.quick_areas.shown() if self.quick_areas is not None else None
         return replace(view, ownership=areas) if areas is not None else view
-
-
-def _best_move_tactics(session: QuizSession) -> tuple[str, ...]:
-    """Return what the shown best move (see QuizSession.best_move) does on the board (see common.tactics)."""
-    problem, best = session.problem, session.best_move
-    if best is None:
-        return ()
-    try:
-        board = Board.from_position(problem.position)
-    except IllegalMoveError:
-        return ()
-    last = problem.position.moves[-1] if problem.position.moves else None
-    return tactics(board, best, last)
 
 
 def _on_one_line(first: str, second: str) -> str:

@@ -14,26 +14,29 @@ from __future__ import annotations
 
 import random
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Set
 from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
 from kentogo.app_settings import AppSettings
+from kentogo.commentary_inputs import read_recorded_colors
+from kentogo.games_folder import find_games_folder
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.notice import Notice
-from kentogo.quiz.collect import collect_games
+from kentogo.practice_stores import open_answers, open_cache
+from kentogo.quiz.collect import Progress, collect_games
 from kentogo.quiz.fight_judge import judged_points
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
+from kentogo.repetition.counts import ProblemCounts, count_problems
 from kentogo.repetition.daily import answered_on, left_today
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.repetition.plan import QuizPlan, plan_problems
-from kentogo.repetition.schedule import review_state
-from kentogo.report import answer_day
+from kentogo.repetition.schedule import answer_day, review_state
+from kentogo.review.answer_states import answers_and_states
 from kentogo.review.history import AnswerHistory
 from kentogo.review.review_settings import ReviewSettings
-from kentogo.today import Progress, find_games_folder, open_answers, open_cache, read_recorded_colors
 
 FIGHT_HISTORY_FILE_NAME = "fight_history.sqlite3"
 
@@ -49,6 +52,8 @@ class TodayFights:
         review_count: How many of them are reviews.
         session_limit: How many more fights may be asked today, reviews included (None: no limit).
         notices: Problems to tell the user in a dialog (for example that the cache cannot be used).
+        all_ids: The IDs of all the fights made from the games, also those not asked today. The summary of the
+            day counts them, so that it need not read the games again.
     """
 
     fights: list[LocalFight]
@@ -57,6 +62,7 @@ class TodayFights:
     review_count: int = 0
     session_limit: int | None = None
     notices: list[Notice] = field(default_factory=list)
+    all_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -66,28 +72,42 @@ class FightSummary:
     Attributes:
         answered: How many fights were judged today.
         correct: How many of them were won.
+        counts: How far the current fights are.
     """
 
     answered: int
     correct: int
+    counts: ProblemCounts = ProblemCounts()
 
 
-def fight_summary(history: AnswerHistory, today: date) -> FightSummary | None:
-    """Return the summary of the fights answered today, or None if there are none."""
-    records = [record for records in history.all_previous().values() for record in records]
-    todays = [record for record in records if record.correct is not None and answer_day(record) == today]
+def fight_summary(
+    history: AnswerHistory, today: date, fight_ids: Set[str], settings: ReviewSettings
+) -> FightSummary | None:
+    """Return the summary of the fights answered today, or None if there are none.
+
+    Args:
+        history: The history of the fights.
+        today: Today's date.
+        fight_ids: The IDs of all the fights made from the games. Fights set aside are not counted.
+        settings: The review settings of the fights.
+    """
+    answers, states = answers_and_states(history, settings)
+    todays = [answer for answer in answers if answer.correct is not None and answer_day(answer) == today]
     if not todays:
         return None
-    return FightSummary(len(todays), sum(1 for record in todays if record.correct))
+    counts = count_problems(set(fight_ids) - history.exclusions(), states)
+    return FightSummary(len(todays), sum(1 for answer in todays if answer.correct), counts)
 
 
-def load_fight_summary(settings_path: Path, today: date) -> FightSummary | None:
+def load_fight_summary(
+    settings_path: Path, today: date, fight_ids: Set[str], settings: ReviewSettings
+) -> FightSummary | None:
     """Read the history of the fights and make the summary of the day (for a background thread)."""
     history = open_answers(fight_history_path(settings_path))
     if history is None:
         return None
     try:
-        return fight_summary(history, today)
+        return fight_summary(history, today, fight_ids, settings)
     finally:
         history.store.close()
 
@@ -154,16 +174,17 @@ def prepare_fights(
     games, _skipped = collect_games(folder, settings.quiz.extract, cache, progress, recorded_colors)
     fights = [fight for _path, result in games for fight in result.local_fights]
     fights = order_problems(keep_newest(askable_fights(fights)), settings.quiz.order, rng)
+    all_ids = frozenset(fight.problem_id for fight in fights)
     if history is None:
         print(f"{len(fights)} local fights (no history)", file=sys.stderr)
-        return TodayFights(fights, None, len(fights))
+        return TodayFights(fights, None, len(fights), all_ids=all_ids)
     plan, limit = plan_fights(fights, history, settings.fights, date.today())
     print(f"{len(fights)} local fights: {plan.new_count} new, {plan.review_count} reviews today", file=sys.stderr)
     notices = [Notice("notice_history_error", {"reason": history.last_error})] if history.last_error else []
     if not plan.problems:
         message = Notice("fights_none" if not fights else "daily_done" if limit == 0 else "nothing_today")
-        return TodayFights([], message, session_limit=limit, notices=notices)
-    return TodayFights(plan.problems, None, plan.new_count, plan.review_count, limit, notices)
+        return TodayFights([], message, session_limit=limit, notices=notices, all_ids=all_ids)
+    return TodayFights(plan.problems, None, plan.new_count, plan.review_count, limit, notices, all_ids)
 
 
 def load_fights(

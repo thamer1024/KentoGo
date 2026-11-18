@@ -21,6 +21,9 @@ from kentogo.quiz.problem_cache import CachedFile, FileStamp, ProblemCache, sett
 
 REASON_CANNOT_READ = "cannot_read"  # The file is broken or cannot be opened.
 
+# A function that is told (files done, all files) while the SGF files are read.
+Progress = Callable[[int, int], None]
+
 
 @dataclass(frozen=True)
 class SkippedGame:
@@ -47,7 +50,7 @@ def collect_problems(
     folder: Path,
     settings: ExtractSettings,
     cache: ProblemCache | None = None,
-    progress: Callable[[int, int], None] | None = None,
+    progress: Progress | None = None,
     recorded_colors: Mapping[str, str] | None = None,
 ) -> tuple[list[Problem], list[SkippedGame]]:
     """Make problems from all SGF files in a folder (see collect_games).
@@ -64,7 +67,7 @@ def collect_games(
     folder: Path,
     settings: ExtractSettings,
     cache: ProblemCache | None = None,
-    progress: Callable[[int, int], None] | None = None,
+    progress: Progress | None = None,
     recorded_colors: Mapping[str, str] | None = None,
 ) -> tuple[list[tuple[Path, ExtractResult]], list[SkippedGame]]:
     """Make problems from all SGF files in a folder (not in its subfolders).

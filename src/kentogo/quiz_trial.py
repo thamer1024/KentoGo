@@ -22,13 +22,16 @@ from pathlib import Path
 
 from kentogo.analysis_run import analyzed_by_kentogo
 from kentogo.app_settings import AppSettings
+from kentogo.commentary_inputs import read_recorded_colors
 from kentogo.common.sgf import load_game
+from kentogo.games_folder import find_games_folder
 from kentogo.mistakes.extract import PUNISH, ExtractResult
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
-from kentogo.quiz.collect import collect_games
+from kentogo.practice_stores import open_cache
+from kentogo.quiz.collect import Progress, collect_games
 from kentogo.quiz.order import keep_newest
-from kentogo.today import Progress, TodayProblems, find_games_folder, open_cache, read_recorded_colors
+from kentogo.today import TodayProblems
 
 TRIAL_LOSS = "loss"  # The user's own mistakes, without the punishment problems.
 TRIAL_PUNISH = "punish"  # Only the punishment problems.

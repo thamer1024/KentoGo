@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from kentogo.common.board import Board, IllegalMoveError
+from kentogo.common.tactics import tactics
 from kentogo.common.types import Move
 from kentogo.mistakes.problem import (
     SOURCE_BEST_HUMAN,
@@ -299,6 +300,18 @@ class QuizSession:
     def best_move_waiting(self) -> bool:
         """True while the best move is being calculated (the sequence from the problem position is expected)."""
         return SOURCE_BEST_HUMAN not in self._added and self._status.get(SOURCE_BEST_HUMAN) == WAITING
+
+    def best_move_tactics(self) -> tuple[str, ...]:
+        """Return what the best move to show does on the board (see common.tactics), or () without such a move."""
+        best = self.best_move
+        if best is None:
+            return ()
+        position = self.problem.position
+        try:
+            board = Board.from_position(position)
+        except IllegalMoveError:
+            return ()
+        return tactics(board, best, position.moves[-1] if position.moves else None)
 
     def _make_result(self, move: Move, answer_loss: float | None, actual_loss: float) -> AnswerResult:
         """Make the result of an answer. If answer_loss is None, the result is not judged yet."""

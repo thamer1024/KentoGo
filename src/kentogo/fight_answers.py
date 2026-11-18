@@ -12,7 +12,7 @@ as the mistake problems' answers, with these meanings:
 - max_visits: KataGo's visits of each reading;
 - correct: the outcome (True only when the fight was won and the score held).
 
-The fights are not shown rotated or with colors swapped.
+The fights may be shown turned, but their moves are always saved in the original coordinates.
 """
 
 from __future__ import annotations

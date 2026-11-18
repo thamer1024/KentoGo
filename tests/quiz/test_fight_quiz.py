@@ -3,11 +3,13 @@
 from test_fight_judge import fight
 from test_fight_run import FakeEngine
 
+from kentogo.common.types import Move
 from kentogo.quiz.fight_follow import END_MIXED, FollowEnd
 from kentogo.quiz.fight_judge import OUTCOME_USER_LEFT, OUTCOME_WON
 from kentogo.quiz.fight_lines import AI_CALCULATING, AI_READY, LINE_AI, LINE_STRONG
 from kentogo.quiz.fight_quiz import PHASE_ENDED, PHASE_ERROR, PHASE_TURN, PHASE_WAITING, FightQuiz
 from kentogo.quiz.fight_run import FightPlay, FightRun
+from kentogo.quiz.transform import IDENTITY, BoardTransform
 
 
 class Listener:
@@ -34,7 +36,7 @@ class LaterEngine(FakeEngine):
         FakeEngine.query(self, request, callback)
 
 
-def quiz_with(engine, count: int = 1) -> tuple[FightQuiz, list]:
+def quiz_with(engine, count: int = 1, transform: BoardTransform = IDENTITY) -> tuple[FightQuiz, list]:
     saved = []
     quiz = FightQuiz(
         [fight()] * count,
@@ -42,6 +44,7 @@ def quiz_with(engine, count: int = 1) -> tuple[FightQuiz, list]:
         saved.append,
         Listener(),
         lambda function: function,
+        lambda: transform,
     )
     quiz.start(0)
     return quiz, saved
@@ -57,6 +60,20 @@ def test_a_fight_is_played_and_saved():
     assert quiz.lines.shown() == quiz.run.played and quiz.lines.ai_state == AI_CALCULATING  # Not made until asked.
     quiz.next_fight()
     assert quiz.run is None and quiz.index == 1
+
+
+def test_a_turned_fight_is_shown_turned_and_played_in_its_original_place():
+    """The click is on the turned board; the move is kept, and sent to KataGo, in the original coordinates."""
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (0.5, 0.6, "B2")})
+    turn = BoardTransform(1)
+    quiz, _saved = quiz_with(engine, transform=turn)
+    position = quiz.run.fight.position
+    assert quiz.shown_position() == turn.position(position)
+    shown_point = turn.point((0, 1), position.size)  # A2 is shown at B9.
+    assert quiz.play(shown_point) == ""
+    assert quiz.run.played == (Move("B", (0, 1)), Move("W", (1, 1)))
+    assert quiz.shown_moves() == turn.moves(quiz.run.played, position.size)
+    assert quiz.play(shown_point) == "B9 is not empty"  # Told as it is shown.
 
 
 def test_the_sequence_of_the_ais_is_made_when_it_is_asked_for():

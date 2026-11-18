@@ -8,6 +8,7 @@ The parts are kept apart so that each can be changed (and reviewed) on its own:
   The modules at the top of the package (app, today, answers, engines, ...) connect them.
 - Only the screens (gui) and the app use Kivy, and no screen uses the app.
 - Only the app's screen (gui.kentogo_app) opens the other screens.
+- The screens do not use the histories: they are given what reads and keeps the results.
 """
 
 import ast
@@ -33,6 +34,7 @@ ALLOWED = {
     "analysis": {"common", "record", "katago", "vendor"},
 }
 LOGIC = set(ALLOWED)
+HISTORIES = {"kentogo.commentary.history", "kentogo.review.history", "kentogo.seichi.seichi_history"}
 
 
 def imports_of(path: Path) -> set[str]:
@@ -85,6 +87,58 @@ def test_only_the_apps_screen_opens_the_other_screens():
             continue
         screens = [module for module in imports_of(path) if module.endswith("_screen")]
         assert screens == [], path.name
+
+
+def test_the_screens_do_not_use_the_histories():
+    """What is read from and kept in a history is decided outside the screens (see answers and seichi_plan)."""
+    for path in files_of("gui"):
+        assert imports_of(path) & HISTORIES == set(), path.name
+
+
+def test_the_screens_do_not_open_a_history():
+    """The screens of the AI commentary call the workspace, which opens the history for each piece of work."""
+    for path in files_of("gui"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+        assert "open_history" not in names, path.name
+
+
+@pytest.mark.parametrize(
+    ("file_name", "unwanted"),
+    [
+        ("engines.py", "kentogo.quiz"),
+        ("today.py", "kentogo.commentary."),
+        ("fights_today.py", "kentogo.commentary."),
+        ("fights_today.py", "kentogo.report"),
+        ("fights_today.py", "kentogo.today"),
+        ("report.py", "kentogo.commentary."),
+        ("quiz_trial.py", "kentogo.commentary."),
+    ],
+)
+def test_the_modules_at_the_top_stay_apart(file_name, unwanted):
+    """KataGo does not know the quiz, the local fights do not know the report or the quiz's today."""
+    assert [module for module in imports_of(SOURCE / file_name) if module.startswith(unwanted)] == []
+
+
+def test_only_the_connecting_module_reads_the_commentary_history_for_the_practices():
+    """The color and the rank given for the AI commentary come through commentary_inputs."""
+    readers = {path.name for path in SOURCE.glob("*.py") if "kentogo.commentary.history" in imports_of(path)}
+    assert readers <= {"commentary_inputs.py", "commentary_cli.py"}
+
+
+def test_the_screens_do_not_read_sgf_files():
+    """The screens get what is in a game from record (see record.game_record)."""
+    for path in files_of("gui"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module == "kentogo.common":
+                assert "sgf" not in {alias.name for alias in node.names}, path.name
+        assert "kentogo.common.sgf" not in imports_of(path), path.name
+
+
+def test_the_basic_texts_do_not_know_the_practices():
+    """The texts of each practice are put together in its own module; gui.texts only finds the words."""
+    used = {module for module in imports_of(SOURCE / "gui" / "texts.py") if module.startswith("kentogo.")}
+    assert used == {"kentogo.gui.source_texts", "kentogo.notice"}
 
 
 def test_every_part_is_named():

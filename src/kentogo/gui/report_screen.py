@@ -1,8 +1,9 @@
-"""The report screen (成績表): the numbers of all the practice, the latest practice days, and two charts.
+"""The report screen (成績表): the numbers of the mistake problems and the local fights, and three charts.
 
 The numbers come from kentogo.report (made in a background thread by the app). The charts are
 plain bars drawn on the canvas, the oldest on the left: one for each practice day (the part of
-correct answers and the average part got back, with the pass ratio as a dotted line), and one for
+correct answers and the average part got back, with the pass ratio as a dotted line), one for each
+practice day of the local fights (the part of correct answers), and one for
 each game (its mistakes, stacked by the points lost). Each bar has its value written above it (also 0, so that a
 day or a game with nothing to draw is not mistaken for a gap), and each group has its day (and
 the number of problems, or the time of the game) written below it. A legend with the colors is
@@ -21,16 +22,19 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
-from kentogo.gui import texts, theme
+from kentogo.gui import report_texts, texts, theme
 from kentogo.gui.widgets import flat_button, growing_label, set_background, set_text, wrapping_label
-from kentogo.report import RECENT, Report, first_bands
+from kentogo.report import RECENT, DayResult, Report, first_bands
 
-SHOWN = 20  # The most days (or games) drawn in a chart.
+SHOWN = 14  # The most days (or games) drawn in a chart.
 CHART_BANDS = 3  # Only the biggest bands of mistakes are drawn, so that the many small ones do not hide them.
-CHART_HEIGHT = 220  # dp, with the texts above and below the bars.
+CHART_WIDTH = 800  # dp. It fits the smallest window.
+CHART_HEIGHT = 150  # dp, with the texts above and below the bars.
 TOP_SPACE = 18  # dp above the bars, for the values.
 BOTTOM_SPACE = 34  # dp below the bars, for two lines about each group.
 TEXT_SIZE = 11  # sp
+HEADING_SIZE = 18  # sp
+HEADING_COLOR = (0xF2 / 255, 0xC9 / 255, 0x4C / 255, 1)  # The yellow that marks what is shown in the other screens.
 CORRECT_COLOR = (0.35, 0.6, 0.95, 1)  # The part of correct answers.
 AVERAGE_COLOR = (0.4, 0.8, 0.5, 1)  # The average part got back.
 # The colors of the bands of mistakes, the biggest first (red, orange, yellow, light yellow, then grays).
@@ -76,7 +80,7 @@ class BarChart(Widget):
             level: A value drawn as a dotted line across the chart, or None.
             **kwargs: Kivy's widget arguments.
         """
-        super().__init__(size_hint_y=None, height=dp(CHART_HEIGHT), **kwargs)
+        super().__init__(size_hint=(None, None), size=(dp(CHART_WIDTH), dp(CHART_HEIGHT)), **kwargs)
         self.groups, self.colors, self.top_value = list(groups), list(colors), max(top, 1e-9)
         self.values_above, self.texts_below = list(values_above), list(texts_below)
         self.stacked, self.level = stacked, level
@@ -159,9 +163,10 @@ def _content(report: Report) -> BoxLayout:
     box = BoxLayout(orientation="vertical", size_hint_y=None, padding=dp(16), spacing=dp(10))
     box.bind(minimum_height=box.setter("height"))
     set_background(box, theme.BOX_BACKGROUND_COLOR)
-    box.add_widget(_label(lambda: texts.totals_text(report.totals)))
-    box.add_widget(_label(lambda: texts.recent_text(report.recent)))
-    for widget in _days_part(report) + _games_part(report):
+    box.add_widget(_heading("mode_quiz"))
+    box.add_widget(_label(lambda: report_texts.totals_text(report.totals)))
+    box.add_widget(_label(lambda: report_texts.recent_text(report.recent)))
+    for widget in _days_part(report) + _fights_part(report) + _games_part(report):
         box.add_widget(widget)
     return box
 
@@ -174,7 +179,7 @@ def _days_part(report: Report) -> list[Widget]:
         [CORRECT_COLOR, AVERAGE_COLOR],
         1.0,
         [(_percent(day.correct / day.answered), _percent(day.average)) for day in days],
-        [(f"{day.day.month}/{day.day.day}", texts.text("report_day_count", count=day.answered)) for day in days],
+        [_day_below(day) for day in days],
         level=report.pass_ratio,
     )
     legend = _legend(
@@ -192,6 +197,33 @@ def _days_part(report: Report) -> list[Widget]:
     ]
 
 
+def _fights_part(report: Report) -> list[Widget]:
+    """Make the numbers, the legend, the chart and the note of the local fights."""
+    fights = report.fights
+    days = fights.days[-SHOWN:]
+    chart = BarChart(
+        [(day.correct / day.answered,) for day in days],
+        [CORRECT_COLOR],
+        1.0,
+        [(_percent(day.correct / day.answered),) for day in days],
+        [_day_below(day) for day in days],
+    )
+    return [
+        _heading("mode_fights"),
+        _label(lambda: report_texts.fight_totals_text(fights.totals)),
+        _label(lambda: report_texts.fight_recent_text(fights.recent)),
+        _label(texts.lazy("report_days_title")),
+        _legend([(CORRECT_COLOR, "legend_correct", {})]),
+        chart,
+        _label(texts.lazy("report_fight_chart_note", count=SHOWN)),
+    ]
+
+
+def _day_below(day: DayResult) -> tuple[str, str]:
+    """Return the two lines written below a practice day: the day and the number of problems."""
+    return f"{day.day.month}/{day.day.day}", texts.text("report_day_count", count=day.answered)
+
+
 def _games_part(report: Report) -> list[Widget]:
     """Make the title, the legend, the chart and the notes of the games."""
     games = report.games[-SHOWN:]
@@ -207,14 +239,14 @@ def _games_part(report: Report) -> list[Widget]:
         [(f"{game.played.month}/{game.played.day}", game.played.strftime("%H:%M")) for game in games],
         stacked=True,
     )
-    legend = _legend([(color, *texts.band_key(bands, index)) for index, color in enumerate(colors)])
+    legend = _legend([(color, *report_texts.band_key(bands, index)) for index, color in enumerate(colors)])
     averages = first_bands(report.game_averages, len(bands))
     return [
-        _label(texts.lazy("report_games_title", low=texts.points(bands[-1]) if bands else "")),
+        _heading("report_games_title", low=report_texts.points(bands[-1]) if bands else ""),
         legend,
         chart,
         _label(texts.lazy("report_games_note", count=SHOWN)),
-        _label(lambda: texts.game_averages_text(averages, bands)),
+        _label(lambda: report_texts.game_averages_text(averages, bands)),
     ]
 
 
@@ -243,6 +275,14 @@ def _legend(items: list[tuple[tuple, str, dict]]) -> BoxLayout:
         row.add_widget(name)
     row.add_widget(Widget())  # Keeps the items on the left.
     return row
+
+
+def _heading(key: str, **values) -> Label:
+    """Make the title of a part of the report."""
+    label = _label(texts.lazy(key, **values))
+    label.font_size = sp(HEADING_SIZE)
+    label.color = HEADING_COLOR
+    return label
 
 
 def _label(make: Callable[[], str]):

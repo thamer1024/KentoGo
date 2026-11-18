@@ -53,6 +53,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from kentogo.analysis_run import list_games, run_analysis
+from kentogo.answers import QuizAnswers
 from kentogo.app_settings import AppSettings, without_offer_answers
 from kentogo.clear_history import clear_answers, clear_fight_answers, clear_seichi_results
 from kentogo.commentary.prompt_text import create_user_prompt_file
@@ -60,6 +61,7 @@ from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.engines import Engines, engines_for, measure_katago_speed
 from kentogo.fight_setup import fight_tools
 from kentogo.fights_today import fight_history_path, load_fight_summary, load_fights
+from kentogo.games_folder import find_games_folder
 from kentogo.gui import texts
 from kentogo.gui.commentary_texts import commentary_language
 from kentogo.katago.startup import TIMES_FILE, StartTimes
@@ -67,30 +69,25 @@ from kentogo.line_log import log_line
 from kentogo.notice import Notice
 from kentogo.opengl_fallback import OldOpenGLError, install_check, start_again_with_angle
 from kentogo.opponent_rank import fight_ranks, problem_ranks
+from kentogo.practice_stores import open_answers, open_history
+from kentogo.problem_exclusions import NoGamesFolderError, exclude_all_problems, include_all_problems
+from kentogo.quiz.collect import Progress
 from kentogo.quiz.limit_offer import LimitOffer, find_limit_offer
+from kentogo.quiz.quiz_run import Judging
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.quiz.ratio_offer import RatioOffer, find_ratio_offer, judged, may_ask
 from kentogo.quiz.transform import BoardTransform, random_transform
 from kentogo.quiz_trial import TRIAL_KINDS, trial_loader
-from kentogo.report import load_report, load_today_summary
+from kentogo.report import Report, load_fight_results, load_report, load_today_summary
 from kentogo.review.history import AnswerHistory
 from kentogo.review.record import AnswerRecord
 from kentogo.screen_setup import ScreenSetup
 from kentogo.seichi.seichi_history import SeichiHistory, open_seichi_history
+from kentogo.seichi.seichi_plan import queue_from_history, save_result
 from kentogo.settings import SettingsStore
 from kentogo.settings_file import SETTINGS_PATH, default_settings, load_settings, save_settings
 from kentogo.system_open import open_with_system
-from kentogo.today import (
-    NoGamesFolderError,
-    Progress,
-    TodayProblems,
-    exclude_all_problems,
-    find_games_folder,
-    include_all_problems,
-    load_today,
-    open_answers,
-    open_history,
-)
+from kentogo.today import TodayProblems, load_today
 
 # The window size when the app starts, and the smallest size that the user can make it.
 # 1280x800 fits the screen of a 13-inch MacBook and most laptops.
@@ -175,6 +172,12 @@ def _settings_or_defaults(path: Path, notices: list[Notice]) -> AppSettings:
         return AppSettings.from_sections(default_settings())
 
 
+def _report_with_fights(settings_path: Path, folder: Path | None, settings: AppSettings) -> Report:
+    """Make the report, with the results of the local fight problems (called in a background thread)."""
+    report = load_report(settings_path, folder, settings)
+    return replace(report, fights=load_fight_results(settings_path, settings))
+
+
 def _current_settings(path: Path, started_with: AppSettings) -> AppSettings:
     """Read the settings from the file (they may have been saved after the start).
 
@@ -200,7 +203,7 @@ def _open_prompt_file(settings_path: Path) -> Path:
 
 
 def _exclude_all(settings_path: Path, folder_argument: Path | None, quiz: QuizSettings) -> int:
-    """Set aside all problems (see today.exclude_all_problems); a missing games folder is told in words.
+    """Set aside all problems (see problem_exclusions.exclude_all_problems); a missing games folder is told in words.
 
     Raises:
         ValueError: If there is no games folder (the message tells why, in the language of the screens).
@@ -317,13 +320,14 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         choose_transform,
         lambda running: engines_for(running, settings.engine, arguments.no_katago),
         _settings_opener(arguments, settings, on_saved),
-        parts.history,
+        QuizAnswers(parts.history),
         analyze_games=_analysis_starter(arguments, settings),
         notices=parts.notices,
         use_seichi=settings.seichi.use_seichi,
         games_folder=lambda: find_games_folder(arguments.folder, settings.quiz.games_folder),
         seichi=settings.seichi,
-        seichi_history=parts.seichi_history,
+        plan_seichi=lambda folder: queue_from_history(folder, settings.seichi, parts.seichi_history, date.today()),
+        save_seichi_result=lambda game, good: save_result(parts.seichi_history, game, good),
         save_language=lambda chosen: save_language(arguments.settings, chosen),
         commentary=CommentaryWorkspace(
             arguments.settings,
@@ -336,15 +340,17 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
         answer_ratio_offer=_ratio_offer_saver(arguments.settings, settings, parts.history, on_saved),
         limit_offer=_limit_offer_maker(arguments.settings, settings, parts.history),
         answer_limit_offer=_limit_offer_saver(arguments.settings, settings, parts.history, on_saved),
-        report=lambda: load_report(
+        report=lambda: _report_with_fights(
             arguments.settings, arguments.folder, _current_settings(arguments.settings, settings)
         ),
         today_summary=lambda: load_today_summary(
             arguments.settings, arguments.folder, _current_settings(arguments.settings, settings), date.today()
         ),
-        player_ranks=lambda problem: problem_ranks(arguments.settings, problem),
+        judging=_judging_maker(arguments.settings),
         load_fights=lambda: load_fights(arguments.settings, arguments.folder, settings, rng),
-        fight_summary=lambda: load_fight_summary(arguments.settings, date.today()),
+        fight_summary=lambda fight_ids: load_fight_summary(
+            arguments.settings, date.today(), fight_ids, _current_settings(arguments.settings, settings).fights
+        ),
         fight_tools=lambda engine, evaluation: fight_tools(
             engine,
             evaluation,
@@ -352,8 +358,25 @@ def _make_setup(parts: _SetupParts, on_saved: Callable[[AppSettings], None]) -> 
             parts.fight_history,
             lambda fight: fight_ranks(arguments.settings, fight),
             log_line,
+            choose_transform=lambda: random_transform(rng),
         ),
     )
+
+
+def _judging_maker(settings_path: Path) -> Callable[[Engines], Judging]:
+    """Return the function that makes what the quiz needs from a running KataGo."""
+
+    def judging(engines: Engines) -> Judging:
+        """Return KataGo for the quiz, with the ranks of the players and the log of the human-like moves."""
+        return Judging(
+            engines.engine,
+            engines.evaluation,
+            engines.engine_problem,
+            lambda problem: problem_ranks(settings_path, problem),
+            log_line,
+        )
+
+    return judging
 
 
 def _problem_loader(

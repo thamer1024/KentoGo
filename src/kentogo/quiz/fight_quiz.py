@@ -13,6 +13,9 @@ until the fight is judged. The fight goes through these phases:
 
 The answers of KataGo come in its own thread: they are moved to the screen's thread (in_main) before anything
 is changed, and the answers about a fight that is no longer asked are not used.
+
+Each fight is shown turned as choose_transform says. Only what the user sees and clicks is turned: the fight, its
+moves and its sequences stay in the original coordinates, for KataGo and for the saved answer.
 """
 
 from __future__ import annotations
@@ -21,12 +24,13 @@ from collections.abc import Callable
 from typing import Protocol
 
 from kentogo.common.board import Board, IllegalMoveError
-from kentogo.common.types import Move
+from kentogo.common.types import Move, Position
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_follow import FollowEnd, is_inconclusive
 from kentogo.quiz.fight_judge import FightOutcome
 from kentogo.quiz.fight_lines import AI_CALCULATING, LINE_AI, LINE_STRONG, FightLines
 from kentogo.quiz.fight_run import FightRun
+from kentogo.quiz.transform import IDENTITY, BoardTransform
 
 PHASE_STARTING = "starting"
 PHASE_TURN = "turn"
@@ -52,6 +56,7 @@ class FightQuiz:
         phase: The phase of the fight asked now (see the module's docstring).
         error: What KataGo said when it could not answer ("" without an error).
         lines: The sequences of the fight asked now, after it has ended (None before).
+        transform: How the fight asked now is turned on the screen.
     """
 
     def __init__(
@@ -61,6 +66,7 @@ class FightQuiz:
         save: Callable[[FightRun], None],
         listener: FightListener,
         in_main: Callable[[Callable], Callable],
+        choose_transform: Callable[[], BoardTransform] = lambda: IDENTITY,
     ):
         """Get ready to ask the fights (start() asks the first one).
 
@@ -70,6 +76,7 @@ class FightQuiz:
             save: Saves the answer of a fight that has ended (called once for each fight).
             listener: Told about every change.
             in_main: Turns a function into one that runs in the screen's thread.
+            choose_transform: Returns how to turn each fight on the screen.
         """
         self.fights = fights
         self.index = 0
@@ -77,10 +84,12 @@ class FightQuiz:
         self.phase = PHASE_STARTING
         self.error = ""
         self.lines: FightLines | None = None
+        self.transform = IDENTITY
         self._make_run = make_run
         self._save = save
         self._listener = listener
         self._in_main = in_main
+        self._choose_transform = choose_transform
         self._left = False
         self._ai_asked = False
 
@@ -96,6 +105,7 @@ class FightQuiz:
             return
         run = self._make_run(self.fights[index])
         self.run = run
+        self.transform = self._choose_transform()
         self.phase = PHASE_STARTING
         self._listener.changed()
         run.start(self._for(run, self._ready), self._for(run, self._failed))
@@ -106,19 +116,21 @@ class FightQuiz:
             self.start(self.index + 1)
 
     def play(self, point: tuple[int, int]) -> str:
-        """Take a point of the board as the user's move, in the user's turn.
+        """Take a point of the board shown as the user's move, in the user's turn.
 
         Returns:
-            "" when the move was taken (or it is not the user's turn), or why the move is not allowed.
+            "" when the move was taken (or it is not the user's turn), or why the move is not allowed (with the
+            point as it is shown).
         """
         run = self.run
         if run is None or self.phase != PHASE_TURN:
             return ""
-        move = Move(run.color, point)
+        shown_move = Move(run.color, point)
         try:
-            board_after(run).play(move)
+            self._shown_board().play(shown_move)
         except IllegalMoveError as error:
             return str(error)
+        move = self.transform.inverse().move(shown_move, run.fight.position.size)
         self.phase = PHASE_WAITING
         self._listener.changed()
         run.play(move, self._for(run, self._replied), self._for(run, self._ended), self._for(run, self._failed))
@@ -168,9 +180,25 @@ class FightQuiz:
             self.lines.back()
             self._listener.changed()
 
+    def shown_position(self) -> Position:
+        """Return the position of the fight asked now, as it is shown."""
+        return self.transform.position(self.run.fight.position)
+
+    def shown_moves(self) -> tuple[Move, ...]:
+        """Return the moves to show, turned: the sequence chosen after the fight has ended, else those played."""
+        moves = self.lines.shown() if self.lines is not None else self.run.played
+        return self.transform.moves(moves, self.run.fight.position.size)
+
     def leave(self) -> None:
         """Stop using KataGo's answers (the screen is closed)."""
         self._left = True
+
+    def _shown_board(self) -> Board:
+        """Return the board as it is shown, after the moves played so far."""
+        board = Board.from_position(self.shown_position())
+        for move in self.transform.moves(self.run.played, self.run.fight.position.size):
+            board.play(move)
+        return board
 
     def _for(self, run: FightRun, action: Callable) -> Callable:
         """Return a callback that runs action in the screen's thread, only while run is the fight asked now."""
@@ -250,11 +278,3 @@ class FightQuiz:
         self.phase = PHASE_ERROR
         self.error = message
         self._listener.changed()
-
-
-def board_after(run: FightRun) -> Board:
-    """Return the board of a fight's position after the moves played so far."""
-    board = Board.from_position(run.fight.position)
-    for move in run.played:
-        board.play(move)
-    return board

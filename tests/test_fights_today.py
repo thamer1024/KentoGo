@@ -6,10 +6,19 @@ from datetime import date, datetime, timedelta, timezone
 
 from kentogo.app_settings import FIGHT_REVIEW, AppSettings
 from kentogo.common.types import Move, Position
-from kentogo.fights_today import askable_fights, fight_history_path, load_fights, plan_fights, prepare_fights
+from kentogo.fights_today import (
+    askable_fights,
+    fight_history_path,
+    load_fight_summary,
+    load_fights,
+    plan_fights,
+    prepare_fights,
+)
 from kentogo.mistakes.local_fight import KIND_BOUNDARY, KIND_LIFE_DEATH, LocalFight
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
+from kentogo.repetition.counts import ProblemCounts
+from kentogo.report import load_fight_results
 from kentogo.review.history import AnswerHistory
 from kentogo.review.record import AnswerRecord
 from kentogo.review.store import ReviewStore
@@ -87,6 +96,37 @@ def test_no_fights_and_the_history_file(tmp_path):
     assert today.fights == [] and today.message.key == "fights_none"
     assert fight_history_path(tmp_path / "settings.json") == tmp_path / "fight_history.sqlite3"
     assert (tmp_path / "fight_history.sqlite3").is_file()
+
+
+def test_the_results_of_the_fights_come_from_their_own_history(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    fight = prepare_fights(None, settings_for(games_with_fights(tmp_path)), None, random.Random(0)).fights[0]
+    history = AnswerHistory(ReviewStore(fight_history_path(settings_path)))
+    history.save(wrong_answer(fight, datetime.now(timezone.utc)))
+    history.store.close()
+    results = load_fight_results(settings_path, AppSettings())
+    assert (results.totals.answered, results.totals.correct, len(results.days)) == (1, 0, 1)
+
+
+def test_the_summary_counts_the_current_fights(tmp_path):
+    """The summary counts all the fights given, except those set aside, and needs an answer of today."""
+    settings_path = tmp_path / "settings.json"
+    today = prepare_fights(None, settings_for(games_with_fights(tmp_path)), None, random.Random(0))
+    review = AppSettings().fights
+    assert len(today.all_ids) == 2
+    assert load_fight_summary(settings_path, date.today(), today.all_ids, review) is None
+
+    answered, other = today.fights
+    history = AnswerHistory(ReviewStore(fight_history_path(settings_path)))
+    history.save(wrong_answer(answered, datetime.now(timezone.utc)))
+    history.store.close()
+    summary = load_fight_summary(settings_path, date.today(), today.all_ids, review)
+    assert (summary.answered, summary.correct, summary.counts) == (1, 0, ProblemCounts(0, 1, 1))
+
+    history = AnswerHistory(ReviewStore(fight_history_path(settings_path)))
+    history.store.exclude([other.problem_id], datetime.now(timezone.utc).isoformat())
+    history.store.close()
+    assert load_fight_summary(settings_path, date.today(), today.all_ids, review).counts == ProblemCounts(0, 1, 0)
 
 
 def test_a_fight_with_no_point_to_judge_is_not_asked():

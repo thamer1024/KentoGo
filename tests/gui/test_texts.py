@@ -4,38 +4,45 @@ from dataclasses import replace
 
 from kentogo.analysis_run import AnalysisSummary, FolderGame, FolderGames
 from kentogo.common.types import Move, Position
-from kentogo.gui.texts import (
-    TEXTS,
+from kentogo.fights_today import FightSummary
+from kentogo.gui.analysis_texts import (
     analysis_folder_problem,
     analysis_outcome_text,
     analysis_state_text,
     analysis_step_text,
     analysis_summary_text,
-    band_names,
-    color_name,
-    fight_info,
-    fight_line_text,
-    fight_outcome_text,
-    fill_step_text,
-    game_averages_text,
+)
+from kentogo.gui.fight_texts import fight_info, fight_line_text, fight_outcome_text
+from kentogo.gui.quiz_texts import (
     history_text,
     kind_title,
     limit_offer_text,
-    notes_text,
     problem_info,
     result_text,
+    skipped_games_text,
+    skipped_text,
+    tactics_text,
+)
+from kentogo.gui.report_texts import (
+    band_names,
+    fight_recent_text,
+    fight_summary_text,
+    fight_totals_text,
+    game_averages_text,
+    today_summary_text,
+)
+from kentogo.gui.seichi_texts import fill_step_text
+from kentogo.gui.sequence_texts import (
+    notes_text,
     rough_standing_text,
     sequence_name,
     sequence_order_text,
     sequence_text,
     short_sequence_name,
-    skipped_games_text,
-    skipped_text,
     standing_gain_text,
     standing_text,
-    tactics_text,
-    text,
 )
+from kentogo.gui.texts import TEXTS, color_name, text
 from kentogo.katago.estimate import Estimate, Standing
 from kentogo.katago.move_value import MoveValue
 from kentogo.mistakes.local_fight import LocalFight
@@ -54,7 +61,8 @@ from kentogo.quiz.fight_judge import FightOutcome
 from kentogo.quiz.fight_lines import FightLines
 from kentogo.quiz.score import compare_with_actual
 from kentogo.quiz.session import AnswerResult
-from kentogo.report import GameAverages
+from kentogo.repetition.counts import ProblemCounts
+from kentogo.report import GameAverages, Recent, TodaySummary, Totals
 from kentogo.seichi.arrangement import FillStep
 
 PROBLEM = Problem(
@@ -113,6 +121,8 @@ def test_all_texts_can_be_filled():
         "answered": 15,
         "correct": 12,
         "finished": 30,
+        "in_progress": 4,
+        "untouched": 5,
         "recovered": "86",
         "days": 23,
         "day": 23,
@@ -176,6 +186,12 @@ def test_all_texts_can_be_filled():
     }
     for key in TEXTS:
         assert text(key, **values)
+
+
+def test_the_report_texts_of_the_fights():
+    assert "解いた問題 4（正解 3）" in fight_totals_text(Totals(4, 3, 1, 0.0, 2))
+    assert "75% ↑" in fight_recent_text(Recent(correct_rate=0.75, earlier_correct_rate=0.5))
+    assert fight_recent_text(Recent()) == TEXTS["report_recent_none"]
 
 
 def test_color_name():
@@ -383,7 +399,7 @@ def test_fill_step_text():
 
 def test_lead_text():
     """The lead is told for black, white, or even; with komi, who wins."""
-    from kentogo.gui.texts import lead_text
+    from kentogo.gui.seichi_texts import lead_text
 
     assert lead_text(2) == "黒が 2 目多い" and lead_text(-3) == "白が 3 目多い" and lead_text(0) == "差なし"
     assert lead_text(2 - 6.5, 6.5) == "コミ 6.5 目を入れると、白の 4.5 目勝ち"
@@ -417,7 +433,7 @@ def test_result_text_of_another_sequence():
 
 def test_count_check_text():
     """Right or wrong, the territory on the board, and the right territory with komi are always shown."""
-    from kentogo.gui.texts import count_check_text
+    from kentogo.gui.seichi_texts import count_check_text
     from kentogo.seichi.count_check import CountCheck
     from kentogo.seichi.territory import TerritoryCount
 
@@ -578,3 +594,10 @@ def test_rough_standing_text():
     """The rough standing a few moves into a sequence: who leads, by how much, after how many moves."""
     assert rough_standing_text(2.34, 4) == "形勢の目安：黒 2.3目リード（4手後・浅い読み）"
     assert rough_standing_text(-1.0, 6).startswith("形勢の目安：白 1.0目リード")
+
+
+def test_the_summaries_of_the_day_end_with_the_current_counts():
+    counts = ProblemCounts(85, 40, 195)
+    expected = "\n\n全体 320 問\n完了 85　実施中 40　手付かず 195"
+    assert fight_summary_text(FightSummary(4, 3, counts)).endswith(expected)
+    assert today_summary_text(TodaySummary(4, 3, 10.0, 2, counts=counts)).endswith(expected)

@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from kentogo.common.types import Move, moves_from_gtp
-from kentogo.gui import texts
+from kentogo.gui import sequence_texts, texts
 from kentogo.gui.board_view import MARK_ACTUAL, MARK_BEST, BoardView, collect_marks, make_board_view
 from kentogo.mistakes.problem import SOURCE_KATRAIN, SOURCE_KENTOGO, Variation
 from kentogo.record.game_record import GameRecord, move_commentary, next_position
@@ -76,7 +76,7 @@ def loss_text(record: GameRecord, position: int) -> str:
 
 
 def comment_text(record: GameRecord, position: int) -> str:
-    """Return the AI commentary and the user's notes on the move of a position (see texts.notes_text).
+    """Return the AI commentary and the user's notes on the move of a position (see sequence_texts.notes_text).
 
     The move that holds the AI review of the whole game (the last move) also shows the
     review, so that "next AI commentary" ends at the review instead of an empty text.
@@ -84,11 +84,11 @@ def comment_text(record: GameRecord, position: int) -> str:
     move = record.move_at(position)
     if move is None or not move.ai_review:
         notes = move.notes if move is not None else ""
-        return texts.notes_text(notes, ai_comment=move_commentary(record, position))
+        return sequence_texts.notes_text(notes, ai_comment=move_commentary(record, position))
     review = f"{texts.text('ai_review')}\n{move.ai_review}"
     if not (move.ai_text or move.notes):
         return review
-    return f"{texts.notes_text(move.notes, ai_comment=move.ai_text)}\n\n{review}"
+    return f"{sequence_texts.notes_text(move.notes, ai_comment=move.ai_text)}\n\n{review}"
 
 
 def game_label(game: GameFile) -> str:
@@ -205,8 +205,8 @@ def variation_text(record: GameRecord, browse: Browse) -> str:
             return ""
         return texts.text("viewer_variations" if variations else "viewer_no_variations", count=len(variations))
     variation = variations[browse.variation]
-    order = texts.sequence_order_text([(v.source, "") for v in variations], browse.variation)
-    shown = texts.sequence_text(
+    order = sequence_texts.sequence_order_text([(v.source, "") for v in variations], browse.variation)
+    shown = sequence_texts.sequence_text(
         variation.source, browse.variation + 1, len(variations), browse.step, len(variation.moves)
     )
     moves = _moves_line(variation.moves, browse.step)

@@ -12,8 +12,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from kentogo.commentary.history import CommentaryHistory, history_path
 from kentogo.commentary.targets import normalize_rank
+from kentogo.commentary_inputs import given_rank
 from kentogo.common.sgf import load_game
 from kentogo.common.types import opponent
 from kentogo.mistakes.local_fight import LocalFight
@@ -46,24 +46,3 @@ def problem_ranks(settings_path: Path, problem: Problem) -> PlayerRanks:
 def fight_ranks(settings_path: Path, fight: LocalFight) -> PlayerRanks:
     """Return the ranks of the players of a local fight's game (the user plays the fight's next move)."""
     return player_ranks(fight.sgf_path, fight.position.next_color, lambda name: given_rank(settings_path, name))
-
-
-def given_rank(settings_path: Path, name: str) -> str:
-    """Return the user's rank given for the AI commentary of a game, else the last one given ("" if none).
-
-    Args:
-        settings_path: The settings file (the history of the AI commentary is next to it).
-        name: The file name of the game.
-    """
-    path = history_path(settings_path)
-    if not path.is_file():  # The AI commentary was never used (the history is not made here).
-        return ""
-    try:
-        history = CommentaryHistory(path)
-    except Exception:  # A history that cannot be opened: no rank is known.
-        return ""
-    try:
-        entry = history.entry(name)
-        return (entry.my_rank if entry is not None else "") or history.last_rank()
-    finally:
-        history.close()

@@ -17,7 +17,7 @@ Each part is under its own license, which is given here.
     `src/kentogo/gui/board_geometry.py` (from `katrain/gui/theme.py` and `katrain/gui/badukpan.py`).
   - Texts in `src/kentogo/record/katrain_texts.py`, made from KaTrain's translation files
     by `tools/gen_katrain_texts.py`, and the labels of the settings screens that KaTrain
-    also has (such as "KataGo設定" and "設定を更新"), in `src/kentogo/gui/texts.py` (Japanese)
+    also has (such as "KataGo設定" and "設定を更新"), in `src/kentogo/gui/source_texts.py` (Japanese)
     and in each language file in `src/kentogo/locales`, taken from KaTrain's translation
     files of that language. The translators are listed in KaTrain's `CONTRIBUTIONS.md`.
   - Code copied unchanged, letter for letter, into `src/kentogo/vendor/katrain_analysis.py`:

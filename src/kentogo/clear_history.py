@@ -20,10 +20,10 @@ from datetime import datetime
 from pathlib import Path
 
 from kentogo.fights_today import fight_history_path
+from kentogo.practice_stores import HISTORY_FILE_NAME
 from kentogo.review.store import ReviewStore
 from kentogo.seichi.seichi_history import FILE_NAME as SEICHI_FILE_NAME
 from kentogo.seichi.seichi_history import SeichiHistory
-from kentogo.today import HISTORY_FILE_NAME
 
 BACKUP_FOLDER_NAME = "backups"  # Next to the histories.
 

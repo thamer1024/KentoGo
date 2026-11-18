@@ -21,7 +21,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.utils import escape_markup
 
 from kentogo.analysis_run import FolderGame, FolderGames, GameChoice
-from kentogo.gui import texts, theme
+from kentogo.gui import analysis_texts, texts, theme
 from kentogo.gui.check_box import MaterialCheckBox
 from kentogo.gui.widgets import fitting_label, flat_button, set_background, wrapping_label
 
@@ -41,7 +41,7 @@ class GameRow(BoxLayout):
         self.check = MaterialCheckBox(size_hint=(None, None), size=(dp(CHECK_SIZE), dp(CHECK_SIZE)), active=checked)
         self.check.bind(active=lambda _box, active: on_check(game, active))
         name = wrapping_label(valign="middle", text=escape_markup(game.path.name))
-        state = wrapping_label(valign="middle", size_hint_x=0.3, text=texts.analysis_state_text(game.state))
+        state = wrapping_label(valign="middle", size_hint_x=0.3, text=analysis_texts.analysis_state_text(game.state))
         for widget in (self.check, name, state):
             self.add_widget(widget)
 

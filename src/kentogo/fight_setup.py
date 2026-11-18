@@ -20,6 +20,7 @@ from kentogo.quiz.fight_judge import OPPONENT_RANK
 from kentogo.quiz.fight_run import FightPlay, FightRun
 from kentogo.quiz.fight_settings import FightSettings
 from kentogo.quiz.human_line import PlayerRanks
+from kentogo.quiz.transform import IDENTITY, BoardTransform
 from kentogo.review.history import AnswerHistory
 
 
@@ -30,10 +31,12 @@ class FightTools:
     Attributes:
         make_run: Makes the play of a fight against KataGo.
         save: Saves the answer of a fight that has ended (nothing is saved without a history).
+        choose_transform: Returns how to turn each fight on the screen.
     """
 
     make_run: Callable[[LocalFight], FightRun]
     save: Callable[[FightRun], None]
+    choose_transform: Callable[[], BoardTransform] = lambda: IDENTITY
 
 
 def fight_play(settings: FightSettings, evaluation: EvaluationSettings, ranks: PlayerRanks) -> FightPlay:
@@ -62,6 +65,7 @@ def fight_tools(
     history: AnswerHistory | None,
     ranks: Callable[[LocalFight], PlayerRanks],
     log_line: Callable[[dict], None] = lambda _record: None,
+    choose_transform: Callable[[], BoardTransform] = lambda: IDENTITY,
 ) -> FightTools:
     """Make the tools of the screen of the local fights.
 
@@ -72,6 +76,7 @@ def fight_tools(
         history: The history of the fights, or None.
         ranks: Returns the ranks of the players of a fight's game.
         log_line: Told a record about how the sequence of the AIs ended (see line_log.log_line).
+        choose_transform: Returns how to turn each fight on the screen.
     """
 
     def make_run(fight: LocalFight) -> FightRun:
@@ -81,4 +86,4 @@ def fight_tools(
         if history is not None:
             save_fight_answer(history, run, evaluation.max_visits)
 
-    return FightTools(make_run, save)
+    return FightTools(make_run, save, choose_transform)

@@ -8,7 +8,7 @@ them to 0.
 
 The same numbers make the summary of the day (today_summary), shown when the user leaves the
 quiz, with what was achieved today: a stage cleared (see quiz.stages), and each 100 correct
-answers and each 1,000 points got back in all.
+answers and each 1,000 points got back in all. It also tells how far the current problems are.
 """
 
 from __future__ import annotations
@@ -16,23 +16,31 @@ from __future__ import annotations
 import os
 import re
 from collections import defaultdict
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
 
 from kentogo.app_settings import AppSettings
+from kentogo.commentary_inputs import read_recorded_colors
+from kentogo.fights_today import fight_history_path
+from kentogo.games_folder import find_games_folder
+from kentogo.mistakes.extract import ExtractResult
 from kentogo.mistakes.problem import Problem
+from kentogo.practice_stores import open_answers, open_cache, open_history
 from kentogo.quiz.collect import collect_games
 from kentogo.quiz.order import keep_newest
 from kentogo.quiz.problem_cache import ProblemCache
+from kentogo.quiz.problem_kinds import problems_of_kind
 from kentogo.quiz.score import score_answer
 from kentogo.quiz.stages import StageStatus, current_stage
-from kentogo.repetition.modes import REVIEW_ONCE
-from kentogo.repetition.schedule import STATE_DONE, ReviewState, review_state
+from kentogo.repetition.counts import ProblemCounts
+from kentogo.repetition.schedule import STATE_DONE, ReviewState, answer_day
+from kentogo.review.answer_states import answers_and_states
 from kentogo.review.history import AnswerHistory
-from kentogo.today import find_games_folder, open_cache, open_history, read_recorded_colors
+from kentogo.today import count_current_problems
 
 RECENT = 5  # How many practice days (or games) are "recent".
 DEFAULT_BANDS = (20.0, 10.0, 5.0, 3.0)  # The bands of the mistakes per game when the stages are not used.
@@ -146,6 +154,21 @@ class Totals:
 
 
 @dataclass(frozen=True)
+class PracticeResults:
+    """The results of one kind of practice that has its own history.
+
+    Attributes:
+        totals: The numbers of all the practice.
+        recent: The latest practice days compared with the ones before.
+        days: Each practice day, the oldest first.
+    """
+
+    totals: Totals = Totals()
+    recent: Recent = Recent()
+    days: list[DayResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class Report:
     """Everything the report screen shows.
 
@@ -159,6 +182,7 @@ class Report:
         bands: The lower ends of the bands of the mistakes per game, the biggest first
             (the stages of the settings, or DEFAULT_BANDS): (20, 10, 5, 3) means 20 or more,
             10 to 20, 5 to 10 and 3 to 5 points.
+        fights: The results of the local fight problems.
     """
 
     totals: Totals = Totals()
@@ -168,6 +192,7 @@ class Report:
     game_averages: GameAverages = GameAverages()
     pass_ratio: float = 0.0
     bands: tuple[float, ...] = DEFAULT_BANDS
+    fights: PracticeResults = PracticeResults()
 
 
 @dataclass(frozen=True)
@@ -193,6 +218,7 @@ class TodaySummary:
         recovered: The points got back today.
         day_number: The number of this practice day (1 for the first day).
         achievements: What was achieved today.
+        counts: How far the current problems are.
     """
 
     answered: int
@@ -200,11 +226,7 @@ class TodaySummary:
     recovered: float
     day_number: int
     achievements: tuple[Achievement, ...] = ()
-
-
-def answer_day(answer: Answer) -> date:
-    """Return the day of an answer, in the computer's time zone."""
-    return datetime.fromisoformat(answer.answered_at).astimezone().date()
+    counts: ProblemCounts = ProblemCounts()
 
 
 def recovered_points(answer: Answer) -> float:
@@ -283,6 +305,17 @@ def totals(answers: Sequence[Answer], states: Mapping[str, ReviewState]) -> Tota
         sum(1 for state in states.values() if state.state == STATE_DONE),
         sum(recovered_points(answer) for answer in judged),
         len({answer_day(answer) for answer in judged}),
+    )
+
+
+def practice_results(
+    answers: Sequence[Answer], states: Mapping[str, ReviewState], small_problem_threshold: float
+) -> PracticeResults:
+    """Return the totals, the recent results and the results of each day of some answers."""
+    return PracticeResults(
+        totals(answers, states),
+        recent_results(answers, small_problem_threshold),
+        day_results(answers, small_problem_threshold),
     )
 
 
@@ -417,25 +450,54 @@ def build_report(material: _Material, settings: AppSettings) -> Report:
 
 def load_report(settings_path: Path, folder_argument: Path | None, settings: AppSettings) -> Report:
     """Read the games and the history, and make the report (called in a background thread)."""
-    return build_report(_read(settings_path, folder_argument, settings), settings)
+    with _open_stores(settings_path) as (history, cache):
+        results = _game_results(settings_path, folder_argument, settings, cache)
+        return build_report(_material(results, history, settings), settings)
+
+
+def load_fight_results(settings_path: Path, settings: AppSettings) -> PracticeResults:
+    """Read the history of the fights and make their part of the report (for a background thread)."""
+    history = open_answers(fight_history_path(settings_path))
+    if history is None:
+        return PracticeResults()
+    try:
+        answers, states = answers_and_states(history, settings.fights)
+        return practice_results(answers, states, settings.quiz.scoring.small_problem_threshold)
+    finally:
+        history.store.close()
 
 
 def load_today_summary(
     settings_path: Path, folder_argument: Path | None, settings: AppSettings, today: date
 ) -> TodaySummary | None:
     """Read the games and the history, and make the summary of the day (None if nothing was answered today)."""
-    material = _read(settings_path, folder_argument, settings)
-    return today_summary(material.answers, today, material.problems, settings.quiz.extract.loss_stages)
+    with _open_stores(settings_path) as (history, cache):
+        results = _game_results(settings_path, folder_argument, settings, cache)
+        material = _material(results, history, settings)
+        summary = today_summary(material.answers, today, material.problems, settings.quiz.extract.loss_stages)
+        if summary is None:
+            return None
+        counts = _current_counts(results, material.states, history, settings.quiz.problem_kind)
+        return replace(summary, counts=counts)
 
 
-def _read(settings_path: Path, folder_argument: Path | None, settings: AppSettings) -> _Material:
-    """Read the problems and the games of the games folder (using the cache), and the history."""
+def _material(
+    results: Sequence[tuple[Path, ExtractResult]], history: AnswerHistory | None, settings: AppSettings
+) -> _Material:
+    """Return what the report is made from: the problems and the games that were read, and the history."""
+    answers, states = answers_and_states(history, settings.review)
+    problems = keep_newest([problem for _path, result in results for problem in result.problems])
+    games = {path: (game_time(path), result.move_losses) for path, result in results}
+    return _Material(problems, games, answers, states)
+
+
+@contextmanager
+def _open_stores(settings_path: Path) -> Iterator[tuple[AnswerHistory | None, ProblemCache | None]]:
+    """Open the history and the problem cache (None when one cannot be used), and close them at the end."""
     history = open_history(settings_path)
     cache = open_cache(settings_path)
     try:
-        problems, games = _games(settings_path, folder_argument, settings, cache)
-        answers, states = _answers(history, settings)
-        return _Material(problems, games, answers, states)
+        yield history, cache
     finally:
         if cache is not None:
             cache.close()
@@ -443,32 +505,27 @@ def _read(settings_path: Path, folder_argument: Path | None, settings: AppSettin
             history.store.close()
 
 
-def _games(
+def _game_results(
     settings_path: Path, folder_argument: Path | None, settings: AppSettings, cache: ProblemCache | None
-) -> tuple[list[Problem], dict[Path, tuple[datetime, tuple[float, ...]]]]:
-    """Return the problems, and the games (with the time each was played and its losses) of the games folder."""
+) -> list[tuple[Path, ExtractResult]]:
+    """Return what was found in each game of the games folder (nothing without a usable folder)."""
     folder, _problem = find_games_folder(folder_argument, settings.quiz.games_folder)
     if folder is None:
-        return [], {}
+        return []
     colors = read_recorded_colors(settings_path)
     results, _skipped = collect_games(folder, settings.quiz.extract, cache, None, colors)
-    problems = [problem for _path, result in results for problem in result.problems]
-    games = {path: (game_time(path), result.move_losses) for path, result in results}
-    return keep_newest(problems), games
+    return results
 
 
-def _answers(history: AnswerHistory | None, settings: AppSettings) -> tuple[list[Answer], dict[str, ReviewState]]:
-    """Return all answers, the oldest first, and the state of each answered problem (since the last reset)."""
+def _current_counts(
+    results: Sequence[tuple[Path, ExtractResult]],
+    states: Mapping[str, ReviewState],
+    history: AnswerHistory | None,
+    kind: str,
+) -> ProblemCounts:
+    """Return how far the problems asked in the quiz are (nothing is known without a history)."""
     if history is None:
-        return [], {}
-    by_problem = history.all_previous()
-    last_reset = history.last_reset()
-    once = settings.review.review_mode == REVIEW_ONCE
-    states = {
-        problem_id: review_state(
-            [record for record in records if record.record_id > last_reset], settings.review.review_streak, once
-        )
-        for problem_id, records in by_problem.items()
-    }
-    answers = sorted((record for records in by_problem.values() for record in records), key=lambda r: r.record_id)
-    return answers, states
+        return ProblemCounts()
+    problems = keep_newest(problems_of_kind((result for _path, result in results), kind))
+    inside_fights = {key for _path, result in results for fight in result.local_fights for key in fight.mistake_ids()}
+    return count_current_problems(problems, states, history, kind, inside_fights)

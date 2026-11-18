@@ -1,9 +1,10 @@
 """Tests for kentogo.opponent_rank (the ranks of the players, for the human-like moves of KataGo's sequences)."""
 
 from kentogo.commentary.history import CommentaryHistory, history_path
+from kentogo.commentary_inputs import given_rank
 from kentogo.common.types import Position
 from kentogo.mistakes.local_fight import LocalFight
-from kentogo.opponent_rank import fight_ranks, given_rank, player_ranks
+from kentogo.opponent_rank import fight_ranks, player_ranks
 from kentogo.quiz.human_line import PlayerRanks
 
 

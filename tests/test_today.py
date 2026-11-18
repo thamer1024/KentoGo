@@ -8,9 +8,13 @@ from kentogo import today as today_module
 from kentogo.answers import save_answer
 from kentogo.app_settings import AppSettings
 from kentogo.commentary.history import CommentaryHistory
+from kentogo.commentary_inputs import read_recorded_colors
 from kentogo.common.types import Move
+from kentogo.games_folder import PROJECT_FOLDER, default_games_folder, find_games_folder
 from kentogo.gui.texts import notice_text
 from kentogo.mistakes.extract import ExtractSettings
+from kentogo.practice_stores import open_cache, open_history
+from kentogo.problem_exclusions import exclude_all_problems, include_all_problems
 from kentogo.quiz.collect import collect_problems
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quiz_settings import QuizSettings
@@ -20,18 +24,7 @@ from kentogo.record.kentogo_analysis import encode_kga
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.review.record import LOSS_FROM_KATAGO, AnswerRecord
 from kentogo.review.review_settings import ReviewSettings
-from kentogo.today import (
-    PROJECT_FOLDER,
-    default_games_folder,
-    exclude_all_problems,
-    find_games_folder,
-    include_all_problems,
-    load_today,
-    open_cache,
-    open_history,
-    prepare_problems,
-    read_recorded_colors,
-)
+from kentogo.today import load_today, prepare_problems
 
 HUMAN = f"Human (Normal Game){INTERNAL_MARKER}"
 AI = f"AI (Human-like){INTERNAL_MARKER}"

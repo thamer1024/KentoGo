@@ -17,7 +17,7 @@ from kivy.uix.popup import Popup
 
 from kentogo.analysis_run import AnalysisListener, AnalysisSummary, FolderGames
 from kentogo.app_settings import AppSettings
-from kentogo.gui import texts, theme
+from kentogo.gui import analysis_texts, texts, theme
 from kentogo.gui.analysis_chooser import AnalysisChooser
 from kentogo.gui.analysis_popup import AnalysisPopup, FolderAnalysis
 from kentogo.gui.dialogs import show_message
@@ -66,7 +66,7 @@ def _failed(counting: Popup, reason: str) -> None:
 def _choose_games(counting: Popup, settings: AppSettings, analysis: FolderAnalysis, games: FolderGames) -> None:
     """Show the list of the games to choose the ones to analyze, or only tell why there is none."""
     counting.dismiss()
-    problem = texts.analysis_folder_problem(games)
+    problem = analysis_texts.analysis_folder_problem(games)
     if problem:
         show_message(texts.text("analysis_title"), problem)
         return

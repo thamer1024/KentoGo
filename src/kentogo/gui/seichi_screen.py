@@ -42,7 +42,7 @@ from kivy.uix.modalview import ModalView
 from kivy.uix.widget import Widget
 
 from kentogo.common.types import Position
-from kentogo.gui import texts, theme
+from kentogo.gui import seichi_texts, texts, theme
 from kentogo.gui.board_view import make_board_view
 from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.dialogs import show_message
@@ -292,7 +292,7 @@ class SeichiScreen(BoxLayout):
         self.step_number = max(0, min(total, self.step_number + change))
         shown = self.steps.steps[self.step_number - 1] if self.step_number else None
         number = self.step_number
-        set_text(self.step_label, lambda: texts.fill_step_text(shown, number, total))
+        set_text(self.step_label, lambda: seichi_texts.fill_step_text(shown, number, total))
         self._show_step_prisoners()
         if shown is None or self.step_number != previous + 1:
             self._step_shown()
@@ -464,7 +464,9 @@ class SeichiScreen(BoxLayout):
             return lines
         margin = arrangement.margin
         komi = self.game.position.komi
-        lines += texts.text("seichi_margin", lead=texts.lead_text(margin), result=texts.lead_text(margin - komi, komi))
+        lines += texts.text(
+            "seichi_margin", lead=seichi_texts.lead_text(margin), result=seichi_texts.lead_text(margin - komi, komi)
+        )
         return lines
 
     def _confirm(self) -> None:
@@ -492,7 +494,7 @@ class SeichiScreen(BoxLayout):
             return
         self.checked = check
         self._refresh()
-        message = texts.count_check_text(check, self.game.position.komi)
+        message = seichi_texts.count_check_text(check, self.game.position.komi)
         show_message(texts.text("count_result_title"), message)
 
     def _not_allowed(self, key: str) -> None:

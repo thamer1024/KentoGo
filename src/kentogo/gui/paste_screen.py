@@ -22,7 +22,7 @@ from kivy.uix.boxlayout import BoxLayout
 
 from kentogo.commentary.candidates import GameCandidate
 from kentogo.commentary.job import GameRequest, NotAnalyzedError, NothingToExplainError, PreparedGame
-from kentogo.commentary.paste import PasteResult, apply_paste, prepare_paste, remember_not_analyzed
+from kentogo.commentary.paste import PasteResult
 from kentogo.commentary.workspace import CommentaryWorkspace
 from kentogo.gui import commentary_texts, texts, theme
 from kentogo.gui.dialogs import confirm, show_message
@@ -153,11 +153,10 @@ class PasteScreen(BoxLayout):
         """Make the prompt in the background (reading the game and the prompt file)."""
 
         def work() -> None:
-            text, problems = self.workspace.prompt_text(commentary_texts.commentary_language())
+            language = commentary_texts.commentary_language()
             try:
-                prepared = prepare_paste(request, text, self.workspace.conditions())
+                prepared, problems = self.workspace.prepare_for_paste(request, language)
             except NotAnalyzedError:
-                self._remember_not_analyzed(request)
                 in_main_thread(show_message)(texts.text("mode_commentary"), texts.text("commentary_not_analyzed"))
                 return
             except NothingToExplainError:
@@ -170,15 +169,6 @@ class PasteScreen(BoxLayout):
             in_main_thread(self._show_prompt)(prepared, commentary_texts.prompt_file_problems_text(problems))
 
         threading.Thread(target=work, daemon=True).start()
-
-    def _remember_not_analyzed(self, request: GameRequest) -> None:
-        """Remember a game that KaTrain has not analyzed as pending (in the background thread)."""
-        history = self.workspace.open_history()
-        if history is not None:
-            try:
-                remember_not_analyzed(request, history)
-            finally:
-                history.close()
 
     def _show_prompt(self, prepared: PreparedGame, problems: str) -> None:
         """Show the prompt, and the problems of the prompt file if there are any."""
@@ -200,13 +190,7 @@ class PasteScreen(BoxLayout):
             return
 
         def work() -> None:
-            history = self.workspace.open_history()
-            try:
-                result = apply_paste(prepared, answer, history)
-            finally:
-                if history is not None:
-                    history.close()
-            in_main_thread(self._show_result)(result)
+            in_main_thread(self._show_result)(self.workspace.apply_pasted_answer(prepared, answer))
 
         threading.Thread(target=work, daemon=True).start()
 

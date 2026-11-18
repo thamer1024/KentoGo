@@ -31,6 +31,32 @@ def save_answer(history: AnswerHistory, session: QuizSession, max_visits: int | 
     history.save(record_of(session, history.now(), max_visits), data)
 
 
+class QuizAnswers:
+    """The answers of the quiz, as the quiz screen uses them: it need not know the history."""
+
+    def __init__(self, history: AnswerHistory | None):
+        """Use a history.
+
+        Args:
+            history: Where the answers are kept. If None, they are not kept.
+        """
+        self._history = history
+
+    @property
+    def last_error(self) -> str:
+        """The last error of the history, or "" if there was none."""
+        return self._history.last_error if self._history is not None else ""
+
+    def previous(self, problem_id: str) -> list[AnswerRecord] | None:
+        """Return the earlier answers to a problem, the oldest first, or None if answers are not kept."""
+        return self._history.previous(problem_id) if self._history is not None else None
+
+    def save(self, session: QuizSession, max_visits: int | None = None) -> None:
+        """Save the answer of a session, if answers are kept (see save_answer)."""
+        if self._history is not None:
+            save_answer(self._history, session, max_visits)
+
+
 def saved_problems(history: AnswerHistory, problem_ids: list[str]) -> list[Problem]:
     """Return the problems kept in the history, in the order of the IDs.
 

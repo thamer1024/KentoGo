@@ -25,8 +25,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from dataclasses import replace
-from datetime import date
+from collections.abc import Set
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,7 +36,7 @@ from kivy.uix.modalview import ModalView
 
 from kentogo.fight_setup import FightTools
 from kentogo.fights_today import FightSummary, TodayFights
-from kentogo.gui import texts, theme
+from kentogo.gui import quiz_texts, report_texts, texts, theme
 from kentogo.gui.api_screen import ApiScreen
 from kentogo.gui.batch_screen import BatchScreen
 from kentogo.gui.commentary_menu import CommentaryMenu
@@ -55,9 +54,8 @@ from kentogo.gui.viewer_screen import ViewerScreen
 from kentogo.gui.widgets import in_main_thread, relabel_all, set_text, wrapping_label
 from kentogo.katago.evaluate import Models
 from kentogo.katago.startup import Loading
-from kentogo.line_log import log_line
 from kentogo.mistakes.problem import Problem
-from kentogo.seichi.seichi_plan import SeichiGame, SeichiQueue, queue_from_history
+from kentogo.seichi.seichi_plan import SeichiGame, SeichiQueue
 from kentogo.today import TodayProblems
 from kentogo.version import app_version
 
@@ -222,8 +220,7 @@ class KentoGoApp(App):
             """Plan the games (the first time) and read the next one in the background thread."""
             try:
                 if self.seichi_queue is None:
-                    setup = self.setup
-                    self.seichi_queue = queue_from_history(folder, setup.seichi, setup.seichi_history, date.today())
+                    self.seichi_queue = self.setup.plan_seichi(folder)
                 game = self.seichi_queue.next_game()
             except Exception as error:  # For example, the folder cannot be read.
                 in_main_thread(self._seichi_failed)(str(error))
@@ -264,8 +261,7 @@ class KentoGoApp(App):
 
     def _seichi_judged(self, game: SeichiGame, good: bool) -> None:
         """Save how the counting of a game went, and go on to the next game."""
-        if self.setup.seichi_history is not None:
-            self.setup.seichi_history.save(game.problem_id, str(game.game.path), good)
+        self.setup.save_seichi_result(game, good)
         if self.seichi_queue is not None:  # None when the settings were saved: it is planned again.
             self.seichi_queue.count_one()
         self.show_seichi()
@@ -296,9 +292,9 @@ class KentoGoApp(App):
             today.problems,
             setup.policy,
             setup.choose_transform,
-            replace(engines.judging(), player_ranks=setup.player_ranks, log_line=log_line),
+            setup.judging(engines),
             texts.notice_text(today.message),
-            setup.history,
+            setup.answers,
             on_back=self._leave_quiz,
             open_game=self.open_game,
         )
@@ -339,25 +335,31 @@ class KentoGoApp(App):
         if not today.fights:
             show_message(texts.text("mode_fights"), texts.notice_text(today.message), on_close=self.show_top)
             return
-        self.fights = FightScreen(today.fights, tools.make_run, tools.save, on_back=self._leave_fights)
+        self.fights = FightScreen(
+            today.fights,
+            tools.make_run,
+            tools.save,
+            tools.choose_transform,
+            on_back=lambda: self._leave_fights(today.all_ids),
+        )
         self.frame.add_widget(self.fights)
 
-    def _leave_fights(self) -> None:
+    def _leave_fights(self, fight_ids: Set[str]) -> None:
         """Leave the local fights (their answers are saved when each ends), and go back to the top screen."""
         if self.fights is not None:
             self.fights.close()
             self.fights = None
         self.show_top()
-        self._show_fight_summary()
+        self._show_fight_summary(fight_ids)
 
-    def _show_fight_summary(self) -> None:
+    def _show_fight_summary(self, fight_ids: Set[str]) -> None:
         """Show the summary of the fights answered today (made in the background), if there are any."""
         summary_of = self.setup.fight_summary
 
         def work() -> None:
             """Make the summary in the background thread."""
             try:
-                summary = summary_of()
+                summary = summary_of(fight_ids)
             except Exception as error:  # The summary is only extra: the fights have saved their answers.
                 print(f"cannot make the summary of the fights: {error}", file=sys.stderr)
                 summary = None
@@ -369,7 +371,7 @@ class KentoGoApp(App):
         """Show the summary of the fights (nothing when none was answered today)."""
         if summary is None:
             return
-        show_message(texts.text("today_summary_title"), texts.fight_summary_text(summary))
+        show_message(texts.text("today_summary_title"), report_texts.fight_summary_text(summary))
 
     def change_language(self, language: str) -> None:
         """Show all screens in another language at once, and keep the language for the next start.
@@ -450,7 +452,7 @@ class KentoGoApp(App):
             self._ask_ratio_offer()
             return
         show_message(
-            texts.text("today_summary_title"), texts.today_summary_text(summary), on_close=self._ask_ratio_offer
+            texts.text("today_summary_title"), report_texts.today_summary_text(summary), on_close=self._ask_ratio_offer
         )
 
     def _ask_ratio_offer(self) -> None:
@@ -483,7 +485,7 @@ class KentoGoApp(App):
         if offer is None:
             return
         confirm(
-            texts.limit_offer_text(offer),
+            quiz_texts.limit_offer_text(offer),
             lambda: self.setup.answer_limit_offer(offer, True),
             lambda: self.setup.answer_limit_offer(offer, False),
             no_label=texts.text("ratio_offer_no"),

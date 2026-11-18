@@ -4,7 +4,7 @@ import random
 from datetime import date, datetime
 
 from kentogo.seichi.seichi_history import SeichiRecord, open_seichi_history
-from kentogo.seichi.seichi_plan import plan_games, queue_from_history, start_queue
+from kentogo.seichi.seichi_plan import plan_games, queue_from_history, save_result, start_queue
 from kentogo.seichi.seichi_settings import ORDER_FILE_NAME, ORDER_NEWEST, SeichiSettings
 
 COUNTED = "(;SZ[9]RE[B+1.5];B[ee];W[cc];B[];W[])"
@@ -89,6 +89,19 @@ def test_the_queue_is_planned_from_the_history(tmp_path):
     today = datetime.now().astimezone().date()
     assert queue_from_history(folder, SeichiSettings(), history, today).next_game() is None  # Counted well: done.
     assert queue_from_history(folder, SeichiSettings(), None, today).next_game().problem_id == "a.sgf"
+    history.close()
+
+
+def test_a_result_is_kept_in_the_history_when_there_is_one(tmp_path):
+    (tmp_path / "games").mkdir()
+    folder = folder_with(tmp_path / "games", {"a.sgf": COUNTED})
+    history, _problem = open_seichi_history(tmp_path / "settings.json")
+    today = datetime.now().astimezone().date()
+    game = queue_from_history(folder, SeichiSettings(), history, today).next_game()
+    save_result(None, game, True)  # Nothing to keep it in.
+    assert history.all_results() == {}
+    save_result(history, game, True)
+    assert queue_from_history(folder, SeichiSettings(), history, today).next_game() is None
     history.close()
 
 

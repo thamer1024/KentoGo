@@ -5,7 +5,7 @@ keys. The board shows the fight's position (its last move, the opponent's move i
 the moves played since then, numbered. The user plays a move with a click; KataGo answers on the board, and the
 user plays again, until the fight is judged (see quiz.fight_judge). The panel tells whose turn it is, while
 KataGo reads, and how the fight ended. The next problem can always be asked (Enter): KataGo's answers about the
-fight left are not used. The fights are not rotated and their colors are not swapped.
+fight left are not used. Each fight is shown turned at random (see quiz.fight_quiz); its colors are not swapped.
 
 After the fight has ended, Tab (or the button) shows the sequence in which the AIs play from the fight's position
 until the place is settled (see quiz.fight_follow). When that sequence did not conclude, the strongest AI plays it
@@ -26,8 +26,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.modalview import ModalView
 from kivy.uix.scrollview import ScrollView
 
-from kentogo.common.types import Move
-from kentogo.gui import texts, theme
+from kentogo.gui import fight_texts, texts, theme
 from kentogo.gui.board_view import make_board_view
 from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.file_name_row import FileNameRow
@@ -36,6 +35,7 @@ from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_lines import LINE_AI, LINE_STRONG
 from kentogo.quiz.fight_quiz import PHASE_ENDED, PHASE_ERROR, PHASE_STARTING, PHASE_TURN, FightQuiz
 from kentogo.quiz.fight_run import FightRun
+from kentogo.quiz.transform import BoardTransform
 
 KEY_ENTERS = (13, 271)  # Kivy's key codes of Enter.
 KEY_TAB = 9
@@ -57,6 +57,7 @@ class FightScreen(BoxLayout):
         fights: list[LocalFight],
         make_run: Callable[[LocalFight], FightRun],
         save: Callable[[FightRun], None],
+        choose_transform: Callable[[], BoardTransform],
         on_back: Callable[[], None],
         **kwargs,
     ):
@@ -66,11 +67,12 @@ class FightScreen(BoxLayout):
             fights: The fights to ask, in order.
             make_run: Makes the play of a fight against KataGo.
             save: Saves the answer of a fight that has ended.
+            choose_transform: Returns how to turn each fight on the screen.
             on_back: Called by the "back to the top screen" button.
             **kwargs: Kivy's layout arguments.
         """
         super().__init__(orientation="horizontal", **kwargs)
-        self.quiz = FightQuiz(fights, make_run, save, self, in_main_thread)
+        self.quiz = FightQuiz(fights, make_run, save, self, in_main_thread, choose_transform)
         self._busy_line: str | None = None  # The sequence that KataGo is making (see _update_timer).
         self._busy_since: float | None = None  # When KataGo started making it.
         self._busy_timer = None  # Shows the seconds while KataGo is making it.
@@ -124,7 +126,7 @@ class FightScreen(BoxLayout):
         fight = run.fight
         self._show_board()
         number, total = quiz.index + 1, len(quiz.fights)
-        set_text(self.info_label, lambda: texts.fight_info(fight, number, total))
+        set_text(self.info_label, lambda: fight_texts.fight_info(fight, number, total))
         self.file_row.set_name(Path(fight.sgf_path).name)
         set_text(self.status_label, self._status())
         self._follow_button.disabled = quiz.lines is None
@@ -160,12 +162,7 @@ class FightScreen(BoxLayout):
 
     def _show_board(self) -> None:
         """Show the fight's position with the moves to show on it."""
-        self.board.show(make_board_view(self.quiz.run.fight.position, self._shown_moves()))
-
-    def _shown_moves(self) -> tuple[Move, ...]:
-        """Return the moves to show: those of the sequence chosen after the fight has ended, else those played."""
-        quiz = self.quiz
-        return quiz.lines.shown() if quiz.lines is not None else quiz.run.played
+        self.board.show(make_board_view(self.quiz.shown_position(), self.quiz.shown_moves()))
 
     def _status(self) -> Callable[[], str]:
         """Return what the panel tells about the phase of the fight asked now."""
@@ -186,9 +183,9 @@ class FightScreen(BoxLayout):
         outcome, lines = self.quiz.run.outcome, self.quiz.lines
 
         def make() -> str:
-            verdict = texts.fight_outcome_text(outcome)
+            verdict = fight_texts.fight_outcome_text(outcome)
             shown = lines.name in (LINE_AI, LINE_STRONG)
-            return f"{verdict}\n{texts.fight_line_text(lines, self.busy_seconds)}" if shown else verdict
+            return f"{verdict}\n{fight_texts.fight_line_text(lines, self.busy_seconds)}" if shown else verdict
 
         return make
 

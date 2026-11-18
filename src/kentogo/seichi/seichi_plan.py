@@ -106,6 +106,12 @@ class SeichiQueue:
         self.counted += 1
 
 
+def save_result(history: SeichiHistory | None, game: SeichiGame, good: bool) -> None:
+    """Keep how the counting of a game went (nothing is kept without a history)."""
+    if history is not None:
+        history.save(game.problem_id, str(game.game.path), good)
+
+
 def plan_games(
     folder: Path,
     settings: SeichiSettings,

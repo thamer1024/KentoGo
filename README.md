@@ -17,8 +17,9 @@
 
 KentoGo picks the moves where you lost the most points in your games and asks them again as
 problems, until you find a better move. The games can be analyzed in KaTrain, or by KentoGo itself
-with KataGo. It also has counting practice from the final positions of your games, a game viewer
-with KataGo's best lines, and optional AI commentary on your games. Free and open source, for
+with KataGo. It also has local fight problems that replay the life and death fights and boundaries
+you lost against KataGo, a report of your practice, counting practice from the final positions of your
+games, a game viewer with KataGo's best lines, and optional AI commentary on your games. Free and open source, for
 Windows and macOS; it uses the KataGo you set up in KaTrain.
 
 <p align="center"><img src="screenshots/quiz.gif" width="720" alt="Solving a problem made from your own game"></p>
@@ -30,7 +31,13 @@ Windows and macOS; it uses the KataGo you set up in KaTrain.
   back along a forgetting curve: a problem you miss is asked again the next day, and each correct
   answer makes the wait longer (3, 7, 14… days). A problem is finished after a set number of
   correct answers in a row (a small number, 2, at first; raise it in the settings for more
-  reviews), and a wrong answer starts the count again.
+  reviews), and a wrong answer starts the count again. Staged problems ask the biggest losses first,
+  and punishment problems ask where you missed the opponent's big mistake (see "Choosing the problems").
+- **Local fight problems.** From the games KentoGo analyzed, it finds the life and death fights and
+  the boundaries you lost, and you play them again against KataGo until the place is settled (see
+  "Local fight problems").
+- **Report.** See the problems answered, the correct answers, the points got back and the mistakes in
+  each game, practice day by practice day (see "Report").
 - **Game analysis with KataGo.** KentoGo can analyze your games itself, about two minutes a game,
   and write into the SGF files only what the problems need (see "Analyzing games in KentoGo").
 - **Counting practice (turn it on in the settings).** Count the final position of your own games:
@@ -134,6 +141,19 @@ which model is loading and, from the second start on, about how long it will sti
 loading times are kept in `~/.kentogo/katago_start_times.json`). You can close the dialog and go
 on; a question to KataGo then waits until it is ready.
 
+### Choosing the problems
+
+Under ☰ > "Problem and Judging Settings":
+
+- **Staged problems**: with `20,10,5,3` in "Staged problems: losses", the problems that lost 20 points
+  or more are asked first. When each of them has been answered correctly once, the problems of 10
+  points or more come next (empty: not used).
+- **Punishment problems**: the opponent's move just before lost a lot (15 points or more at first), and
+  your move lost points too (5 or more at first). Choose "Only punishment problems" in "Problems to
+  ask" to practice only these.
+- In a handicap game, the lead from the handicap stones at the start is left out when KentoGo tells
+  whether the game is already decided.
+
 ### Judging the answers
 
 The loss of your answer is compared with the loss of the move played in the game. The values are set
@@ -168,32 +188,43 @@ one comes after that many more answers. The answers saved before are never judge
 After you answer, Tab switches between these sequences, and Shift+Tab goes back (the line at the top shows
 their order):
 
-1. **Rank replies**: your answer, then the game goes on with you playing moves of your rank and the
-   opponent playing moves of the opponent's rank (your rank when it is not known).
-2. **Strongest replies**: your answer, then the game goes on with you playing moves of your rank and
-   the opponent playing the strongest replies.
-3. **Game**: the move played in the game and the moves that were played after it, as the game
-   record has them.
-4. **KentoGo's move** (or **KaTrain's move**): the sequence from the best move that the analysis saved in
-   the game record (and the other branches of the game record, if there are any).
+1. **Rank replies**: after your answer, you play moves of your rank, and the opponent plays moves of
+   the opponent's rank (your rank when it is not known).
+2. **Game**: the move played in the game and the moves that were played after it, as the game record
+   has them.
+3. **Best from here**: from the problem position, you play the best of the moves that a player of your
+   rank may play, and the opponent plays moves of the opponent's rank (your rank when it is not known).
 
-How the sequences 1 and 2 are made:
+How the sequences 1 and 3 are made:
 
-- Your moves are KataGo's human-like moves of your rank (the move a player of that rank would most
-  likely play). Your rank is the one in the game record (`BR`/`WR`), or else the rank you gave for
-  the AI commentary; when only the opponent's rank is known, that rank is used.
-- In sequence 1, the opponent's moves are KataGo's human-like moves of the opponent's rank, in the
-  same way. There is no sequence 1 when neither rank is known.
-- In sequence 2, the opponent's moves are the main KataGo's best moves, reading "Visits for territory and standing"
-  (100 at first) for each move: a few seconds for a whole sequence. Raise that number
-  on the settings screen for stronger replies, or lower it for faster ones.
-- When neither rank is known, KataGo's own sequence is shown (both sides play its best moves).
-- The sequences are made about as long as KaTrain's (at least 10 moves), but no move is added after
-  5 seconds.
+- Your moves in sequence 1 are KataGo's human-like moves of your rank (the move a player of that rank
+  would most likely play). Your rank is the one in the game record (`BR`/`WR`), or else the rank you
+  gave for the AI commentary; when only the opponent's rank is known, that rank is used.
+- The opponent's moves are, in the same way, the most likely moves of the opponent's rank.
+- Your moves in sequence 3 are the best of the likely moves of your rank, at every move of yours:
+  - The candidates have at least 5% of the probability of the most likely move (at most 12 moves).
+  - The standard KataGo reads only the candidates, and the one that loses least is chosen. Moves
+    within 0.3 points count as equal, and the most likely of them is chosen.
+  - The first move is read with "Max visits in analysis"; the later ones with twice "Visits for
+    territory and standing" (100 at first).
+  - A record of each chosen move (the candidates, their probabilities and losses, the time, and the
+    difference from the best move read without limits) is added to `~/.kentogo/human_line.jsonl` and
+    written to the console.
+- When neither rank is known, both sides play the standard KataGo's best moves.
+- The three sequences are made as long as the game's own sequence (at least 10 and at most 20 moves).
+  When the game's sequence is shorter than that, it stays shorter.
+- No time cuts a sequence, because computers differ. Instead each reading stops at "Maximum time for
+  analysis" (0: no limit), so a slow computer reads fewer positions in it.
+- "□ Best" on the board and "Best …" in the result are the first move of sequence 3. While it is
+  calculated, KentoGo says that KataGo is thinking and shows no move. When KataGo cannot be used or
+  fails, no best move is shown (the best move saved by the analysis is not used instead). After the
+  best move is known, KentoGo also finds out what it does.
+- Sequence 3 is made after the answer is judged. The best lines saved in the game record (KentoGo's
+  or KaTrain's) are not used.
 
 While you play a sequence forward, the board shows the territory of each move, and the line below
 the sequence tells the rough standing of that move (a shallow reading). At the last move of a
-sequence, the exact standing is shown. For "Rank replies" and "KentoGo's move", it is also compared
+sequence, the exact standing is shown. For "Rank replies" and "Best from here", it is also compared
 with the game after the same number of moves (the points you got back against the game).
 
 ### Trying the problems without saving the answers
@@ -216,10 +247,54 @@ The settings, the history of answers and the results of the counting practice ar
 messages are written to `~/.kentogo/kentogo.log`.
 The button "Clear the learning history" on the review settings screen clears the history of answers
 after copying it to `~/.kentogo/backups/history-<date>-<time>.sqlite3` (put it back in place of
-`~/.kentogo/history.sqlite3` to undo). When the territory counting practice is on, a second button clears its
-results in the same way (`seichi_history.sqlite3`). The history of the AI commentary is kept.
+`~/.kentogo/history.sqlite3` to undo). Another button clears the answers of the local fight problems
+(`fight_history.sqlite3`), and when the territory counting practice is on, a third one clears its results
+(`seichi_history.sqlite3`), each with a backup in the same way. The history of the AI commentary is kept.
 How long the analysis of each game took, step by step, is written as one line of JSON per game to
 `~/.kentogo/analysis_timing.jsonl`, and to the console after `KENTOGO_ANALYSIS_TIMING `.
+
+## Local fight problems
+
+These problems come from the local fights you lost in the games that KentoGo analyzed. From KataGo's
+areas, KentoGo finds two kinds:
+
+- **Life and death practice**: your stones were captured, or the opponent's stones lived.
+- **Boundary practice**: a place that was your territory was broken into.
+
+Press "Local fight problems (life and death, boundaries)" on the top screen (KataGo is needed). From
+the position where the fight started, you and KataGo play in turn until the place is settled.
+
+- The answer is correct when you win the fight and your score has not fallen from the start by more
+  than the allowed points (3 at first).
+- It is wrong when you lose the fight, when the score falls too much, when you play away from the
+  fight, or when you lose points with a move that was not needed.
+- After a fight, Tab (or "Show the AIs' sequence") shows both sides playing human-like moves, and the
+  ← → keys step through it. When that does not settle the place, KataGo's best moves play it again,
+  and Tab switches between the two. A group being chased is followed until it is captured or gets away.
+
+The fights have their own reviews and history, with at most 5 problems a day at first. Your mistakes
+inside a fight are not asked as mistake problems. The opponent and the allowed points are under
+"Local fight problems (life and death, boundaries)", and the reviews under "Review settings of the
+local fight problems (life and death, boundaries)". The answers are kept in `fight_history.sqlite3`.
+
+## Report
+
+"Report" on the top screen shows your results. It counts practice days, not weeks, so that days
+without practice do not pull the numbers down.
+
+- **Mistake problems**: the problems answered, correct and finished, the points got back, the days of
+  practice, and the correct answers and the average part got back in the last 5 practice days,
+  compared with the 5 before. A chart shows each practice day (at most 14).
+- **Local fight problems**: the same counts without the points, the correct answers of the last 5
+  practice days, and a chart.
+- **Mistakes in each game**: a chart by the size of the loss, and the average of the last 5 games,
+  compared with the 5 before.
+
+When you go back to the top screen from the mistake problems or the local fights after answering
+that day, "Today" shows the problems answered and correct, and how many of the current problems there
+are in all, done, in progress and not started. For the mistake problems, it also shows the points got
+back, the number of the practice day, and what you achieved (a stage cleared, each 100 correct
+answers, and each 1,000 points got back).
 
 ## Game viewer
 
@@ -292,6 +367,37 @@ words that KentoGo writes into the game with the answer are in that language. Ea
 own file to change (☰ > the AI commentary settings): `commentary_prompt_jp.txt` for Japanese and
 `commentary_prompt_en.txt` for the English prompt, next to the settings file.
 
+## Changes
+
+### The next version after 0.2.0
+
+- Local fight problems (life and death, boundaries): play the fight again against KataGo, with their
+  own reviews and history, and the AIs' sequence afterwards (played again with KataGo's best moves
+  when it does not settle the place, and followed until a chased group is captured or gets away).
+- "Today" also shows how many of the current problems there are in all, done, in progress and not
+  started.
+- The report also shows the results of the local fight problems.
+- The user guide (`USER_GUIDE.md`).
+- KentoGo on WSL can use the Windows `katago.exe`.
+- The screens, the logic and the features are kept further apart (the histories, the steps of the AI
+  commentary, reading games, and the texts of the screens). Nothing changes in how KentoGo is used.
+
+### 0.2.0
+
+- KentoGo analyzes games itself with KataGo: choose the games on the top screen; only the moves that
+  can become problems are read deeply, and only what the problems need is written into the SGF files.
+- The report and the summary of the day.
+- Staged problems, punishment problems, and handicap games.
+- A limit on the loss of a correct answer, and offers to change the passing line and that limit.
+  Answers are judged as they are shown (0.1 points, whole percent).
+- The sequences after an answer are now the rank replies, the game, and the best from here, with
+  human-like moves and comparable lengths. Shift+Tab goes back to the sequence before.
+- The territory and a rough standing at every move after an answer and in the game viewer, and the
+  exact standing at the last move of a sequence.
+- What the best move does (atari, ladder and so on).
+- KataGo is started again when it stops, its loading is shown, and `--test-quiz` tries the problems.
+- The learning and counting histories can be cleared, after a dated backup.
+
 ## Run from the source
 
 1. Install [uv](https://docs.astral.sh/uv/) (it also installs Python 3.12 for KentoGo).
@@ -317,8 +423,8 @@ uv run ruff format       # format the code
   `src/kentogo/katago/locate.py` (where KaTrain and KataGo are) and
   `src/kentogo/katago/process.py` (how KataGo is started).
 - On WSL, keep the project in the Linux file system (for example `~/KentoGo`), not under
-  `/mnt/c`, which is slow. Windows 11 shows the window through WSLg. To use KataGo there,
-  use a KataGo for Linux (not `katago.exe`).
+  `/mnt/c`, which is slow. Windows 11 shows the window through WSLg. KataGo can be a KataGo for
+  Linux or the Windows `katago.exe` (the paths given to it are changed to the Windows form).
 - GitHub Actions runs the checks and the tests on Windows, macOS and Linux for every push
   (`.github/workflows/test.yaml`).
 

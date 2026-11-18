@@ -22,14 +22,15 @@ from kivy.metrics import dp, sp
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 
-from kentogo.gui import texts, theme
+from kentogo.gui import quiz_texts, texts, theme
 from kentogo.gui.dialogs import show_message
 from kentogo.gui.menu import flag_row
 from kentogo.gui.widgets import flat_button, in_main_thread, set_background, set_text, wrapping_label
 from kentogo.notice import Notice
+from kentogo.quiz.collect import Progress
 from kentogo.quiz.problem_kinds import KIND_PUNISH
 from kentogo.quiz.stages import StageStatus
-from kentogo.today import Progress, TodayProblems
+from kentogo.today import TodayProblems
 
 # Key codes of Kivy.
 KEY_ENTERS = (13, 271)
@@ -134,7 +135,7 @@ class SplashScreen(AnchorLayout):
     def show_skipped(self) -> None:
         """Show which games gave no problems, and why."""
         if self.today is not None and self.today.skipped_games:
-            show_message(texts.text("skipped_title"), texts.skipped_games_text(self.today.skipped_games))
+            show_message(texts.text("skipped_title"), quiz_texts.skipped_games_text(self.today.skipped_games))
 
     def start(self) -> None:
         """Open the quiz screen with today's problems (only after the games have been read)."""
@@ -178,7 +179,7 @@ def _today_text(today: TodayProblems) -> str:
         numbers += "\n" + _stage_text(today.stage)
     if today.kind == KIND_PUNISH:
         numbers += "\n" + texts.text("splash_only_punish")
-    skipped = texts.skipped_text(today.skipped)
+    skipped = quiz_texts.skipped_text(today.skipped)
     if skipped:
         numbers += "\n\n" + skipped
     message = texts.notice_text(today.message)
