@@ -10,9 +10,9 @@ A session has two steps for an answer, and it does not use threads:
 predicted sequences after the answer are then added as more sequences.
 
 After the answer, the sequences are shown in a fixed order (see choices):
-the sequence after the answer with the replies of the opponent's rank, KataGo's sequence
-after the answer (the strongest replies), the game's own moves, and the sequences in the
-SGF file. The first one is shown first.
+the sequence after the answer (both players play as humans of their ranks), the game's own
+moves, and the sequence from the problem position (the best of the human-like moves). The first one
+is shown first.
 A sequence that KataGo is still calculating (see expect) is in the order too,
 without moves, so that the user can see that it is coming.
 
@@ -30,8 +30,8 @@ from dataclasses import dataclass, replace
 from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.problem import (
+    SOURCE_BEST_HUMAN,
     SOURCE_GAME,
-    SOURCE_KATAGO_ANSWER,
     SOURCE_RANK_ANSWER,
     Problem,
     Variation,
@@ -52,7 +52,7 @@ WAITING = "waiting"
 FAILED = "failed"
 
 # The sequences that start with the answer (the result of the answer is shown with them).
-ANSWER_SOURCES = (SOURCE_RANK_ANSWER, SOURCE_KATAGO_ANSWER)
+ANSWER_SOURCES = (SOURCE_RANK_ANSWER,)
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ class SequenceChoice:
     """One sequence in the order of choices.
 
     Attributes:
-        source: Where the sequence comes from, such as "katrain" or SOURCE_KATAGO_ANSWER.
+        source: Where the sequence comes from, such as SOURCE_RANK_ANSWER or SOURCE_BEST_HUMAN.
         variation: The sequence, or None while it is being calculated (or when that failed).
         status: READY, WAITING or FAILED.
     """
@@ -190,22 +190,16 @@ class QuizSession:
         else:
             return dict(self.problem.candidate_losses).get(move.gtp())
 
-    def apply_evaluation(
-        self,
-        answer_loss: float,
-        actual_loss: float,
-        answer_sequence: tuple[Move, ...] = (),
-    ) -> AnswerResult:
+    def apply_evaluation(self, answer_loss: float, actual_loss: float) -> AnswerResult:
         """Set the losses calculated by KataGo, and judge the answer again.
 
         Both losses must be calculated under the same conditions, so the loss of
         the game move is also given, instead of the value from the SGF file.
-        KataGo's sequences after the answer are added with add_sequence().
+        KataGo's sequences are added with add_sequence().
 
         Args:
             answer_loss: Points lost by the answer.
             actual_loss: Points lost by the game move.
-            answer_sequence: KataGo's predicted moves after the answer.
 
         Returns:
             The new result.
@@ -216,10 +210,6 @@ class QuizSession:
         if self.result is None:
             raise RuntimeError("the problem has not been answered yet")
         self.result = self._make_result(self.result.answer, answer_loss, actual_loss)
-        if answer_sequence:
-            self.add_sequence(self.result.answer, answer_sequence, SOURCE_KATAGO_ANSWER)
-        else:
-            self.fail(SOURCE_KATAGO_ANSWER)
         return self.result
 
     def sequence_at_end(self) -> Variation | None:
@@ -265,7 +255,7 @@ class QuizSession:
         """Tell that KataGo is calculating a sequence, so that it is shown as being calculated.
 
         Args:
-            source: SOURCE_RANK_ANSWER or SOURCE_KATAGO_ANSWER.
+            source: SOURCE_RANK_ANSWER or SOURCE_BEST_HUMAN.
         """
         if source not in self._added:
             self._status[source] = WAITING
@@ -281,9 +271,9 @@ class QuizSession:
         The shown sequence stays the same (it is found again in the new order).
 
         Args:
-            move: The first move (the answer).
+            move: The first move (the answer, or the first move of SOURCE_BEST_HUMAN).
             sequence: The predicted moves after it.
-            source: SOURCE_RANK_ANSWER or SOURCE_KATAGO_ANSWER.
+            source: SOURCE_RANK_ANSWER or SOURCE_BEST_HUMAN.
         """
         shown = self.choice
         self._status.pop(source, None)
@@ -292,6 +282,23 @@ class QuizSession:
             return  # The same place in the order now has the moves.
         if shown is not None:
             self._selected = self._index_of(shown)
+
+    @property
+    def best_move(self) -> Move | None:
+        """The best move to show after the answer, in the original direction and colors, or None.
+
+        It is the first move of the sequence from the problem position (the best move of a human-like player of the
+        user's rank, see SOURCE_BEST_HUMAN). KataGo's best move of the analysis of the game is never shown instead:
+        until the sequence is made (see best_move_waiting), or when it cannot be made, there is none.
+        """
+        if SOURCE_BEST_HUMAN in self._added:
+            return self._added[SOURCE_BEST_HUMAN].moves[0]
+        return None
+
+    @property
+    def best_move_waiting(self) -> bool:
+        """True while the best move is being calculated (the sequence from the problem position is expected)."""
+        return SOURCE_BEST_HUMAN not in self._added and self._status.get(SOURCE_BEST_HUMAN) == WAITING
 
     def _make_result(self, move: Move, answer_loss: float | None, actual_loss: float) -> AnswerResult:
         """Make the result of an answer. If answer_loss is None, the result is not judged yet."""
@@ -304,18 +311,16 @@ class QuizSession:
     def choices(self) -> tuple[SequenceChoice, ...]:
         """All sequences to show after the answer, in the order that Tab goes through them.
 
-        The sequence after the answer with the replies of the opponent's rank, KataGo's sequence after the
-        answer, the game's own moves after the game move, and the sequences in the SGF file. KataGo's
-        sequences are there only when they are added or expected.
+        The sequence after the answer (both players play as humans of their ranks), the game's own moves after
+        the game move, and the sequence from the problem position (both players play as humans of their ranks,
+        the user playing the best of them). KataGo's sequences are there only when they are added or expected.
         """
         game_line = self.problem.game_line
         game = (SequenceChoice(SOURCE_GAME, Variation(game_line, SOURCE_GAME)),) if game_line else ()
-        sgf = tuple(SequenceChoice(variation.source, variation) for variation in self.problem.variations)
         return (
             *self._katago_choice(SOURCE_RANK_ANSWER),
-            *self._katago_choice(SOURCE_KATAGO_ANSWER),
             *game,
-            *sgf,
+            *self._katago_choice(SOURCE_BEST_HUMAN),
         )
 
     def _katago_choice(self, source: str) -> tuple[SequenceChoice, ...]:
@@ -354,7 +359,7 @@ class QuizSession:
         """True while the result of the answer (correct or wrong) is shown: with the answer's own sequences.
 
         Without KataGo there is no sequence after the answer, so the result is shown with the first
-        sequence instead (the one shown right after answering), but not with the game's own moves.
+        sequence instead (the one shown right after answering, which is the game's own moves if there are no others).
         """
         choice = self.choice
         if choice is None or choice.source in ANSWER_SOURCES:

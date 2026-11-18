@@ -4,7 +4,7 @@ from fake_analysis import FakeEngine
 
 from kentogo.common.types import Move, Position
 from kentogo.katago.evaluate import AnalysisModel, EvaluationSettings, Models
-from kentogo.mistakes.problem import Problem, Variation
+from kentogo.mistakes.problem import SOURCE_RANK_ANSWER, Problem, Variation
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import QuizSession
 from kentogo.quiz.standings import FAILED, SequenceStandings
@@ -32,6 +32,7 @@ def make_session(tmp_path, transform=BoardTransform()) -> QuizSession:
     )
     session = QuizSession(problem, ScoringPolicy(), transform)
     session.answer(transform.move(Move.from_gtp("E5", "B"), SIZE))
+    session.add_sequence(Move.from_gtp("E5", "B"), (Move.from_gtp("D4", "W"),), SOURCE_RANK_ANSWER)
     session.step_forward()
     session.step_forward()  # The sequence is shown to its last move.
     return session

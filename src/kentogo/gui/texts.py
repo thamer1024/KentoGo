@@ -21,6 +21,7 @@ from pathlib import Path
 from kentogo.analysis_run import AnalysisSummary, FolderGames
 from kentogo.common.tactics import SURE
 from kentogo.common.types import Move
+from kentogo.fights_today import FightSummary
 from kentogo.katago.estimate import Standing
 from kentogo.katago.move_value import URGENT, MoveValue, kind_of
 from kentogo.mistakes.extract import PUNISH, SHARED
@@ -28,8 +29,9 @@ from kentogo.mistakes.local_fight import KIND_BOUNDARY, LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.notice import Notice
 from kentogo.quiz.collect import SkippedGame
+from kentogo.quiz.fight_follow import END_PASS, FollowEnd
 from kentogo.quiz.fight_judge import FightOutcome
-from kentogo.quiz.fight_lines import AI_CALCULATING, AI_FAILED, LINE_AI, LINES, FightLines
+from kentogo.quiz.fight_lines import AI_CALCULATING, AI_FAILED, LINE_AI, LINE_STRONG, FightLines
 from kentogo.quiz.limit_offer import LimitOffer
 from kentogo.quiz.score import Comparison, compare_with_actual
 from kentogo.quiz.session import AnswerResult
@@ -97,7 +99,7 @@ TEXTS = {
     "source_katrain": "最善手の手順（KaTrain）",
     "source_kentogo": "最善手の手順（KentoGo）",
     "source_rank": "あなたの手の続き（相手は段級位の応手）",
-    "source_katago": "あなたの手の続き（相手は最強の応手）",
+    "source_best": "この局面からの最善手（段級位の人間風AI）",
     "source_game": "実戦の手（棋譜の進行）",
     "explain_katrain": "KaTrainが棋譜に残した、この局面の最善手からの手順です。",
     "explain_kentogo": "KentoGoの解析が棋譜に残した、この局面の最善手からの手順です。",
@@ -105,18 +107,22 @@ TEXTS = {
         "あなたが打った手の後、あなたは自分の級位相当の手、相手は相手の段級位相当の手"
         "（分からないときはあなたと同じ段級位）で進めた手順です。"
     ),
-    "explain_katago": "あなたが打った手の後、あなたは自分の級位相当の手、相手はKataGoの最強の応手で進めた手順です。",
+    "explain_best": (
+        "この局面から、あなたは自分の級位の人が打ちそうな手の中の最善手、"
+        "相手は相手の段級位相当の手（分からないときはあなたと同じ段級位）で進めた手順です。"
+    ),
     "explain_game": "実戦で打った手と、その後に対局で実際に打たれた手です。",
     "switch_sequence": "手順を切り替え（Tab）",
     # Short names of the sequences, for the line that shows the order of Tab.
     "short_katrain": "KaTrainの手",
     "short_kentogo": "KentoGoの手",
     "short_rank": "段級位の応手",
-    "short_katago": "最強応手",
+    "short_best": "この局面の最善手",
     "short_game": "実戦",
     "estimate_button": "地と形勢 (T)",
     "estimate_button_on": "地と形勢：表示中 (T)",
     "estimate_running": "地と形勢を計算しています…",
+    "best_value_running": "最善手の働きを調べています…",
     "estimate_no_engine": "KataGoが使えないため、地と形勢を計算できません。",
     "estimate_failed": "地と形勢を計算できませんでした：{reason}",
     "quick_standing": "形勢（概算）：{leader} {ahead:.1f}目リード",
@@ -200,8 +206,21 @@ TEXTS = {
     "fight_line_played": "あなたの手順",
     "fight_line_ai": "AI同士（人間風）",
     "fight_line_game": "実戦",
-    "fight_line_ai_calculating": "AI同士の手順を計算しています…",
+    "fight_line_strong": "最強のAI（KataGo）",
+    "fight_strong_note": "人間風のAIでは結論が出なかったため、最強のAIで再度打ち直させます。",
+    "fight_strong_calculating": "最強のAIが打っています…（考え中 {seconds}秒）",
+    "fight_strong_failed": "最強のAIの手順を作れませんでした。",
+    "fight_line_ai_calculating": "AI同士の手順を計算しています…（考え中 {seconds}秒）",
     "fight_line_ai_failed": "AI同士の手順を作れませんでした。",
+    "fight_follow_lived": "{color}が生きました。",
+    "fight_follow_killed": "{color}が殺しました。",
+    "fight_follow_territory": "{color}の地になりました。",
+    "fight_follow_lived_killed": "{color}が生きて、{other}を殺しました。",
+    "fight_follow_all": "判定点はすべて{color}のものになりました。",
+    "fight_follow_mixed": "結末が分かれ、はっきりしません（判定点：黒 {black}点、白 {white}点）。",
+    "fight_follow_left": "一段落したので手を抜きました。",
+    "fight_follow_length": "手数が長いので、ここまでにします。",
+    "fight_follow_time": "KataGoへの問い合わせ時間がかかっています。途中で打ち切ります。",
     "fight_score_loss": "最初の局面からの目数の減り：{loss:.1f}目",
     "fights_done": "今日の局地戦の問題は終わりです。",
     "fight_review_settings": "局地戦の問題（生き死に・境界）の復習設定",
@@ -337,6 +356,7 @@ TEXTS = {
     "trend_down": " ↓",
     "no_value": "—",
     "today_summary_title": "今日のまとめ",
+    "fight_summary": "解いた問題 {answered}（正解 {correct}）",
     "today_summary": "解いた問題 {answered}（正解 {correct}）\n取り戻した目数 {recovered} 目\n練習した日 {day} 日目",
     "achievement_stage_cleared": "★ {value} 目の段階をクリアしました",
     "achievement_correct_milestone": "★ 正解が通算 {value} 問になりました",
@@ -1058,21 +1078,47 @@ def fight_outcome_text(outcome: FightOutcome) -> str:
     return f"{verdict}\n{text('fight_score_loss', loss=outcome.score_loss)}"
 
 
-def fight_line_text(lines: FightLines) -> str:
-    """Return the line about the sequence shown after a local fight, and whether the AIs' sequence is coming."""
+def fight_line_text(lines: FightLines, seconds: int = 0) -> str:
+    """Return the line about the sequence shown after a local fight, and whether the AIs' sequence is coming.
+
+    Args:
+        lines: The sequences of the fight.
+        seconds: How long KataGo has been making the sequence (shown while it is coming).
+    """
     shown = text(
         "fight_line",
         name=text(f"fight_line_{lines.name}"),
         index=lines.selected + 1,
-        count=len(LINES),
+        count=lines.count,
         step=lines.step,
         total=lines.length,
     )
     if lines.name == LINE_AI and lines.ai_state == AI_CALCULATING:
-        return f"{shown}\n{text('fight_line_ai_calculating')}"
+        return f"{shown}\n{text('fight_line_ai_calculating', seconds=seconds)}"
     if lines.name == LINE_AI and lines.ai_state == AI_FAILED:
         return f"{shown}\n{text('fight_line_ai_failed')}"
+    if lines.name == LINE_AI and lines.ai_end is not None:
+        return f"{shown}\n{follow_end_text(lines.ai_end)}"
+    if lines.name == LINE_STRONG:
+        return f"{shown}\n{text('fight_strong_note')}\n{_strong_state_text(lines, seconds)}"
     return shown
+
+
+def _strong_state_text(lines: FightLines, seconds: int) -> str:
+    """Return how the sequence of the strongest AI stands: coming (for how long), failed, or why it ended."""
+    if lines.strong_state == AI_CALCULATING:
+        return text("fight_strong_calculating", seconds=seconds)
+    if lines.strong_state == AI_FAILED:
+        return text("fight_strong_failed")
+    return follow_end_text(lines.strong_end)
+
+
+def follow_end_text(end: FollowEnd) -> str:
+    """Return why the sequence of the AIs ended (a pass is told as a side that left the fight)."""
+    key = "left" if end.reason == END_PASS else end.reason
+    color = color_name(end.color) if end.color else ""
+    other = color_name("W" if end.color == "B" else "B") if end.color else ""
+    return text(f"fight_follow_{key}", color=color, other=other, black=end.black, white=end.white)
 
 
 def punishment_hint(problem: Problem) -> str:
@@ -1146,6 +1192,8 @@ def result_text(
     show_verdict: bool = True,
     tactics: tuple[str, ...] = (),
     value: MoveValue | None = None,
+    best_waiting: bool = False,
+    value_running: bool = False,
 ) -> str:
     """Return the text about the result of an answer.
 
@@ -1160,11 +1208,14 @@ def result_text(
             while another sequence than the answer's is shown.
         tactics: What the best move does on the board (see common.tactics), shown once the answer is judged.
         value: What KataGo found that the best move does (see katago.move_value), or None (not read yet).
+        best_waiting: True while the best move (problem.best_move) is being calculated: it is told instead of "不明".
+        value_running: True while KataGo is reading what the best move does: it is told after the other lines.
 
     Returns:
         Whether the answer is correct, the losses, the moves, what the best move does, and the legend of the marks.
     """
-    best = problem.best_move.gtp() if problem.best_move else text("unknown_move")
+    unknown = text("sequence_waiting") if best_waiting else text("unknown_move")
+    best = problem.best_move.gtp() if problem.best_move else unknown
     shown_move, shown_loss = sequence if sequence is not None else (result.answer, None)
     moves = text("moves", answer=result.answer.gtp(), actual=problem.actual_move.gtp(), best=best)
     legend = text("legend")
@@ -1174,7 +1225,8 @@ def result_text(
     losses = _comparison_line(result.comparison, shown_move, sequence is not None, shown_loss)
     verdict = [text("correct") if result.correct else text("wrong")] if show_verdict else []
     what = tactics_text(problem.best_move, tactics, value)
-    return "\n".join([*verdict, losses, moves, *([what] if what else []), legend])
+    running = [text("best_value_running")] if value_running else []
+    return "\n".join([*verdict, losses, moves, *([what] if what else []), *running, legend])
 
 
 def tactics_text(best_move: Move | None, names: tuple[str, ...], value: MoveValue | None = None) -> str:
@@ -1294,6 +1346,11 @@ def limit_offer_text(offer: LimitOffer) -> str:
         current=current,
         proposed=f"{offer.proposed:g}",
     )
+
+
+def fight_summary_text(summary: FightSummary) -> str:
+    """Return the summary of the day for the local fights."""
+    return text("fight_summary", answered=summary.answered, correct=summary.correct)
 
 
 def today_summary_text(summary: TodaySummary) -> str:

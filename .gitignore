@@ -54,3 +54,4 @@ japanese/*
 # Shell scripts of your own. The script that makes the macOS app is kept.
 *.sh
 !packaging/macos/build.sh
+/.claude-work/

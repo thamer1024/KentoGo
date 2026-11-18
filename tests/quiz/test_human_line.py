@@ -3,7 +3,7 @@
 from fake_analysis import FakeEngine
 
 from kentogo.common.types import GTP_COLUMNS, Move, Position, moves_from_gtp
-from kentogo.quiz.human_line import Extension, LineEngines, build_line
+from kentogo.quiz.human_line import Extension, LineEngines, build_line, build_line_from_start
 
 POSITION = Position(19, 6.5, "japanese", (), (Move.from_gtp("Q16", "B"), Move.from_gtp("D4", "W")), "B")
 OWN_LINE = moves_from_gtp(("Q4", "D16", "R17", "C3"), "B")  # The comparison model's own sequence.
@@ -87,46 +87,70 @@ def test_the_users_moves_are_human_like_with_the_users_profile():
     assert ended["line"] == moves_from_gtp(("Q4", "C16", "R16"), "B")
 
 
-class Clock:
-    """A clock that a test moves on."""
-
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self):
-        return self.now
-
-
-def test_the_sequence_is_made_longer_until_the_time_limit():
-    """After its own length, moves are added up to the aimed length, but not after the time limit."""
-    clock, best, human, ended = Clock(), FakeEngine(), FakeEngine(), {}
+def test_the_sequence_is_made_longer_up_to_the_aimed_length():
+    """After its own length, moves are added up to the aimed length, however long it takes."""
+    best, human, ended = FakeEngine(), FakeEngine(), {}
     engines = LineEngines(best, human, 50, 0.04, "rank_10k")
-    build_line(engines, POSITION, OWN_LINE[:2], lambda line: ended.update(line=line), print, Extension(6, 5.0, clock))
-    human_answer(human, 0, "C16")  # The second move: the own length is reached, the time has not passed.
+    build_line(engines, POSITION, OWN_LINE[:2], lambda line: ended.update(line=line), print, Extension(4))
+    human_answer(human, 0, "C16")  # The second move: the own length is reached, the aimed length is not.
+    assert ended == {}
     best.answer(0, score=1.0, pv=("R16",))
-    clock.now = 5.5  # The time limit passes.
+    assert ended == {}
     human_answer(human, 1, "C17")
     assert ended == {"line": moves_from_gtp(("Q4", "C16", "R16", "C17"), "B")}
 
 
-def test_the_own_length_is_made_even_after_the_time_limit():
+def test_the_own_length_is_made_even_when_it_is_longer_than_the_aimed_length():
     """The moves up to KataGo's own length are always made."""
-    clock, best, human, ended = Clock(), FakeEngine(), FakeEngine(), {}
+    best, human, ended = FakeEngine(), FakeEngine(), {}
     engines = LineEngines(best, human, 50, 0.04, "rank_10k")
-    clock.now = 0.0
-    build_line(engines, POSITION, OWN_LINE[:3], lambda line: ended.update(line=line), print, Extension(9, 1.0, clock))
-    clock.now = 10.0
+    build_line(engines, POSITION, OWN_LINE[:3], lambda line: ended.update(line=line), print, Extension(2))
     human_answer(human, 0, "C16")
     assert ended == {}  # Still shorter than its own length.
     best.answer(0, score=1.0, pv=("R16",))
     assert ended == {"line": moves_from_gtp(("Q4", "C16", "R16"), "B")}
 
 
+def test_the_sequence_from_the_problem_position_is_made_up_to_the_aimed_length():
+    """It starts with the user's move (here KataGo's best), and goes on to the aimed length."""
+    best, human, ended = FakeEngine(), FakeEngine(), {}
+    engines = LineEngines(best, human, 50, None, "")
+    build_line_from_start(engines, POSITION, lambda line: ended.update(line=line), print, Extension(3))
+    best.answer(0, score=1.0, pv=("Q4",))
+    best.answer(1, score=1.0, pv=("D16",))
+    assert ended == {}
+    best.answer(2, score=1.0, pv=("R17",))
+    assert ended == {"line": moves_from_gtp(("Q4", "D16", "R17"), "B")}
+
+
+def test_the_readings_have_the_users_time_limit():
+    """The time of a reading is limited by KataGo itself (maxTime), not by a clock of KentoGo."""
+    best, human = FakeEngine(), FakeEngine()
+    engines = LineEngines(best, human, 50, None, "", max_time=8.0)
+    build_line_from_start(engines, POSITION, lambda _line: None, print, Extension(2))
+    assert best.queries[0][0]["overrideSettings"]["maxTime"] == 8.0
+
+
+def test_the_end_of_the_sequence_is_logged_with_its_reason():
+    """The log tells how long the sequence is, how long was aimed at, and why it ended."""
+    best, human, records = FakeEngine(), FakeEngine(), []
+    engines = LineEngines(best, human, 50, None, "", log=records.append)
+    build_line_from_start(engines, POSITION, lambda _line: None, print, Extension(2))
+    best.answer(0, score=1.0, pv=("Q4",))
+    best.answer(1, score=1.0, pv=("D16",))
+    assert records == [{"event": "human_line_end", "moves": 2, "own": 1, "aimed": 2, "reason": "length"}]
+    pass_records = []
+    engines = LineEngines(best, human, 50, None, "", log=pass_records.append)
+    build_line_from_start(engines, POSITION, lambda _line: None, print, Extension(5))
+    best.answer(2, score=1.0, pv=("pass",))
+    assert [(r["reason"], r["moves"]) for r in pass_records] == [("pass", 1)]
+
+
 def test_without_a_profile_the_own_sequence_is_kept_and_made_longer():
     """Without the opponent's rank, KataGo's own sequence is kept, and the moves after it are the best moves."""
     best, human, ended = FakeEngine(), FakeEngine(), {}
     engines = LineEngines(best, human, 50, None, "")
-    build_line(engines, POSITION, OWN_LINE[:2], lambda line: ended.update(line=line), print, Extension(3, 5.0))
+    build_line(engines, POSITION, OWN_LINE[:2], lambda line: ended.update(line=line), print, Extension(3))
     assert best.queries[0][0]["moves"][-2:] == [["B", "Q4"], ["W", "D16"]]
     best.answer(0, score=1.0, pv=("R17",))
     assert human.queries == [] and ended == {"line": moves_from_gtp(("Q4", "D16", "R17"), "B")}

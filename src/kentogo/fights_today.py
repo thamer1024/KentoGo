@@ -30,6 +30,7 @@ from kentogo.repetition.daily import answered_on, left_today
 from kentogo.repetition.modes import REVIEW_ONCE
 from kentogo.repetition.plan import QuizPlan, plan_problems
 from kentogo.repetition.schedule import review_state
+from kentogo.report import answer_day
 from kentogo.review.history import AnswerHistory
 from kentogo.review.review_settings import ReviewSettings
 from kentogo.today import Progress, find_games_folder, open_answers, open_cache, read_recorded_colors
@@ -56,6 +57,39 @@ class TodayFights:
     review_count: int = 0
     session_limit: int | None = None
     notices: list[Notice] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FightSummary:
+    """The summary of the day for the local fights.
+
+    Attributes:
+        answered: How many fights were judged today.
+        correct: How many of them were won.
+    """
+
+    answered: int
+    correct: int
+
+
+def fight_summary(history: AnswerHistory, today: date) -> FightSummary | None:
+    """Return the summary of the fights answered today, or None if there are none."""
+    records = [record for records in history.all_previous().values() for record in records]
+    todays = [record for record in records if record.correct is not None and answer_day(record) == today]
+    if not todays:
+        return None
+    return FightSummary(len(todays), sum(1 for record in todays if record.correct))
+
+
+def load_fight_summary(settings_path: Path, today: date) -> FightSummary | None:
+    """Read the history of the fights and make the summary of the day (for a background thread)."""
+    history = open_answers(fight_history_path(settings_path))
+    if history is None:
+        return None
+    try:
+        return fight_summary(history, today)
+    finally:
+        history.store.close()
 
 
 def fight_history_path(settings_path: Path) -> Path:

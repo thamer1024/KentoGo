@@ -56,7 +56,7 @@ from kentogo.gui.dialogs import show_message
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.flash_label import FlashLabel
 from kentogo.gui.widgets import fitting_label, flat_button, growing_label, in_main_thread, set_background, set_text
-from kentogo.mistakes.problem import SOURCE_KENTOGO, SOURCE_RANK_ANSWER, Problem
+from kentogo.mistakes.problem import SOURCE_BEST_HUMAN, SOURCE_RANK_ANSWER, Problem
 from kentogo.quiz.best_move_value import BestMoveValue
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.quick_areas import QuickAreas
@@ -79,8 +79,8 @@ MIN_PANEL_RATIO = 0.3
 # on two lines, and one empty line.
 INFO_HEIGHT = 86
 # The sequences whose standing is compared with the game after the same number of moves (the points got back):
-# the user's answer with the replies of the opponent's rank, and the best sequence of KentoGo's analysis.
-GAIN_SOURCES = (SOURCE_RANK_ANSWER, SOURCE_KENTOGO)
+# the sequence after the user's answer, and the sequence from the problem position with the best human-like moves.
+GAIN_SOURCES = (SOURCE_RANK_ANSWER, SOURCE_BEST_HUMAN)
 
 
 class QuizScreen(BoxLayout):
@@ -328,6 +328,8 @@ class QuizScreen(BoxLayout):
         standings.prepare(self.judging.models(), changed, failed)
         self.quick_areas.ask(self.judging.engine, self.judging.settings.wide_root_noise, changed)
         self.best_value.ask(self.judging.engine, self.judging.settings, lambda: self._value_came(session))
+        if self.best_value.running:
+            self._show_result(session)  # It tells that KataGo is reading what the best move does.
 
     def _value_came(self, session: QuizSession) -> None:
         """Show the result again with KataGo's findings about the best move, if the problem is still shown."""
@@ -340,10 +342,10 @@ class QuizScreen(BoxLayout):
         if reason:
             set_text(self.result_label, lambda: texts.text("illegal_move", reason=reason))
             return
-        
-        # 修正：盤面の描画を更新する（_refresh() の前に）
+
+        # Redraw the board before _refresh().
         self.board.redraw()
-        
+
         session = self.session
         if session is not None and session.phase == ANSWERED:
             self._show_result(session)
@@ -391,10 +393,11 @@ class QuizScreen(BoxLayout):
         """
         reason = self.run.waiting_reason(session)
         waiting = texts.lazy(reason[0], **reason[1]) if reason is not None else str
-        problem, result = session.shown_problem, session.displayed_result
+        problem, result = self._problem_with_best_move(session), session.displayed_result
         found = session.sequence_loss()
         sequence = (session.shown_move(found[0]), found[1]) if found is not None else None
         tactics = _best_move_tactics(session)
+        best_value = self.best_value
         set_text(
             self.result_label,
             lambda: texts.result_text(
@@ -404,7 +407,9 @@ class QuizScreen(BoxLayout):
                 sequence=sequence,
                 show_verdict=session.shows_verdict,
                 tactics=tactics,
-                value=self.best_value.value if self.best_value is not None else None,
+                value=best_value.value if best_value is not None else None,
+                best_waiting=session.best_move_waiting,
+                value_running=best_value.running if best_value is not None else False,
             ),
         )
 
@@ -534,10 +539,16 @@ class QuizScreen(BoxLayout):
             return []
         return [texts.rough_standing_text(lead, session.replay_step)]
 
+    @staticmethod
+    def _problem_with_best_move(session: QuizSession) -> Problem:
+        """Return the shown problem with the best move that the session shows (see QuizSession.best_move)."""
+        best = session.best_move
+        return replace(session.shown_problem, best_move=session.shown_move(best) if best is not None else None)
+
     def _board_view(self) -> BoardView:
         """Make the view of the board for the current state of the session."""
         session = self.session
-        problem = session.shown_problem
+        problem = self._problem_with_best_move(session)
         marks = {}
         if session.phase == ANSWERED:
             # Moves on the same point get rings inside each other, in this order from the outside.
@@ -557,16 +568,16 @@ class QuizScreen(BoxLayout):
 
 
 def _best_move_tactics(session: QuizSession) -> tuple[str, ...]:
-    """Return what the best move of the problem does on the board (see common.tactics; () if not known)."""
-    problem = session.problem
-    if problem.best_move is None:
+    """Return what the shown best move (see QuizSession.best_move) does on the board (see common.tactics)."""
+    problem, best = session.problem, session.best_move
+    if best is None:
         return ()
     try:
         board = Board.from_position(problem.position)
     except IllegalMoveError:
         return ()
     last = problem.position.moves[-1] if problem.position.moves else None
-    return tactics(board, problem.best_move, last)
+    return tactics(board, best, last)
 
 
 def _on_one_line(first: str, second: str) -> str:

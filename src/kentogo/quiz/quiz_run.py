@@ -8,12 +8,12 @@ This part decides:
 - how an answer is judged: from the SGF file when its loss is there, otherwise with KataGo. While
   KataGo judges the answer, the sequences cannot be switched or played (busy), and the next problem
   waits until KataGo has finished everything for this one (calculating);
-- KataGo's sequence after the answer. In it, the user's moves are those of a human of the user's rank
-  (else of the opponent's rank), and the opponent plays the strongest replies (the main KataGo's best
-  moves, see quiz.human_line). Without any rank, KataGo's own sequence. A sequence with the replies of
-  the opponent's rank (SOURCE_RANK_ANSWER) is made too:
-  both players play as humans of their ranks (the opponent of the user's rank when the opponent's is not
-  known); it is made from KataGo's sequence after the answer, and there is none without any rank;
+- two sequences made with the human-like moves of both players' ranks (see quiz.human_line; the opponent
+  has the user's rank when the opponent's is not known, and without any rank both play KataGo's best moves):
+  the sequence after the answer (SOURCE_RANK_ANSWER, made from KataGo's sequence after the answer), and the
+  sequence from the problem position (SOURCE_BEST_HUMAN), in which the user plays, among the moves that a
+  human of the user's rank may play, the one with the least loss (see natural_move; each choice is logged, see
+  line_log). It is made after the answer is judged;
 - saving each answer once, when its result is known (or without losses when it cannot be judged).
   A problem answered wrong is not asked again the same day: it is reviewed on a later day
   (see repetition.schedule).
@@ -25,7 +25,7 @@ one that runs it in its main thread), and then the listener is told what changed
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from kentogo.common.board import IllegalMoveError
@@ -40,17 +40,21 @@ from kentogo.katago.evaluate import (
     predict_after,
 )
 from kentogo.katago.human_moves import human_profile
-from kentogo.mistakes.problem import SOURCE_KATAGO_ANSWER, SOURCE_RANK_ANSWER, Problem
-from kentogo.quiz.human_line import Extension, LineEngines, PlayerRanks, build_line
+from kentogo.mistakes.problem import SOURCE_BEST_HUMAN, SOURCE_RANK_ANSWER, Problem
+from kentogo.quiz.human_line import Extension, LineEngines, PlayerRanks, build_line, build_line_from_start
 from kentogo.quiz.judge import ScoringPolicy
 from kentogo.quiz.session import ANSWERED, WAITING, QuizSession
 from kentogo.quiz.transform import BoardTransform
 
-# The sequences after the answer are made as long as the longest sequence in the
-# SGF file (KaTrain's), at least MIN_LINE moves, so that their ends can be compared; but no move is added
-# after KataGo's own length once LINE_SECONDS have passed.
+# The sequences made with the human-like moves (after the answer, and from the problem position) are made as long
+# as the game's own moves after the problem (see _aimed_length), at least MIN_LINE and at most MAX_LINE moves, so
+# that the three sequences can be compared at the same move. No time cuts them: each reading of KataGo has the
+# user's max_time (a slow computer reads fewer positions, see human_line.LineEngines.max_time).
 MIN_LINE = 10
-LINE_SECONDS = 5.0
+MAX_LINE = 20
+# The user's moves after the first one in the sequence from the problem position read this many times estimate_visits
+# (the candidates are many, and the choice depends on small differences).
+LATER_VISITS_FACTOR = 2
 
 # Why an answer is not judged yet: the key of a screen text and its values.
 REASON_EVALUATING = "evaluating"
@@ -71,12 +75,14 @@ class Judging:
         engine_problem: Why KataGo is not available ("" if it is available).
         player_ranks: Returns the ranks of the players of a problem's game, for the human-like moves of KataGo's
             sequences (see kentogo.opponent_rank; without a rank, KataGo's own sequences are shown).
+        log_line: Told a record about each human-like move of the user that is chosen (see human_line.LineEngines.log).
     """
 
     engine: AnalysisEngine | None = None
     settings: EvaluationSettings = EvaluationSettings()
     engine_problem: str = ""
     player_ranks: Callable[[Problem], PlayerRanks] = lambda _problem: PlayerRanks()
+    log_line: Callable[[dict], None] = lambda _record: None
 
     def models(self) -> Models:
         """Return the main model, for the territory and the standing."""
@@ -224,9 +230,11 @@ class QuizRun:
         self._waiting.clear()
 
     def _judged_from_the_file(self, session: QuizSession) -> None:
-        """Save an answer judged from the SGF file, and ask KataGo for the sequences after it."""
+        """Save an answer judged from the SGF file, and ask KataGo for the sequences."""
         self.save(session, None)
-        self._predict_after(session, session.result.answer, SOURCE_KATAGO_ANSWER)
+        self._expect_best_line(session)
+        self._predict_after(session, session.result.answer)
+        self._start_best_line(session)
 
     def _evaluate(self, session: QuizSession) -> None:
         """Ask KataGo for the losses of an answer whose loss is not in the SGF file."""
@@ -237,8 +245,8 @@ class QuizRun:
             return
         self._reasons[session] = (REASON_EVALUATING, {})
         self._waiting.add(session)
-        session.expect(SOURCE_KATAGO_ANSWER)
-        self._expect_rank_line(session)
+        session.expect(SOURCE_RANK_ANSWER)
+        self._expect_best_line(session)
         problem = session.problem
         evaluate_moves(
             engine,
@@ -256,7 +264,8 @@ class QuizRun:
             return  # Already saved without losses, because the screen was left.
         self._waiting.discard(session)
         session.apply_evaluation(evaluation.answer_loss, evaluation.actual_loss)  # The sequences come below.
-        self._add_line(session, session.result.answer, evaluation.answer_sequence, SOURCE_KATAGO_ANSWER)
+        self._add_rank_line(session, session.result.answer, evaluation.answer_sequence)
+        self._start_best_line(session)
         self._reasons.pop(session, None)
         self.save(session, self.judging.settings.max_visits)
         self.listener.changed(session)
@@ -266,68 +275,39 @@ class QuizRun:
         if session not in self._waiting:
             return
         self._waiting.discard(session)
-        session.fail(SOURCE_KATAGO_ANSWER)
         session.fail(SOURCE_RANK_ANSWER)
+        session.fail(SOURCE_BEST_HUMAN)  # It is made after the judging, which failed.
         self._reasons[session] = (REASON_FAILED, {"reason": message})
         self.save(session, None)
         self.listener.failed(REASON_FAILED, message)
         self.listener.changed(session)
 
-    def _predict_after(self, session: QuizSession, move: Move, source: str) -> None:
-        """Ask KataGo for the sequence after the answer (SOURCE_KATAGO_ANSWER)."""
+    def _predict_after(self, session: QuizSession, move: Move) -> None:
+        """Ask KataGo for its sequence after the answer, from which the sequence of SOURCE_RANK_ANSWER is made."""
         if self.judging.engine is None:
             return
-        session.expect(source)
-        if source == SOURCE_KATAGO_ANSWER:
-            self._expect_rank_line(session)
+        session.expect(SOURCE_RANK_ANSWER)
         predict_after(
             self.judging.engine,
             session.problem.position,
             move,
             self.judging.settings,
-            on_done=self.in_main(lambda sequence: self._line_came(session, move, sequence, source)),
-            on_error=self.in_main(lambda _message: self._line_came(session, move, (), source)),
+            on_done=self.in_main(lambda sequence: self._rank_line_came(session, move, sequence)),
+            on_error=self.in_main(lambda _message: self._rank_line_came(session, move, ())),
         )
 
-    def _line_came(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str) -> None:
-        """Add KataGo's sequence after a move (see _add_line), and tell the screen."""
-        self._add_line(session, move, sequence, source)
+    def _rank_line_came(self, session: QuizSession, move: Move, sequence: tuple[Move, ...]) -> None:
+        """Make the sequence after the answer from KataGo's sequence, and tell the screen."""
+        self._add_rank_line(session, move, sequence)
         self.listener.changed(session)
-
-    def _add_line(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str) -> None:
-        """Add the sequence after a move, with the user's human-like moves and the strongest replies when it can.
-
-        KataGo's own sequence is added at once (without telling the screen); the sequence made with the
-        user's human-like moves (see human_line) is added when it is made, and the screen is told then.
-        After the answer, the sequence with the replies of the opponent's rank is made too (see _add_rank_line).
-        """
-        if source == SOURCE_KATAGO_ANSWER:
-            self._add_rank_line(session, move, sequence)
-        engines = self._own_line_engines(session.problem)
-        if engines is None or not sequence:
-            self._keep_line(session, move, sequence, source)
-            return
-        session.expect(source)  # Still calculated (KataGo's own sequence is replaced).
-        build_line(
-            engines,
-            session.problem.position,
-            (move, *sequence),
-            on_done=self.in_main(lambda line: self._predicted(session, move, line[1:], source)),
-            on_error=self.in_main(lambda message: self._human_line_failed(session, move, sequence, source, message)),
-            extension=Extension(_aimed_length(session.problem), LINE_SECONDS),
-        )
-
-    def _expect_rank_line(self, session: QuizSession) -> None:
-        """Tell that the sequence with the replies of the opponent's rank is coming, when it can be made."""
-        if self._rank_line_engines(session.problem) is not None:
-            session.expect(SOURCE_RANK_ANSWER)
 
     def _add_rank_line(self, session: QuizSession, move: Move, sequence: tuple[Move, ...]) -> None:
         """Make the sequence after the answer in which both players play as humans of their ranks.
 
-        It starts from KataGo's sequence after the answer; without it (KataGo failed), it fails too.
+        It starts from KataGo's sequence after the answer (its length is the shortest length); without it
+        (KataGo failed), it fails too. When the human-like moves cannot be made, KataGo's own sequence is shown.
         """
-        engines = self._rank_line_engines(session.problem)
+        engines = self._line_engines(session.problem, 0, "rank")
         if engines is None:
             return
         if not sequence:
@@ -339,80 +319,117 @@ class QuizRun:
             session.problem.position,
             (move, *sequence),
             on_done=self.in_main(lambda line: self._predicted(session, move, line[1:], SOURCE_RANK_ANSWER)),
-            on_error=self.in_main(lambda _message: self._predicted(session, move, (), SOURCE_RANK_ANSWER)),
-            extension=Extension(_aimed_length(session.problem), LINE_SECONDS),
+            on_error=self.in_main(lambda message: self._human_line_failed(session, move, sequence, message)),
+            extension=Extension(_aimed_length(session.problem)),
         )
 
-    def _rank_line_engines(self, problem: Problem) -> LineEngines | None:
-        """Return what the sequence with the replies of the opponent's rank is made with (None: there is none)."""
-        judging = self.judging
-        return _rank_replies(judging.player_ranks(problem), judging.engine, judging.settings)
+    def _expect_best_line(self, session: QuizSession) -> None:
+        """Tell that the best move is coming as soon as the answer is taken, so that it is shown as calculated.
 
-    def _own_line_engines(self, problem: Problem) -> LineEngines | None:
-        """Return what the sequence after the answer with the strongest replies is made with (None: KataGo's own).
+        Otherwise nothing is known about it before the judging has ended, and the screen could not tell that.
+        """
+        if self.judging.engine is not None:
+            session.expect(SOURCE_BEST_HUMAN)
 
-        The user plays as a human of the user's rank (the opponent's when the user's is not known), and the
-        opponent plays the strongest replies (see _strongest_replies).
+    def _start_best_line(self, session: QuizSession) -> None:
+        """Make the sequence from the problem position in which the user plays the best human-like moves."""
+        engines = self._best_line_engines(session.problem)
+        if engines is None:
+            return
+        session.expect(SOURCE_BEST_HUMAN)
+        build_line_from_start(
+            engines,
+            session.problem.position,
+            on_done=self.in_main(lambda line: self._best_line_came(session, line)),
+            on_error=self.in_main(lambda _message: self._best_line_came(session, ())),
+            extension=Extension(_aimed_length(session.problem)),
+        )
+
+    def _best_line_came(self, session: QuizSession, line: tuple[Move, ...]) -> None:
+        """Add the sequence from the problem position (or mark it as failed), and tell the screen."""
+        if line:
+            session.add_sequence(line[0], line[1:], SOURCE_BEST_HUMAN)
+        else:
+            session.fail(SOURCE_BEST_HUMAN)
+        self.listener.changed(session)
+
+    def _line_engines(self, problem: Problem, my_visits: int, line: str) -> LineEngines | None:
+        """Return what a sequence with the human-like moves of both players is made with (None: no KataGo).
+
+        What it tells the log (the choices of the user's moves, the end of the sequence) has the problem's ID and
+        the name of the sequence ("rank": after the answer, "best": from the problem position).
         """
         judging = self.judging
-        return _strongest_replies(judging.player_ranks(problem), judging.engine, judging.settings)
+        engines = _human_replies(judging.player_ranks(problem), judging.engine, judging.settings, my_visits)
+        if engines is None:
+            return None
+        log_line = judging.log_line
+        return replace(engines, log=lambda record: log_line({"problem": problem.problem_id, "line": line, **record}))
 
-    def _human_line_failed(
-        self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str, message: str
-    ) -> None:
+    def _best_line_engines(self, problem: Problem) -> LineEngines | None:
+        """Return what the sequence from the problem position is made with (None: no KataGo).
+
+        The user's moves are natural and strong (see natural_move): KataGo reads the candidates with
+        LATER_VISITS_FACTOR times estimate_visits, and with max_visits for the first move, which decides the
+        problem. Each choice is told to the log.
+        """
+        settings = self.judging.settings
+        engines = self._line_engines(problem, settings.estimate_visits * LATER_VISITS_FACTOR, "best")
+        return replace(engines, first_visits=settings.max_visits) if engines is not None else None
+
+    def _human_line_failed(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], message: str) -> None:
         """Show KataGo's own sequence, and tell why the human-like replies could not be used (if still asked)."""
-        self._predicted(session, move, sequence, source)
+        self._predicted(session, move, sequence, SOURCE_RANK_ANSWER)
         if session is self.session:
             self.listener.failed("notice_human_line_failed", message)
 
     def _predicted(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str) -> None:
-        """Add KataGo's sequence after a move, or mark it as failed, and tell the screen."""
-        self._keep_line(session, move, sequence, source)
-        self.listener.changed(session)
-
-    def _keep_line(self, session: QuizSession, move: Move, sequence: tuple[Move, ...], source: str) -> None:
-        """Add KataGo's sequence after a move, or mark it as failed."""
+        """Add a sequence after a move, or mark it as failed, and tell the screen."""
         if sequence:
             session.add_sequence(move, sequence, source)
         else:
             session.fail(source)
+        self.listener.changed(session)
 
 
-def _strongest_replies(
-    ranks: PlayerRanks, engine: AnalysisEngine | None, settings: EvaluationSettings
-) -> LineEngines | None:
-    """Return what a sequence with the user's human-like moves and the strongest replies is made with.
-
-    The opponent plays the main KataGo's best moves, reading estimate_visits for each (a short reading,
-    so that a sequence is made in a few seconds). None without a rank or without the main KataGo.
-
-    Args:
-        ranks: The ranks of the players (the user's, else the opponent's, is the user's human-like rank).
-        engine: The main KataGo (it has the human-like model).
-        settings: The settings of the main KataGo.
-    """
-    my_profile = human_profile(ranks.mine or ranks.theirs)
-    if not my_profile or engine is None:
-        return None
-    return LineEngines(engine, engine, settings.estimate_visits, settings.wide_root_noise, "", my_profile)
-
-
-def _rank_replies(
-    ranks: PlayerRanks, engine: AnalysisEngine | None, settings: EvaluationSettings
+def _human_replies(
+    ranks: PlayerRanks, engine: AnalysisEngine | None, settings: EvaluationSettings, my_visits: int
 ) -> LineEngines | None:
     """Return what a sequence with the human-like moves of both players' ranks is made with.
 
     The user plays as a human of the user's rank (the opponent's when it is not known), and the opponent as
-    a human of the opponent's rank (the user's when it is not known). None without a rank or without the main
-    KataGo.
+    a human of the opponent's rank (the user's when it is not known). Without any rank, both play the main
+    KataGo's best moves, reading estimate_visits for each (a short reading, so that a sequence is made in a
+    few seconds). None without the main KataGo.
+
+    Args:
+        ranks: The ranks of the players.
+        engine: The main KataGo (it has the human-like model).
+        settings: The settings of the main KataGo.
+        my_visits: 0 for the user's most likely move; more for the best of the moves that a human of the user's
+            rank may play, with this many visits (see LineEngines.my_visits).
     """
+    if engine is None:
+        return None
     my_profile = human_profile(ranks.mine or ranks.theirs)
     their_profile = human_profile(ranks.theirs or ranks.mine)
-    if not my_profile or not their_profile or engine is None:
-        return None
-    return LineEngines(engine, engine, settings.estimate_visits, settings.wide_root_noise, their_profile, my_profile)
+    return LineEngines(
+        engine,
+        engine,
+        settings.estimate_visits,
+        settings.wide_root_noise,
+        their_profile,
+        my_profile,
+        my_visits,
+        max_time=settings.max_time,
+    )
 
 
 def _aimed_length(problem: Problem) -> int:
-    """Return the length aimed at for the sequences made with the user's human-like moves (see MIN_LINE)."""
-    return max([MIN_LINE, *(len(variation.moves) for variation in problem.variations)])
+    """Return the length aimed at for the sequences made with the human-like moves.
+
+    It is the length of the game's own moves after the problem (the longer ones of the SGF file's sequences, and
+    MIN_LINE, when they are longer), at most MAX_LINE, so that the sequences can be compared at the same move.
+    """
+    longest = max([MIN_LINE, len(problem.game_line), *(len(variation.moves) for variation in problem.variations)])
+    return min(longest, MAX_LINE)

@@ -15,7 +15,7 @@ from kentogo.common.types import Move, Position
 SOURCE_KATRAIN = "katrain"  # KaTrain's best sequence, read from the game file (see extract).
 SOURCE_KENTOGO = "kentogo"  # The best sequence of KentoGo's analysis, read from the game file (see extract).
 SOURCE_RANK_ANSWER = "rank"  # The sequence after the answer with human-like moves of both players' ranks.
-SOURCE_KATAGO_ANSWER = "katago"  # KataGo's sequence after the answer.
+SOURCE_BEST_HUMAN = "best"  # From the problem position: the best of the human-like moves of both players' ranks.
 SOURCE_GAME = "game"  # The game move and the moves played after it, as the game record has them.
 
 

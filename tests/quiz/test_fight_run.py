@@ -1,8 +1,10 @@
 """Tests for kentogo.quiz.fight_run (a local fight played against a fake KataGo)."""
 
+from dataclasses import replace
+
 from test_fight_judge import fight
 
-from kentogo.common.types import Move
+from kentogo.common.types import Move, Position
 from kentogo.quiz.fight_judge import (
     OPPONENT_RANK,
     OUTCOME_LOST,
@@ -130,7 +132,7 @@ def ai_line(engine, **play) -> list:
     lines = []
     fight_run.ask_ai_line(
         lambda _line: None,
-        lambda line: lines.append([move.gtp() for move in line]),
+        lambda line, _end: lines.append([move.gtp() for move in line]),
         lambda message: lines.append(message),
     )
     return lines
@@ -146,6 +148,74 @@ def test_the_sequence_of_the_ais_goes_on_until_the_place_is_settled():
     ]
     assert profiles == ["rank_15k", "rank_12k"]
     assert len(engine.queries) == 5  # The start, then a move and the areas, twice.
+
+
+def ladder_run(engine, **play) -> tuple[FightRun, list]:
+    """A fight in which white's stone at A1 (a setup stone) is to be captured by black, who plays first."""
+    start = Position(9, 6.5, "japanese", (Move("W", (0, 0)),), (Move("W", (4, 4)),), "B")
+    fight_run = FightRun(engine, replace(fight(), position=start), FightPlay(500, 0.04, **play))
+    events = []
+    fight_run.start(lambda: events.append("ready"), lambda message: events.append(("error", message)))
+    return fight_run, events
+
+
+LADDER = {0: (1.0, 0.6, "B1"), 1: (1.0, 0.9, "C3"), 2: (1.0, 0.9, "D3"), 3: (1.0, 0.9, "J9")}
+
+
+def test_a_ladder_is_played_to_the_end():
+    """Black's B1 ataris A1 and the areas are settled at once, but the stone is on the board: the fight goes on.
+
+    White answers among the moves around the stone; the fight is judged when black has captured it (A2).
+    """
+    engine = FakeEngine(LADDER)
+    fight_run, events = ladder_run(engine)
+    user(fight_run, events, "B1")
+    assert events[-1] == ("reply", "C3") and fight_run.outcome is None
+    [restricted] = [query["allowMoves"] for query in engine.queries if "allowMoves" in query]
+    assert restricted == [{"player": "W", "moves": ["A2", "A3", "B2"], "untilDepth": 1}]
+    user(fight_run, events, "A2")
+    assert events[-1][:2] == ("end", OUTCOME_WON)
+
+
+def test_a_human_like_opponent_answers_a_chase_with_its_likeliest_local_move():
+    """The fake human-like move is B2, which is one of the moves around A1."""
+    fight_run, events = ladder_run(FakeEngine(LADDER), opponent=OPPONENT_RANK, profile="rank_15k")
+    user(fight_run, events, "B1")
+    assert events[-1] == ("reply", "B2")
+
+
+def test_a_broken_chase_is_judged_as_usual():
+    """After black's A3 the areas give the stones to white: the chase is broken, and the settled place is lost."""
+    engine = FakeEngine({**LADDER, 3: (1.0, -0.9, "J9")})
+    fight_run, events = ladder_run(engine)
+    user(fight_run, events, "B1")
+    user(fight_run, events, "A3")
+    assert events[-1][:2] == ("end", OUTCOME_LOST)
+
+
+def test_a_ladder_is_judged_at_the_most_moves_of_the_user(monkeypatch):
+    monkeypatch.setattr("kentogo.quiz.fight_run.LADDER_USER_MOVES", 1)
+    fight_run, events = ladder_run(FakeEngine(LADDER))
+    user(fight_run, events, "B1")
+    assert events[-1][:2] == ("end", OUTCOME_WON)
+
+
+def strong_line(engine) -> list:
+    fight_run, _events = run(engine)
+    results = []
+    fight_run.ask_strong_line(
+        lambda _line: None,
+        lambda line, end: results.append(([move.gtp() for move in line], end.reason)),
+        lambda message: results.append(message),
+    )
+    return results
+
+
+def test_the_sequence_of_the_strongest_ai_plays_katagos_best_moves():
+    """Both sides play KataGo's best moves (B2, C2) until the stones are settled; no human-like query is made."""
+    engine = FakeEngine({0: (1.0, 0.6, "B2"), 1: (1.0, 0.6, "C2"), 2: (1.0, 0.9, "J9")})
+    assert strong_line(engine) == [(["B2", "C2"], "territory")]
+    assert all("humanSLProfile" not in query["overrideSettings"] for query in engine.queries)
 
 
 class BrokenEngine:

@@ -36,7 +36,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.modalview import ModalView
 
 from kentogo.fight_setup import FightTools
-from kentogo.fights_today import TodayFights
+from kentogo.fights_today import FightSummary, TodayFights
 from kentogo.gui import texts, theme
 from kentogo.gui.api_screen import ApiScreen
 from kentogo.gui.batch_screen import BatchScreen
@@ -55,6 +55,7 @@ from kentogo.gui.viewer_screen import ViewerScreen
 from kentogo.gui.widgets import in_main_thread, relabel_all, set_text, wrapping_label
 from kentogo.katago.evaluate import Models
 from kentogo.katago.startup import Loading
+from kentogo.line_log import log_line
 from kentogo.mistakes.problem import Problem
 from kentogo.seichi.seichi_plan import SeichiGame, SeichiQueue, queue_from_history
 from kentogo.today import TodayProblems
@@ -295,7 +296,7 @@ class KentoGoApp(App):
             today.problems,
             setup.policy,
             setup.choose_transform,
-            replace(engines.judging(), player_ranks=setup.player_ranks),
+            replace(engines.judging(), player_ranks=setup.player_ranks, log_line=log_line),
             texts.notice_text(today.message),
             setup.history,
             on_back=self._leave_quiz,
@@ -347,6 +348,28 @@ class KentoGoApp(App):
             self.fights.close()
             self.fights = None
         self.show_top()
+        self._show_fight_summary()
+
+    def _show_fight_summary(self) -> None:
+        """Show the summary of the fights answered today (made in the background), if there are any."""
+        summary_of = self.setup.fight_summary
+
+        def work() -> None:
+            """Make the summary in the background thread."""
+            try:
+                summary = summary_of()
+            except Exception as error:  # The summary is only extra: the fights have saved their answers.
+                print(f"cannot make the summary of the fights: {error}", file=sys.stderr)
+                summary = None
+            in_main_thread(self._fight_summary_made)(summary)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fight_summary_made(self, summary: FightSummary | None) -> None:
+        """Show the summary of the fights (nothing when none was answered today)."""
+        if summary is None:
+            return
+        show_message(texts.text("today_summary_title"), texts.fight_summary_text(summary))
 
     def change_language(self, language: str) -> None:
         """Show all screens in another language at once, and keep the language for the next start.

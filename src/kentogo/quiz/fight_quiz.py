@@ -23,8 +23,9 @@ from typing import Protocol
 from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.local_fight import LocalFight
+from kentogo.quiz.fight_follow import FollowEnd, is_inconclusive
 from kentogo.quiz.fight_judge import FightOutcome
-from kentogo.quiz.fight_lines import LINE_AI, FightLines
+from kentogo.quiz.fight_lines import AI_CALCULATING, LINE_AI, LINE_STRONG, FightLines
 from kentogo.quiz.fight_run import FightRun
 
 PHASE_STARTING = "starting"
@@ -126,12 +127,15 @@ class FightQuiz:
     def follow(self) -> None:
         """Show the sequence of the AIs from the fight's position (only after the fight has ended).
 
-        KataGo makes it at the first call, move by move: the moves made so far are shown meanwhile.
+        KataGo makes it at the first call, move by move: the moves made so far are shown meanwhile. Once the strongest
+        AI has played it again (see _ask_strong_line), each call shows the other of the two sequences of the AIs.
         """
         run, lines = self.run, self.lines
         if run is None or lines is None:
             return
-        if lines.name != LINE_AI:
+        if lines.name == LINE_AI and lines.strong_asked:
+            lines.show_strong_line()
+        elif lines.name != LINE_AI:
             lines.show_ai_line()
         if not self._ai_asked:
             self._ai_asked = True
@@ -141,6 +145,16 @@ class FightQuiz:
                 self._for(run, self._follow_failed),
             )
         self._listener.changed()
+
+    @property
+    def calculating_line(self) -> str | None:
+        """Return the sequence that KataGo is making now (LINE_AI or LINE_STRONG), or None."""
+        lines = self.lines
+        if lines is None:
+            return None
+        if lines.strong_asked and lines.strong_state == AI_CALCULATING:
+            return LINE_STRONG
+        return LINE_AI if self._ai_asked and lines.ai_state == AI_CALCULATING else None
 
     def step_forward(self) -> None:
         """Show one move more of the sequence shown (only after the fight has ended)."""
@@ -193,14 +207,42 @@ class FightQuiz:
         self.lines.update_ai_line(line)
         self._listener.changed()
 
-    def _follow_done(self, line: tuple[Move, ...]) -> None:
-        """Keep the whole sequence of the AIs."""
-        self.lines.set_ai_line(line)
+    def _follow_done(self, line: tuple[Move, ...], end: FollowEnd) -> None:
+        """Keep the whole sequence of the AIs and why it ended; if it did not conclude, the strongest AI plays again."""
+        self.lines.set_ai_line(line, end)
+        if is_inconclusive(end):
+            self._ask_strong_line()
         self._listener.changed()
 
     def _follow_failed(self, _message: str) -> None:
-        """Tell that the sequence of the AIs could not be made (the fight's answer is kept)."""
+        """Tell that the sequence of the AIs could not be made (the fight's answer is kept); try the strongest AI."""
         self.lines.ai_failed()
+        self._ask_strong_line()
+        self._listener.changed()
+
+    def _ask_strong_line(self) -> None:
+        """Show the sequence of the strongest AI from its first move, and have KataGo make it (once)."""
+        run, lines = self.run, self.lines
+        if lines.strong_asked:
+            return
+        lines.start_strong_line()
+        run.ask_strong_line(
+            self._for(run, self._strong_moved), self._for(run, self._strong_done), self._for(run, self._strong_failed)
+        )
+
+    def _strong_moved(self, line: tuple[Move, ...]) -> None:
+        """Show the moves of the sequence of the strongest AI made so far."""
+        self.lines.update_strong_line(line)
+        self._listener.changed()
+
+    def _strong_done(self, line: tuple[Move, ...], end: FollowEnd) -> None:
+        """Keep the whole sequence of the strongest AI and why it ended."""
+        self.lines.set_strong_line(line, end)
+        self._listener.changed()
+
+    def _strong_failed(self, _message: str) -> None:
+        """Tell that the sequence of the strongest AI could not be made."""
+        self.lines.strong_failed()
         self._listener.changed()
 
     def _failed(self, message: str) -> None:

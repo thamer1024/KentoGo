@@ -9,7 +9,7 @@ The sequence of the AIs shown after a fight is always human-like (see quiz.fight
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from kentogo.fight_answers import save_fight_answer
 from kentogo.katago.evaluate import AnalysisEngine, EvaluationSettings
@@ -61,6 +61,7 @@ def fight_tools(
     settings: FightSettings,
     history: AnswerHistory | None,
     ranks: Callable[[LocalFight], PlayerRanks],
+    log_line: Callable[[dict], None] = lambda _record: None,
 ) -> FightTools:
     """Make the tools of the screen of the local fights.
 
@@ -70,10 +71,11 @@ def fight_tools(
         settings: How the local fights are played.
         history: The history of the fights, or None.
         ranks: Returns the ranks of the players of a fight's game.
+        log_line: Told a record about how the sequence of the AIs ended (see line_log.log_line).
     """
 
     def make_run(fight: LocalFight) -> FightRun:
-        return FightRun(engine, fight, fight_play(settings, evaluation, ranks(fight)))
+        return FightRun(engine, fight, replace(fight_play(settings, evaluation, ranks(fight)), log_line=log_line))
 
     def save(run: FightRun) -> None:
         if history is not None:

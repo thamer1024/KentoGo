@@ -26,8 +26,8 @@ from kentogo.katago.queries import ownership_map, position_query, root_score, wi
 
 Point = tuple[int, int]
 SURE_OWNER = 0.5  # An owner of a point at least this sure (from -1 to 1) owns it.
-URGENT = "urgent"  # 急場
-BIG = "big"  # 大場
+URGENT = "urgent"  # A move that changes the owners of stones (急場).
+BIG = "big"  # A move that changes the owners of empty points, a big point (大場).
 URGENT_SHARE = 0.5  # A move whose change of the owners is at least this much on stones is urgent.
 
 

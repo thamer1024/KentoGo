@@ -41,6 +41,15 @@ from kentogo.katago.move_value import MoveValue
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.mistakes.problem import Problem
 from kentogo.quiz.collect import SkippedGame
+from kentogo.quiz.fight_follow import (
+    END_ALL,
+    END_KILLED,
+    END_LIVED_KILLED,
+    END_MIXED,
+    END_PASS,
+    END_TIME,
+    FollowEnd,
+)
 from kentogo.quiz.fight_judge import FightOutcome
 from kentogo.quiz.fight_lines import FightLines
 from kentogo.quiz.score import compare_with_actual
@@ -65,6 +74,7 @@ def test_all_texts_can_be_filled():
         "game": "g",
         "move_number": 1,
         "color": "黒",
+        "other": "白",
         "index": 1,
         "total": 2,
         "files": 2,
@@ -176,16 +186,16 @@ def test_color_name():
 def test_sequence_name():
     """Known sources have names, and an unknown source is shown as it is."""
     assert sequence_name("katrain") == "最善手の手順（KaTrain）"
-    assert sequence_name("katago") == "あなたの手の続き（相手は最強の応手）"
+    assert sequence_name("best") == "この局面からの最善手（段級位の人間風AI）"
     assert sequence_name("rank") == "あなたの手の続き（相手は段級位の応手）"
     assert sequence_name("other") == "other"
 
 
 def test_sequence_text():
     """The shown sequence has its name, an explanation, which of the sequences it is, and the move count."""
-    shown = sequence_text("katago", index=2, count=3, step=4, total=12)
-    assert "表示中：あなたの手の続き（相手は最強の応手）" in shown
-    assert "あなたが打った手の後" in shown
+    shown = sequence_text("best", index=2, count=3, step=4, total=12)
+    assert "表示中：この局面からの最善手（段級位の人間風AI）" in shown
+    assert "この局面から、あなたは" in shown
     assert "手順 2 / 3" in shown and "4 / 12 手目" in shown
 
 
@@ -216,10 +226,40 @@ def test_fight_line_text():
     assert "あなたの手順" in fight_line_text(lines) and "2 / 2 手目" in fight_line_text(lines)
     lines.next_line()
     assert "AI同士" in fight_line_text(lines) and "計算しています" in fight_line_text(lines)
+    assert "考え中 7秒" in fight_line_text(lines, 7)
     lines.ai_failed()
     assert "作れませんでした" in fight_line_text(lines)
     lines.next_line()
     assert "実戦" in fight_line_text(lines) and "手順 3 / 3" in fight_line_text(lines)
+
+
+def test_fight_line_text_tells_why_the_sequence_of_the_ais_ended():
+    lines = FightLines((), ())
+    lines.next_line()
+    for end, words in (
+        (FollowEnd(END_KILLED, "W"), "白が殺しました"),
+        (FollowEnd(END_MIXED, None, 5, 3), "黒 5点、白 3点"),
+        (FollowEnd(END_LIVED_KILLED, "W"), "白が生きて、黒を殺しました"),
+        (FollowEnd(END_ALL, "B"), "判定点はすべて黒のものになりました"),
+        (FollowEnd(END_PASS), "手を抜きました"),
+        (FollowEnd(END_TIME), "問い合わせ時間がかかっています"),
+    ):
+        lines.set_ai_line((), end)
+        assert words in fight_line_text(lines)
+
+
+def test_fight_line_text_of_the_strongest_ai():
+    lines = FightLines((), ())
+    assert "手順 1 / 3" in fight_line_text(lines)
+    lines.start_strong_line()
+    shown = fight_line_text(lines)
+    assert "最強のAI" in shown and "手順 4 / 4" in shown
+    assert "再度打ち直させます" in shown and "最強のAIが打っています" in shown
+    assert "考え中 0秒" in shown and "考え中 12秒" in fight_line_text(lines, 12)  # The seconds of the calculation.
+    lines.set_strong_line((Move.from_gtp("A2", "B"),), FollowEnd(END_KILLED, "B"))
+    assert "黒が殺しました" in fight_line_text(lines)
+    lines.strong_failed()
+    assert "作れませんでした" in fight_line_text(lines)
 
 
 def test_result_text_correct():
@@ -303,18 +343,18 @@ def test_skipped_games_text():
 
 def test_sequence_order_text():
     """The order line names every sequence, marks the shown one, and tells which are still calculated."""
-    line = sequence_order_text([("rank", "waiting"), ("katrain", ""), ("katago", "failed")], 1, 12)
+    line = sequence_order_text([("rank", "waiting"), ("game", ""), ("best", "failed")], 1, 12)
     assert line.startswith("Tabで切替：段級位の応手(考え中 12秒) → ")
-    assert "▶KaTrainの手" in line and "最強応手(失敗)" in line
-    order = sequence_order_text([("rank", ""), ("katago", ""), ("game", ""), ("katrain", "")], 0)
-    assert order.endswith("段級位の応手[/b][/color] → 最強応手 → 実戦 → KaTrainの手")
-    kentogo = sequence_order_text([("katago", ""), ("kentogo", "")], 0)
+    assert "▶実戦" in line and "この局面の最善手(失敗)" in line
+    order = sequence_order_text([("rank", ""), ("game", ""), ("best", "")], 0)
+    assert order.endswith("段級位の応手[/b][/color] → 実戦 → この局面の最善手")
+    kentogo = sequence_order_text([("best", ""), ("kentogo", "")], 0)
     assert kentogo.endswith("→ KentoGoの手") and sequence_name("kentogo") == "最善手の手順（KentoGo）"
 
 
 def test_short_sequence_name():
     """The short name shown for a moment when the sequence is chosen with Tab."""
-    assert (short_sequence_name("rank"), short_sequence_name("katago")) == ("段級位の応手", "最強応手")
+    assert (short_sequence_name("rank"), short_sequence_name("best")) == ("段級位の応手", "この局面の最善手")
     assert short_sequence_name("other") == "other"
 
 
@@ -477,6 +517,24 @@ def test_what_the_best_move_does_is_shown_after_the_answer_is_judged():
     assert lines[lines.index("打った手 Q14　実戦 H1　最善 Q14") + 1] == "最善 Q14：取り"
     waiting = AnswerResult(Move.from_gtp("Q14", "B"), None, None, None)
     assert "取り" not in result_text(PROBLEM, waiting, "判定中", tactics=("capture",))
+
+
+def test_the_best_move_that_is_being_calculated_is_told_as_thinking():
+    """While KataGo calculates the best move, "KataGoが考えています" is told in place of the move (or "不明")."""
+    judged = AnswerResult(Move.from_gtp("Q14", "B"), 0.0, compare_with_actual(7.5, 0.0), False)
+    nothing = replace(PROBLEM, best_move=None)
+    assert "最善 不明" in result_text(nothing, judged)
+    assert "最善 KataGoが考えています…" in result_text(nothing, judged, best_waiting=True)
+    waiting = AnswerResult(Move.from_gtp("Q14", "B"), None, None, None)
+    assert "最善 KataGoが考えています…" in result_text(nothing, waiting, "判定中", best_waiting=True)
+
+
+def test_the_reading_of_what_the_best_move_does_is_told_after_the_other_lines():
+    """While KataGo reads it, the line says so, before the legend; not when it is not reading."""
+    judged = AnswerResult(Move.from_gtp("Q14", "B"), 0.0, compare_with_actual(7.5, 0.0), False)
+    lines = result_text(PROBLEM, judged, tactics=("capture",), value_running=True).splitlines()
+    assert lines[-2] == "最善手の働きを調べています…" and lines[-1] == text("legend")
+    assert "調べています" not in result_text(PROBLEM, judged, tactics=("capture",))
 
 
 def test_katagos_findings_about_the_best_move():

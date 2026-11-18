@@ -131,6 +131,11 @@ def with_ownership(query: dict) -> dict:
     return {**query, "includeOwnership": True}
 
 
+def with_allowed_moves(query: dict, color: str, points: list[str]) -> dict:
+    """Return a query that lets color choose its move only among the points (GTP) at the root ("allowMoves")."""
+    return {**query, "allowMoves": [{"player": color, "moves": points, "untilDepth": 1}]}
+
+
 def ownership_map(answer: dict, size: int) -> dict[tuple[int, int], float]:
     """Return the owner of each point from an answer with ownership, from black's side (1: black, -1: white).
 

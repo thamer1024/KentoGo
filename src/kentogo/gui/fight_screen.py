@@ -8,15 +8,18 @@ KataGo reads, and how the fight ended. The next problem can always be asked (Ent
 fight left are not used. The fights are not rotated and their colors are not swapped.
 
 After the fight has ended, Tab (or the button) shows the sequence in which the AIs play from the fight's position
-until the place is settled (see quiz.fight_follow). The right arrow shows one move more and the left arrow one
-move less. No stone can be put on the board then.
+until the place is settled (see quiz.fight_follow). When that sequence did not conclude, the strongest AI plays it
+again, and Tab then goes to and fro between the two sequences. The right arrow shows one move more and the left
+arrow one move less. No stone can be put on the board then.
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -30,7 +33,7 @@ from kentogo.gui.board_widget import BoardWidget
 from kentogo.gui.file_name_row import FileNameRow
 from kentogo.gui.widgets import fitting_label, flat_button, in_main_thread, set_background, set_text
 from kentogo.mistakes.local_fight import LocalFight
-from kentogo.quiz.fight_lines import LINE_AI
+from kentogo.quiz.fight_lines import LINE_AI, LINE_STRONG
 from kentogo.quiz.fight_quiz import PHASE_ENDED, PHASE_ERROR, PHASE_STARTING, PHASE_TURN, FightQuiz
 from kentogo.quiz.fight_run import FightRun
 
@@ -68,6 +71,9 @@ class FightScreen(BoxLayout):
         """
         super().__init__(orientation="horizontal", **kwargs)
         self.quiz = FightQuiz(fights, make_run, save, self, in_main_thread)
+        self._busy_line: str | None = None  # The sequence that KataGo is making (see _update_timer).
+        self._busy_since: float | None = None  # When KataGo started making it.
+        self._busy_timer = None  # Shows the seconds while KataGo is making it.
         self._build(on_back)
         Window.bind(on_key_down=self._on_key_down)
         self.quiz.start(0)
@@ -113,6 +119,7 @@ class FightScreen(BoxLayout):
             self.file_row.set_name("")
             self._next_button.disabled = True
             self._follow_button.disabled = True
+            self._update_timer()
             return
         fight = run.fight
         self._show_board()
@@ -121,6 +128,35 @@ class FightScreen(BoxLayout):
         self.file_row.set_name(Path(fight.sgf_path).name)
         set_text(self.status_label, self._status())
         self._follow_button.disabled = quiz.lines is None
+        self._update_timer()
+
+    def _update_timer(self) -> None:
+        """Count the seconds while KataGo makes a sequence (from zero again when it makes another), and stop after."""
+        line = self.quiz.calculating_line
+        if line == self._busy_line:
+            return
+        self._busy_line = line
+        self._cancel_timer()
+        self._busy_since = time.monotonic() if line else None
+        if line:
+            self._busy_timer = Clock.schedule_interval(self._on_busy_timer, 1)
+
+    def _cancel_timer(self) -> None:
+        """Stop the timer of the seconds (if it runs)."""
+        if self._busy_timer is not None:
+            self._busy_timer.cancel()
+            self._busy_timer = None
+
+    def _on_busy_timer(self, _dt) -> None:
+        """Show the seconds of calculation again (and stop the timer if KataGo has finished)."""
+        if self.quiz.run is not None:
+            set_text(self.status_label, self._status())
+        self._update_timer()
+
+    @property
+    def busy_seconds(self) -> int:
+        """How many seconds KataGo has been making the sequence (0 if it is not)."""
+        return int(time.monotonic() - self._busy_since) if self._busy_since is not None else 0
 
     def _show_board(self) -> None:
         """Show the fight's position with the moves to show on it."""
@@ -151,7 +187,8 @@ class FightScreen(BoxLayout):
 
         def make() -> str:
             verdict = texts.fight_outcome_text(outcome)
-            return f"{verdict}\n{texts.fight_line_text(lines)}" if lines.name == LINE_AI else verdict
+            shown = lines.name in (LINE_AI, LINE_STRONG)
+            return f"{verdict}\n{texts.fight_line_text(lines, self.busy_seconds)}" if shown else verdict
 
         return make
 
@@ -191,4 +228,5 @@ class FightScreen(BoxLayout):
     def close(self) -> None:
         """Leave the screen: stop using KataGo's answers and listening to the keys."""
         self.quiz.leave()
+        self._cancel_timer()
         Window.unbind(on_key_down=self._on_key_down)
