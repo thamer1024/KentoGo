@@ -340,6 +340,10 @@ class QuizScreen(BoxLayout):
         if reason:
             set_text(self.result_label, lambda: texts.text("illegal_move", reason=reason))
             return
+        
+        # 修正：盤面の描画を更新する（_refresh() の前に）
+        self.board.redraw()
+        
         session = self.session
         if session is not None and session.phase == ANSWERED:
             self._show_result(session)
