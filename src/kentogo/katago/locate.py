@@ -189,8 +189,8 @@ def engine_command(
             try:
                 result = subprocess.run(["wslpath", "-w", path_str], capture_output=True, text=True, check=True)
                 return result.stdout.strip()
-                pass
             except (OSError, subprocess.SubprocessError):
+                pass
         return path_str
 
     command = [str(katago), "analysis", "-model", _for_katago(model)]

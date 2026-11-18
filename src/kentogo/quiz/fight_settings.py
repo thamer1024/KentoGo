@@ -44,4 +44,3 @@ class FightSettings:
     def to_dict(self) -> dict:
         """Return the settings as a dict, to be put into the "fights" part of settings.json."""
         return {"opponent": self.opponent, "score_tolerance": self.score_tolerance}
-
