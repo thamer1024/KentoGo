@@ -5,7 +5,9 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
 from kentogo.app_settings import FIGHT_REVIEW, AppSettings
-from kentogo.fights_today import fight_history_path, load_fights, plan_fights, prepare_fights
+from kentogo.common.types import Move, Position
+from kentogo.fights_today import askable_fights, fight_history_path, load_fights, plan_fights, prepare_fights
+from kentogo.mistakes.local_fight import KIND_BOUNDARY, KIND_LIFE_DEATH, LocalFight
 from kentogo.quiz.quiz_settings import QuizSettings
 from kentogo.record.kentogo_analysis import KGA_PROPERTY, encode_kga
 from kentogo.review.history import AnswerHistory
@@ -85,6 +87,18 @@ def test_no_fights_and_the_history_file(tmp_path):
     assert today.fights == [] and today.message.key == "fights_none"
     assert fight_history_path(tmp_path / "settings.json") == tmp_path / "fight_history.sqlite3"
     assert (tmp_path / "fight_history.sqlite3").is_file()
+
+
+def test_a_fight_with_no_point_to_judge_is_not_asked():
+    """A life and death fight needs stones, and a boundary needs empty points."""
+    position = Position(9, 6.5, "japanese", (), (Move("W", (4, 4)),), "B")
+
+    def local_fight(kind: str, mine: tuple = (), points: tuple = ()) -> LocalFight:
+        return LocalFight("f", "a.sgf", 2, position, kind, mine, (), points, 1, 0.5, ())
+
+    stones, no_stones = local_fight(KIND_LIFE_DEATH, mine=("A1",)), local_fight(KIND_LIFE_DEATH, points=("A2",))
+    points, no_points = local_fight(KIND_BOUNDARY, points=("A2",)), local_fight(KIND_BOUNDARY, mine=("A1",))
+    assert askable_fights([stones, no_stones, points, no_points]) == [stones, points]
 
 
 def test_the_fights_review_settings_are_their_own():

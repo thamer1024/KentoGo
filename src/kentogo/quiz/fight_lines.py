@@ -3,8 +3,9 @@
 After the fight is judged, three sequences from the fight's position can be shown, in this order:
 
 - LINE_PLAYED: the moves played in the fight, the user's and KataGo's (shown first, to its end);
-- LINE_AI: the sequence in which both sides play at the level chosen for the opponent (see
-  quiz.fight_run.FightRun.ask_ai_line); KataGo makes it after the fight, so it may still be coming;
+- LINE_AI: the sequence in which both sides play the human-like moves of their ranks until the place is settled
+  (see quiz.fight_follow); KataGo makes it when it is asked for, so it may still be coming (the moves made so far
+  can be shown);
 - LINE_GAME: the moves of the game.
 
 A sequence chosen with Tab (next) or Shift+Tab (previous) is shown from its first move; forward and back play
@@ -55,12 +56,20 @@ class FightLines:
         """Return the moves shown on the board."""
         return self._lines[self.name][: self.step]
 
-    def set_ai_line(self, line: tuple[Move, ...]) -> None:
-        """Keep the sequence of the AIs (its first move is shown at once when it is the sequence shown)."""
+    def update_ai_line(self, line: tuple[Move, ...]) -> None:
+        """Keep the moves of the sequence of the AIs made so far (its first move is shown at once when it is shown)."""
         self._lines[LINE_AI] = line
-        self.ai_state = AI_READY
         if self.name == LINE_AI and self.step == 0:
             self.step = min(1, len(line))
+
+    def set_ai_line(self, line: tuple[Move, ...]) -> None:
+        """Keep the whole sequence of the AIs (its first move is shown at once when it is the sequence shown)."""
+        self.update_ai_line(line)
+        self.ai_state = AI_READY
+
+    def show_ai_line(self) -> None:
+        """Show the sequence of the AIs from its first move."""
+        self._select(LINES.index(LINE_AI))
 
     def ai_failed(self) -> None:
         """Tell that the sequence of the AIs could not be made."""

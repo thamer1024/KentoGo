@@ -21,15 +21,17 @@ def test_how_katago_plays():
     """The engine's visits and noise; the profile of the opponent's rank only with the human-like opponent."""
     strong = fight_play(FightSettings(), EVALUATION, PlayerRanks("15k", "12k"))
     assert (strong.visits, strong.wide_root_noise, strong.profile, strong.tolerance) == (800, 0.04, "", 3.0)
-    assert strong.my_profile == ""
+    assert (strong.line_my_profile, strong.line_profile) == ("rank_15k", "rank_12k")  # The AIs' sequence: human-like.
     rank = fight_play(FightSettings(OPPONENT_RANK, 5.0), EVALUATION, PlayerRanks("15k", "12k"))
-    assert (rank.opponent, rank.profile, rank.my_profile, rank.tolerance) == (
+    assert (rank.opponent, rank.profile, rank.line_my_profile, rank.tolerance) == (
         OPPONENT_RANK,
         "rank_12k",
         "rank_15k",
         5.0,
     )
-    assert fight_play(FightSettings(OPPONENT_RANK), EVALUATION, PlayerRanks()).profile == ""
+    unknown = fight_play(FightSettings(OPPONENT_RANK), EVALUATION, PlayerRanks())
+    assert unknown.profile == ""  # The replies are the strongest, but the AIs' sequence is human-like at 9d.
+    assert (unknown.line_my_profile, unknown.line_profile) == ("rank_9d", "rank_9d")
 
 
 def test_the_tools_make_the_runs_and_save_them():

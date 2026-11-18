@@ -7,7 +7,7 @@ the mistake problems. They are reviewed in the same way (see repetition): a figh
 the next day, and the correct answers in a row make the wait longer.
 
 Only the fights made from the games are asked: when a game is analyzed again and a fight is no longer found,
-its reviews are not asked any more.
+its reviews are not asked any more. A fight with no point to judge is not asked either (see askable_fights).
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from kentogo.app_settings import AppSettings
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.notice import Notice
 from kentogo.quiz.collect import collect_games
+from kentogo.quiz.fight_judge import judged_points
 from kentogo.quiz.order import keep_newest, order_problems
 from kentogo.quiz.problem_cache import ProblemCache
 from kentogo.repetition.daily import answered_on, left_today
@@ -60,6 +61,11 @@ class TodayFights:
 def fight_history_path(settings_path: Path) -> Path:
     """Return the path of the history of the local fights (next to the settings file)."""
     return settings_path.expanduser().parent / FIGHT_HISTORY_FILE_NAME
+
+
+def askable_fights(fights: list[LocalFight]) -> list[LocalFight]:
+    """Return the fights that have points to judge (the stones, or the empty points of a boundary)."""
+    return [fight for fight in fights if judged_points(fight)]
 
 
 def plan_fights(
@@ -113,7 +119,7 @@ def prepare_fights(
         return TodayFights([], folder_problem)
     games, _skipped = collect_games(folder, settings.quiz.extract, cache, progress, recorded_colors)
     fights = [fight for _path, result in games for fight in result.local_fights]
-    fights = order_problems(keep_newest(fights), settings.quiz.order, rng)
+    fights = order_problems(keep_newest(askable_fights(fights)), settings.quiz.order, rng)
     if history is None:
         print(f"{len(fights)} local fights (no history)", file=sys.stderr)
         return TodayFights(fights, None, len(fights))

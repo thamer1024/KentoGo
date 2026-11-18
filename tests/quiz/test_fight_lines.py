@@ -38,6 +38,19 @@ def test_tab_goes_through_the_sequences_from_their_first_moves():
     assert lines.shown() == ()
 
 
+def test_the_sequence_of_the_ais_grows_while_it_is_made():
+    lines = FightLines(PLAYED, GAME)
+    lines.show_ai_line()
+    assert (lines.name, lines.shown()) == (LINE_AI, ())
+    lines.update_ai_line(AI[:1])
+    assert (lines.ai_state, points(lines.shown())) == (AI_CALCULATING, [(0, 2)])  # The first move is shown at once.
+    lines.update_ai_line(AI)
+    lines.forward()
+    assert (lines.ai_state, lines.step, lines.length) == (AI_CALCULATING, 2, 2)
+    lines.set_ai_line(AI)
+    assert lines.ai_state == AI_READY
+
+
 def test_the_sequence_of_the_ais_fails():
     lines = FightLines(PLAYED, GAME)
     lines.ai_failed()

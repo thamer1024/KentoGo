@@ -129,24 +129,23 @@ def ai_line(engine, **play) -> list:
     fight_run, _events = run(engine, **play)
     lines = []
     fight_run.ask_ai_line(
-        lambda line: lines.append([move.gtp() for move in line]), lambda message: lines.append(message)
+        lambda _line: None,
+        lambda line: lines.append([move.gtp() for move in line]),
+        lambda message: lines.append(message),
     )
     return lines
 
 
-def test_the_sequence_of_the_strongest_ais():
-    """Both sides play KataGo's best moves, as long as the game's sequence of the fight (3 moves)."""
-    engine = FakeEngine({0: (1.0, 0.6, "A2"), 1: (1.0, 0.6, "B2"), 2: (1.0, 0.6, "C2")})
-    assert ai_line(engine) == [["A2", "B2", "C2"]]
-
-
-def test_the_sequence_of_the_human_like_ais():
-    """With the opponent's rank, both sides play the human-like moves of their own ranks."""
-    engine = FakeEngine({0: (1.0, 0.6, "A2"), 1: (1.0, 0.6, "B2"), 2: (1.0, 0.6, "C2")})
-    lines = ai_line(engine, opponent=OPPONENT_RANK, profile="rank_12k", my_profile="rank_15k")
-    assert lines[0][0] == "B2"
-    profiles = [query["overrideSettings"]["humanSLProfile"] for query in engine.queries[1:3]]
+def test_the_sequence_of_the_ais_goes_on_until_the_place_is_settled():
+    """Both sides play the human-like moves of their own ranks (also against the strongest opponent)."""
+    engine = FakeEngine({0: (1.0, 0.6, "A2"), 1: (1.0, 0.6, "A2"), 2: (1.0, 0.9, "A2")})
+    lines = ai_line(engine, line_my_profile="rank_15k", line_profile="rank_12k")
+    assert lines == [["B2", "B2"]]  # The fake KataGo's human-like move is B2; the stones are settled after two moves.
+    profiles = [
+        q["overrideSettings"]["humanSLProfile"] for q in engine.queries if "humanSLProfile" in q["overrideSettings"]
+    ]
     assert profiles == ["rank_15k", "rank_12k"]
+    assert len(engine.queries) == 5  # The start, then a move and the areas, twice.
 
 
 class BrokenEngine:

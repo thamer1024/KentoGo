@@ -6,8 +6,9 @@ until the fight is judged. The fight goes through these phases:
 - PHASE_STARTING: KataGo reads the score of the fight's position;
 - PHASE_TURN: the user's turn (a click on the board is a move);
 - PHASE_WAITING: KataGo reads the position after the user's move, and answers or judges the fight;
-- PHASE_ENDED: the fight was judged (and its answer was saved); its sequences can be shown (see quiz.fight_lines),
-  and KataGo makes the sequence of the AIs;
+- PHASE_ENDED: the fight was judged (and its answer was saved); its sequences can be shown and stepped through
+  (see quiz.fight_lines), and follow() has KataGo make the sequence of the AIs from the fight's position (no stone
+  can be put on the board any more);
 - PHASE_ERROR: KataGo could not answer (the fight is not saved; the next fight can be asked).
 
 The answers of KataGo come in its own thread: they are moved to the screen's thread (in_main) before anything
@@ -23,7 +24,7 @@ from kentogo.common.board import Board, IllegalMoveError
 from kentogo.common.types import Move
 from kentogo.mistakes.local_fight import LocalFight
 from kentogo.quiz.fight_judge import FightOutcome
-from kentogo.quiz.fight_lines import FightLines
+from kentogo.quiz.fight_lines import LINE_AI, FightLines
 from kentogo.quiz.fight_run import FightRun
 
 PHASE_STARTING = "starting"
@@ -80,12 +81,14 @@ class FightQuiz:
         self._listener = listener
         self._in_main = in_main
         self._left = False
+        self._ai_asked = False
 
     def start(self, index: int) -> None:
         """Ask the fight with this number (after the last one: no fight is asked)."""
         self.index = index
         self.error = ""
         self.lines = None
+        self._ai_asked = False
         if index >= len(self.fights):
             self.run = None
             self._listener.changed()
@@ -120,6 +123,37 @@ class FightQuiz:
         run.play(move, self._for(run, self._replied), self._for(run, self._ended), self._for(run, self._failed))
         return ""
 
+    def follow(self) -> None:
+        """Show the sequence of the AIs from the fight's position (only after the fight has ended).
+
+        KataGo makes it at the first call, move by move: the moves made so far are shown meanwhile.
+        """
+        run, lines = self.run, self.lines
+        if run is None or lines is None:
+            return
+        if lines.name != LINE_AI:
+            lines.show_ai_line()
+        if not self._ai_asked:
+            self._ai_asked = True
+            run.ask_ai_line(
+                self._for(run, self._follow_moved),
+                self._for(run, self._follow_done),
+                self._for(run, self._follow_failed),
+            )
+        self._listener.changed()
+
+    def step_forward(self) -> None:
+        """Show one move more of the sequence shown (only after the fight has ended)."""
+        if self.lines is not None:
+            self.lines.forward()
+            self._listener.changed()
+
+    def step_back(self) -> None:
+        """Show one move less of the sequence shown (only after the fight has ended)."""
+        if self.lines is not None:
+            self.lines.back()
+            self._listener.changed()
+
     def leave(self) -> None:
         """Stop using KataGo's answers (the screen is closed)."""
         self._left = True
@@ -134,7 +168,10 @@ class FightQuiz:
         return self._in_main(callback)
 
     def _ready(self) -> None:
-        """KataGo has read the fight's position: the user plays."""
+        """KataGo has read the fight's position: the user plays (a fight with no point to judge is not asked)."""
+        if not self.run.points:
+            self.next_fight()
+            return
         self.phase = PHASE_TURN
         self._listener.changed()
 
@@ -144,20 +181,24 @@ class FightQuiz:
         self._listener.changed()
 
     def _ended(self, _outcome: FightOutcome) -> None:
-        """The fight was judged: save it, and let KataGo make the sequence of the AIs."""
+        """The fight was judged: save it, and keep its sequences to be shown."""
         run = self.run
         self.phase = PHASE_ENDED
         self.lines = FightLines(run.played, run.fight.game_line)
         self._save(run)
         self._listener.changed()
-        run.ask_ai_line(self._for(run, self._ai_line_came), self._for(run, self._ai_line_failed))
 
-    def _ai_line_came(self, line: tuple[Move, ...]) -> None:
-        """Keep the sequence of the AIs."""
+    def _follow_moved(self, line: tuple[Move, ...]) -> None:
+        """Show the moves of the sequence of the AIs made so far."""
+        self.lines.update_ai_line(line)
+        self._listener.changed()
+
+    def _follow_done(self, line: tuple[Move, ...]) -> None:
+        """Keep the whole sequence of the AIs."""
         self.lines.set_ai_line(line)
         self._listener.changed()
 
-    def _ai_line_failed(self, _message: str) -> None:
+    def _follow_failed(self, _message: str) -> None:
         """Tell that the sequence of the AIs could not be made (the fight's answer is kept)."""
         self.lines.ai_failed()
         self._listener.changed()
