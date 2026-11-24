@@ -182,7 +182,7 @@ def engine_command(
     is_wsl = sys.platform == "linux" and "microsoft" in platform.release().lower()
     is_windows_katago = katago.suffix.lower() == ".exe"
 
-    def _for_katago(path: Path) -> str:
+    def _for_katago(path: Path | str) -> str:
         """Convert a resolved WSL path to a Windows path when invoking Windows katago.exe from WSL."""
         path_str = str(path)
         if is_wsl and is_windows_katago:
@@ -199,7 +199,8 @@ def engine_command(
         human_model_path = _existing_file(human_model, "human-like model", katrain_package)
         command += ["-human-model", _for_katago(human_model_path)]
 
-    home_data_dir = Path(os.path.expanduser(KATRAIN_DATA_FOLDER))
+    # Kept as text, as KaTrain does: Path() would change "/" into "\" on Windows.
+    home_data_dir = os.path.expanduser(KATRAIN_DATA_FOLDER)
     command += ["-config", _for_katago(settings), "-override-config", f"homeDataDir={_for_katago(home_data_dir)}"]
     return EngineCommand(tuple(command), False, max_visits)
 
