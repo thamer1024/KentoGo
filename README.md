@@ -90,7 +90,8 @@ open it with the right click > "Open", or run `xattr -dr com.apple.quarantine Ke
    `~/.kentogo/games` until another folder is chosen; KentoGo run from the source uses its
    `games` folder (SGF files are never added to git).
 
-How to use each screen, and what each setting means, is in the [user guide](USER_GUIDE.md).
+How to use each screen, what each setting changes, and what to do when KentoGo is slow are in the
+[user guide](USER_GUIDE.md) ([in Japanese](japanese/USER_GUIDE.md)).
 
 ### Preparing your games in KaTrain
 
@@ -369,18 +370,45 @@ own file to change (☰ > the AI commentary settings): `commentary_prompt_jp.txt
 
 ## Changes
 
-### The next version after 0.2.0
+Each version lists mainly the features that were added and the features that changed: what you notice
+when you use KentoGo. The changes inside the code are put together at the end, in a few words.
 
-- Local fight problems (life and death, boundaries): play the fight again against KataGo, with their
-  own reviews and history, and the AIs' sequence afterwards (played again with KataGo's best moves
-  when it does not settle the place, and followed until a chased group is captured or gets away).
+### 0.3.0
+
+New features:
+
+- **Local fight problems** (life and death, boundaries). From the games that KentoGo analyzed, the
+  fights you lost are played again against KataGo, from the position where the fight started, until the
+  place is settled. Open them with "Local fight problems (life and death, boundaries)" on the top screen
+  (see "Local fight problems").
+  - They have their own reviews and history (at most 5 problems a day at first), their own settings
+    (the opponent and the allowed points), and a button that clears their history after a backup.
+  - After a fight, Tab (or "Show the AIs' sequence") shows both sides playing human-like moves, and the
+    ← → keys step through it. When that does not settle the place, KataGo's best moves play it again,
+    and Tab switches between the two. A group being chased is followed until it is captured or gets away.
+- The report also shows the results of the local fight problems.
 - "Today" also shows how many of the current problems there are in all, done, in progress and not
   started.
-- The report also shows the results of the local fight problems.
-- The user guide (`USER_GUIDE.md`).
-- KentoGo on WSL can use the Windows `katago.exe`.
-- The screens, the logic and the features are kept further apart (the histories, the steps of the AI
-  commentary, reading games, and the texts of the screens). Nothing changes in how KentoGo is used.
+- The user guide, in English (`USER_GUIDE.md`) and in Japanese (`japanese/USER_GUIDE.md`): how to play,
+  what each setting changes, and what to change when KentoGo is slow.
+- KentoGo on WSL can use the Windows `katago.exe` (the paths given to it are changed to the Windows form).
+
+Changed features:
+
+- Your mistakes inside a local fight are no longer asked as mistake problems: the fight is asked as a
+  local fight problem instead.
+- A local fight is over when KataGo's best reply is somewhere else on the board.
+- Local fights where there is nothing to judge are not asked.
+- In the AIs' sequence after a local fight, both sides play at 9d when no rank is known.
+
+Fixes:
+
+- The board is drawn again right after you play a stone, in the mistake problems and the local fight
+  problems.
+
+Inside the code (nothing changes in how KentoGo is used): the screens, the logic and the features are
+kept further apart (the histories, the steps of the AI commentary, reading games, and the texts of the
+screens), and on Windows the command that starts KataGo is again the same as KaTrain's.
 
 ### 0.2.0
 

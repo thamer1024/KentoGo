@@ -47,9 +47,10 @@ packaging/version.txt
 src/kentogo/version.txt
 
 # Japanese copies of the source and documents, made only for reading (they are not kept up to date).
-# The Japanese README is kept: README.md links to it.
+# The Japanese README and user guide are kept: README.md and USER_GUIDE.md link to them.
 japanese/*
 !japanese/README.md
+!japanese/USER_GUIDE.md
 
 # Shell scripts of your own. The script that makes the macOS app is kept.
 *.sh
